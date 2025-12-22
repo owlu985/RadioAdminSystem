@@ -92,6 +92,13 @@ class LogEntry(db.Model):
     recording_file = db.Column(db.String(300), nullable=True)
     description = db.Column(db.Text, nullable=True)
 
+    # Optional metadata for PSA/news compliance and file linkage
+    entry_type = db.Column(db.String(32), nullable=True)  # psa | live_read | music | news | probe
+    title = db.Column(db.String(200), nullable=True)
+    artist = db.Column(db.String(200), nullable=True)
+    recording_file = db.Column(db.String(300), nullable=True)
+    description = db.Column(db.Text, nullable=True)
+
     show_run = db.relationship("ShowRun", backref="log_entries")
     log_sheet = db.relationship("LogSheet", backref="entries")
 
