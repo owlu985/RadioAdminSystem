@@ -1,0 +1,31 @@
+<table>
+  <tr>
+    <th>Show</th>
+    <th>Date</th>
+    <th>Status</th>
+    <th>Recording</th>
+  </tr>
+
+  {% for run, show in runs %}
+  <tr>
+    <td>{{ show.host_first_name }} {{ show.host_last_name }}</td>
+    <td>{{ run.run_date }}</td>
+    <td>
+      {% if run.classification == "live_show" %}
+        🟢 Live
+      {% elif run.classification == "missed_show" %}
+        🔴 Missed
+      {% elif run.classification == "automation_only" %}
+        🟡 Automation
+      {% else %}
+        ⚪ Unknown
+      {% endif %}
+    </td>
+    <td>
+      {% if run.recording_path %}
+        <a href="{{ url_for('main.download', path=run.recording_path) }}">Audio</a>
+      {% endif %}
+    </td>
+  </tr>
+  {% endfor %}
+</table>
