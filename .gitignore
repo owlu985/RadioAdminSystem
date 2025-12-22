@@ -12,11 +12,3 @@ instance/
 test files/
 .idea/
 .gitignore
-# Node.js build artifacts/dependencies
-node_modules/
-dist/
-# General build/binary files
-build/
-*.log
-*.bin
-*.so
