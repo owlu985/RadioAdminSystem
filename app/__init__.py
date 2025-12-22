@@ -53,6 +53,16 @@ def create_app(config_class=Config):
         with app.app_context():
             db.create_all()
 
+            # Lightweight compatibility patching for new columns without manual migrations.
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols = {col["name"] for col in insp.get_columns("log_entry")}
+            with db.engine.begin() as conn:
+                if "log_sheet_id" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN log_sheet_id INTEGER"))
+                if "entry_time" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
+
         Migrate(app, db)
 
         with app.app_context():
@@ -108,9 +118,11 @@ def create_app(config_class=Config):
     from app.main_routes import main_bp
     from app.routes.api import api_bp
     from app.routes.logging_api import logs_bp
+    from app.routes.news import news_bp
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(logs_bp)
+    app.register_blueprint(news_bp)
     
     
     initial_logger.info("Application startup complete.")

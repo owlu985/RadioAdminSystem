@@ -14,6 +14,7 @@
             <a href="{{ url_for('main.shows') }}" class="btn btn-sm btn-outline-primary">Show Schedule</a>
             <a href="{{ url_for('logs.manage_logs') }}" class="btn btn-sm btn-outline-primary">Log Manager</a>
             <a href="{{ url_for('logs.submit_log') }}" class="btn btn-sm btn-outline-secondary" target="_blank">Public Logger</a>
+            <a href="{{ url_for('news.upload_news') }}" class="btn btn-sm btn-outline-primary">Upload News</a>
             <a href="{{ url_for('main.logout') }}" class="btn btn-sm btn-outline-danger">Logout</a>
         </div>
     </div>
@@ -46,6 +47,7 @@
                 <li><a href="{{ url_for('main.shows') }}">Manage show recorder schedule</a></li>
                 <li><a href="{{ url_for('logs.manage_logs') }}">View/Export station logs</a></li>
                 <li><a href="{{ url_for('logs.submit_log') }}" target="_blank">Public logger form</a></li>
+                <li><a href="{{ url_for('news.upload_news') }}">Upload daily newscast</a></li>
                 <li>REST: <code>/api/now</code> (current show), <code>/api/probes/latest</code> (silence/automation), <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code></li>
                 <li>NAS watcher + RadioDJ import runs periodically (news/calendar)</li>
             </ul>

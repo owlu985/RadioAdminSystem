@@ -7,6 +7,7 @@ from .models import db, Show
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
 from .utils import update_user_config
+from datetime import date as date_cls
 import ffmpeg
 import json
 import os
@@ -30,6 +31,7 @@ def init_scheduler(app):
             refresh_schedule()
             schedule_stream_probe()
             schedule_nas_watch()
+            schedule_news_rotation()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -176,6 +178,32 @@ def schedule_nas_watch():
         logger.info("NAS watch job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling NAS watch job: {e}")
+
+
+def schedule_news_rotation():
+    """Daily job to activate the news file for the current date if available."""
+    if flask_app is None:
+        return
+    try:
+        scheduler.add_job(
+            run_news_rotation_job,
+            "cron",
+            hour=0,
+            minute=5,
+            id="news_rotation_job",
+            replace_existing=True,
+        )
+        logger.info("News rotation job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling news rotation job: {e}")
+
+
+def run_news_rotation_job():
+    if flask_app is None:
+        return
+    from app.routes.news import activate_news_for_date  # lazy import to avoid cycles
+    with flask_app.app_context():
+        activate_news_for_date(date_cls.today())
 
 
 def run_nas_watch_job():
