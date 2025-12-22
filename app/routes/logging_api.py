@@ -109,6 +109,14 @@ def _entries_query(sheet_id=None):
     return q.order_by(LogSheet.show_date.desc(), LogEntry.timestamp.asc())
 
 
+@logs_bp.route("/view")
+@admin_required
+def view_logs():
+    sheet_id = request.args.get("sheet_id", type=int)
+    entries = _entries_query(sheet_id).all()
+    return render_template("logs_view.html", entries=entries, sheet_id=sheet_id)
+
+
 @logs_bp.route("/download/csv")
 @admin_required
 def download_csv():

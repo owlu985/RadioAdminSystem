@@ -32,6 +32,8 @@ class Config:
     NAS_NEWS_FILE = os.path.join(NAS_ROOT, "wlmc_news.mp3")
     NAS_COMMUNITY_CALENDAR_FILE = os.path.join(NAS_ROOT, "wlmc_comm_calendar.mp3")
     TEST_SAMPLE_AUDIO = os.path.join(NAS_ROOT, "sample_probe.mp3")
+    NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
+    NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
     RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")
     RADIODJ_API_BASE_URL = None
     RADIODJ_API_KEY = None

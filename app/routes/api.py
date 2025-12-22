@@ -5,6 +5,7 @@ from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
+from app.services.music_search import search_music, get_track
 from sqlalchemy import func
 from app.logger import init_logger
 
@@ -150,6 +151,26 @@ def artist_frequency():
         .all()
     )
     return jsonify([{"artist": artist or "Unknown", "plays": plays} for artist, plays in counts])
+
+
+@api_bp.route("/music/search")
+def music_search():
+    q = request.args.get("q", "").strip()
+    if not q:
+        return jsonify([])
+    results = search_music(q)[:200]
+    return jsonify(results)
+
+
+@api_bp.route("/music/detail")
+def music_detail():
+    path = request.args.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    track = get_track(path)
+    if not track:
+        return jsonify({"status": "error", "message": "not found"}), 404
+    return jsonify(track)
 
 
 @api_bp.route("/radiodj/psas")

@@ -8,6 +8,7 @@ from functools import wraps
 from .logger import init_logger
 from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
+from app.services.music_search import search_music, get_track
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -73,6 +74,51 @@ def dashboard():
 		current_run=current_run,
 		window=window,
 	)
+
+
+@main_bp.route("/music/search")
+@admin_required
+def music_search_page():
+	return render_template("music_search.html")
+
+
+@main_bp.route("/music/detail")
+@admin_required
+def music_detail_page():
+	path = request.args.get("path")
+	track = get_track(path) if path else None
+	return render_template("music_detail.html", track=track)
+
+
+@main_bp.route("/music/edit", methods=["GET", "POST"])
+@admin_required
+def music_edit_page():
+	path = request.values.get("path")
+	if not path:
+		return render_template("music_edit.html", track=None, error="Missing path")
+	track = get_track(path)
+	if request.method == "POST":
+		if not track:
+			return render_template("music_edit.html", track=None, error="Track not found")
+		if not search_music.__globals__.get("mutagen"):
+			return render_template("music_edit.html", track=track, error="Metadata editing requires mutagen installed.")
+		try:
+			audio = search_music.__globals__["mutagen"].File(path, easy=True)
+			if not audio:
+				return render_template("music_edit.html", track=track, error="Unsupported file format.")
+			for field in ["title","artist","album","composer","isrc","year","track","disc","copyright"]:
+				val = request.form.get(field) or None
+				if val:
+					audio[field] = [val]
+				elif field in audio:
+					del audio[field]
+			audio.save()
+			track = get_track(path)
+			flash("Metadata updated.", "success")
+			return redirect(url_for("main.music_detail_page", path=path))
+		except Exception as exc:  # noqa: BLE001
+			return render_template("music_edit.html", track=track, error=str(exc))
+	return render_template("music_edit.html", track=track, error=None)
 
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():

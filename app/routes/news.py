@@ -5,33 +5,39 @@ from flask import Blueprint, render_template, request, flash, redirect, url_for,
 from werkzeug.utils import secure_filename
 from app.auth_utils import admin_required
 from app.logger import init_logger
+from app.services.news_config import load_news_types, get_news_type
 
 news_bp = Blueprint("news", __name__, url_prefix="/news")
 logger = init_logger()
 
 
-def _news_storage_dir():
+def _news_storage_dir(news_type_key: str):
     root = current_app.config["NAS_ROOT"]
-    path = os.path.join(root, "news")
+    path = os.path.join(root, "news", news_type_key)
     os.makedirs(path, exist_ok=True)
     return path
 
 
-def activate_news_for_date(target_date: date) -> bool:
+def activate_news_for_date(target_date: date, news_key: str | None = None) -> bool:
     """
-    Copy wlmc_news_<date>.mp3 into wlmc_news.mp3 for RadioDJ consumption.
+    Copy <base>_<date>.mp3 into its configured destination for RadioDJ consumption.
     Returns True if a file was activated.
     """
-    storage_dir = _news_storage_dir()
-    dated_name = f"wlmc_news_{target_date.isoformat()}.mp3"
-    dated_path = os.path.join(storage_dir, dated_name)
-    if not os.path.exists(dated_path):
-        return False
-
-    dest = current_app.config["NAS_NEWS_FILE"]
-    shutil.copy(dated_path, dest)
-    logger.info("Activated news file for %s -> %s", target_date, dest)
-    return True
+    news_types = load_news_types()
+    targets = [t for t in news_types if (news_key is None or t["key"] == news_key)]
+    activated = False
+    for nt in targets:
+        storage_dir = _news_storage_dir(nt["key"])
+        base = nt["filename"].replace(".mp3", "")
+        dated_name = f"{base}_{target_date.isoformat()}.mp3"
+        dated_path = os.path.join(storage_dir, dated_name)
+        if not os.path.exists(dated_path):
+            continue
+        dest = os.path.join(current_app.config["NAS_ROOT"], nt["filename"])
+        shutil.copy(dated_path, dest)
+        logger.info("Activated %s file for %s -> %s", nt["key"], target_date, dest)
+        activated = True
+    return activated
 
 
 @news_bp.route("/upload", methods=["GET", "POST"])
@@ -40,9 +46,16 @@ def upload_news():
     """
     Admin panel to upload dated newscasts.
     """
+    news_types = load_news_types()
+
     if request.method == "POST":
         file = request.files.get("file")
         target_date_str = request.form.get("date") or date.today().isoformat()
+        news_key = request.form.get("news_type") or (news_types[0]["key"] if news_types else None)
+        nt = get_news_type(news_key) if news_key else None
+        if not nt:
+            flash("Invalid news type.", "danger")
+            return redirect(url_for("news.upload_news"))
         try:
             target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
         except ValueError:
@@ -53,17 +66,18 @@ def upload_news():
             flash("Please select a file to upload.", "danger")
             return redirect(url_for("news.upload_news"))
 
-        storage_dir = _news_storage_dir()
-        filename = f"wlmc_news_{target_date.isoformat()}.mp3"
+        storage_dir = _news_storage_dir(nt["key"])
+        base = nt["filename"].replace(".mp3", "")
+        filename = f"{base}_{target_date.isoformat()}.mp3"
         path = os.path.join(storage_dir, secure_filename(filename))
         file.save(path)
-        flash(f"Uploaded news cast for {target_date}.", "success")
-        logger.info("Uploaded news file to %s", path)
+        flash(f"Uploaded {nt['label']} cast for {target_date}.", "success")
+        logger.info("Uploaded %s file to %s", nt["key"], path)
 
         # If it's for today, immediately activate.
         if target_date == date.today():
-            activate_news_for_date(target_date)
+            activate_news_for_date(target_date, news_key=nt["key"])
 
         return redirect(url_for("news.upload_news"))
 
-    return render_template("news_upload.html", today=date.today())
+    return render_template("news_upload.html", today=date.today(), news_types=news_types)

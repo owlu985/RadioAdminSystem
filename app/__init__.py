@@ -63,6 +63,16 @@ def create_app(config_class=Config):
                 if "entry_time" not in cols:
                     conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
 
+            # Ensure news types config exists with defaults
+            news_config_path = app.config["NEWS_TYPES_CONFIG"]
+            if not os.path.exists(news_config_path):
+                os.makedirs(os.path.dirname(news_config_path), exist_ok=True)
+                with open(news_config_path, "w") as f:
+                    json.dump([
+                        {"key": "news", "label": "News", "filename": "wlmc_news.mp3"},
+                        {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3"},
+                    ], f, indent=2)
+
         Migrate(app, db)
 
         with app.app_context():

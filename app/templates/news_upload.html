@@ -25,7 +25,15 @@
                 <label class="form-label">Date this newscast airs</label>
                 <input type="date" class="form-control" name="date" value="{{ today }}" required>
             </div>
-            <div class="col-md-8">
+            <div class="col-md-4">
+                <label class="form-label">News type</label>
+                <select class="form-select" name="news_type" required>
+                    {% for nt in news_types %}
+                        <option value="{{ nt.key }}">{{ nt.label }} ({{ nt.filename }})</option>
+                    {% endfor %}
+                </select>
+            </div>
+            <div class="col-md-4">
                 <label class="form-label">Audio file (mp3)</label>
                 <input type="file" class="form-control" name="file" accept=".mp3" required>
             </div>
