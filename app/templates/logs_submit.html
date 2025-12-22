@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Submit Station Log</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-4">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="mt-2">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }}">{{ message }}</div>
+            {% endfor %}
+        </div>
+    {% endif %}
+    {% endwith %}
+
+    <h2 class="mb-3">Station Log Submission</h2>
+    <form method="post" id="logForm">
+        <div class="row mb-3">
+            <div class="col-md-3">
+                <label class="form-label">DJ First Name</label>
+                <input type="text" class="form-control" name="dj_first_name" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">DJ Last Name</label>
+                <input type="text" class="form-control" name="dj_last_name" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Show Name</label>
+                <input type="text" class="form-control" name="show_name" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Show Date</label>
+                <input type="date" class="form-control" name="show_date" value="{{ now.date() }}" required>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-2">
+            <h5 class="mb-0">Entries</h5>
+            <button type="button" class="btn btn-secondary btn-sm" id="addRow">Add Row</button>
+        </div>
+
+        <div id="rows"></div>
+
+        <button type="submit" class="btn btn-primary mt-3">Submit Log</button>
+    </form>
+</div>
+
+<template id="rowTemplate">
+    <div class="row g-2 align-items-end mb-2 log-row" data-idx="">
+        <input type="hidden" name="row_index" value="">
+        <div class="col-md-2">
+            <label class="form-label">Time</label>
+            <div class="input-group">
+                <input type="time" class="form-control" name="time_" required>
+                <button class="btn btn-outline-secondary btn-now" type="button">Now</button>
+            </div>
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">Type</label>
+            <select class="form-select" name="type_" required>
+                <option value="music">Music</option>
+                <option value="psa">PSA</option>
+                <option value="live_read">Live Read</option>
+                <option value="event">Event</option>
+            </select>
+        </div>
+        <div class="col-md-4">
+            <label class="form-label">Title / Description</label>
+            <input type="text" class="form-control" name="title_" required>
+        </div>
+        <div class="col-md-3">
+            <label class="form-label">Artist (music only)</label>
+            <input type="text" class="form-control" name="artist_">
+        </div>
+        <div class="col-md-1 text-end">
+            <button type="button" class="btn btn-outline-danger btn-remove">X</button>
+        </div>
+    </div>
+</template>
+
+<script>
+    let counter = 0;
+    const rowsContainer = document.getElementById('rows');
+    const template = document.getElementById('rowTemplate').content;
+
+    function addRow() {
+        const clone = document.importNode(template, true);
+        const row = clone.querySelector('.log-row');
+        const idx = counter++;
+        row.dataset.idx = idx;
+        row.querySelector('input[name="row_index"]').value = idx;
+        row.querySelectorAll('[name]').forEach(el => {
+            if (el.name.endsWith('_')) {
+                el.name = el.name + idx;
+            }
+        });
+        rowsContainer.appendChild(clone);
+    }
+
+    document.getElementById('addRow').addEventListener('click', addRow);
+
+    rowsContainer.addEventListener('click', function (e) {
+        if (e.target.classList.contains('btn-remove')) {
+            e.target.closest('.log-row').remove();
+        }
+        if (e.target.classList.contains('btn-now')) {
+            const input = e.target.closest('.input-group').querySelector('input[type="time"]');
+            const now = new Date();
+            input.value = now.toLocaleTimeString([], {hour: '2-digit', minute: '2-digit', hour12: false});
+        }
+    });
+
+    // seed with three rows
+    addRow(); addRow(); addRow();
+</script>
+</body>
+</html>
