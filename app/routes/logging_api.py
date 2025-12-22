@@ -5,7 +5,7 @@ import zipfile
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import db, LogEntry, LogSheet
 from app.utils import get_current_show
-from app.services.show_run_service import get_or_create_active_run
+from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.logger import init_logger
 from app.auth_utils import admin_required
 
@@ -56,6 +56,13 @@ def submit_log():
                 show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
                 dj_first_name=current_show.host_first_name,
                 dj_last_name=current_show.host_last_name,
+            )
+        else:
+            # Fallback run to satisfy NOT NULL constraint on legacy DBs
+            show_run = start_show_run(
+                dj_first_name=dj_first,
+                dj_last_name=dj_last,
+                show_name=show_name or "Unscheduled Show"
             )
 
         rows = request.form.getlist("row_index")
