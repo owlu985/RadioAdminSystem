@@ -35,3 +35,24 @@ def end_show_run(show_run_id):
     db.session.commit()
 
     return show_run
+
+
+def get_or_create_active_run(show_name: str, dj_first_name: str, dj_last_name: str) -> ShowRun:
+    """
+    Return the active ShowRun for this show+DJ combo, or start a new one.
+    """
+    run = (
+        ShowRun.query.filter_by(
+            show_name=show_name.strip(),
+            dj_first_name=dj_first_name.strip(),
+            dj_last_name=dj_last_name.strip(),
+            end_time=None,
+        )
+        .order_by(ShowRun.start_time.desc())
+        .first()
+    )
+
+    if run:
+        return run
+
+    return start_show_run(dj_first_name, dj_last_name, show_name)

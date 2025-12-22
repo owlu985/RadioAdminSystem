@@ -34,6 +34,11 @@
 
     <h2>Add New Show</h2>
     <form method="post" onsubmit="return validateDates()">
+        <div class="mb-3">
+            <label for="show_name" class="form-label">Show Name:</label>
+            <input type="text" name="show_name" id="show_name" class="form-control" placeholder="Optional show name">
+        </div>
+
         <!-- Host First Name -->
         <div class="mb-3">
             <label for="host_first_name" class="form-label">Host First Name:</label>
@@ -44,6 +49,23 @@
         <div class="mb-3">
             <label for="host_last_name" class="form-label">Host Last Name:</label>
             <input type="text" name="host_last_name" id="host_last_name" class="form-control" required>
+        </div>
+
+        <div class="mb-3">
+            <label for="genre" class="form-label">Genre:</label>
+            <input type="text" name="genre" id="genre" class="form-control" placeholder="Rock, talk, news...">
+        </div>
+
+        <div class="mb-3">
+            <label for="description" class="form-label">Description:</label>
+            <textarea name="description" id="description" class="form-control" rows="3" placeholder="What is this show about?"></textarea>
+        </div>
+
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" value="1" id="is_regular_host" name="is_regular_host" checked>
+            <label class="form-check-label" for="is_regular_host">
+                Regular host (tick for recurring DJ, untick for guest/special)
+            </label>
         </div>
 
         <!-- Start Date -->
