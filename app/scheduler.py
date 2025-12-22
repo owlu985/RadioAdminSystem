@@ -4,6 +4,8 @@ from sqlalchemy import inspect
 from flask import current_app
 from .logger import init_logger
 from .models import db, Show
+from app.services.detection import probe_and_record
+from app.services.radiodj_client import import_news_or_calendar
 from .utils import update_user_config
 import ffmpeg
 import json
@@ -11,11 +13,13 @@ import os
 
 scheduler = BackgroundScheduler()
 logger = None
+flask_app = None
 
 def init_scheduler(app):
     """Initialize and start the scheduler with the Flask app context."""
 
-    global logger
+    global logger, flask_app
+    flask_app = app
     logger = init_logger()
     logger.info("Scheduler logger initialized.")
 
@@ -24,6 +28,8 @@ def init_scheduler(app):
         with app.app_context():
             logger.info("Scheduler initialized and started.")
             refresh_schedule()
+            schedule_stream_probe()
+            schedule_nas_watch()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -33,6 +39,7 @@ def refresh_schedule():
             for show in Show.query.all():
                 schedule_recording(show)
             logger.info("Schedule refreshed with latest shows.")
+            schedule_stream_probe()
     except Exception as e:
         logger.error(f"Error refreshing schedule: {e}")
 
@@ -100,14 +107,17 @@ def schedule_recording(show):
     duration = (end_time - start_time).total_seconds()
     stream_url = current_app.config['STREAM_URL']
 
+    display_name = show.show_name or f"{show.host_first_name} {show.host_last_name}"
+    safe_name = display_name.replace(" ", "_")
+
     if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:
-        show_folder = os.path.join(current_app.config['OUTPUT_FOLDER'], f"{show.host_first_name} {show.host_last_name}")
+        show_folder = os.path.join(current_app.config['OUTPUT_FOLDER'], display_name)
         if not os.path.exists(show_folder):
             os.mkdir(show_folder)
     else:
         show_folder = current_app.config['OUTPUT_FOLDER']
 
-    output_file = os.path.join(show_folder, f"{show.host_first_name}_{show.host_last_name}")
+    output_file = os.path.join(show_folder, safe_name)
     user_config_path = os.path.join(current_app.instance_path, 'user_config.json')
 
     try:
@@ -129,3 +139,59 @@ def schedule_recording(show):
     except Exception as e:
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
 
+
+def schedule_stream_probe():
+    """Schedule periodic stream probing for silence/automation detection."""
+    if flask_app is None:
+        return
+
+    interval_minutes = flask_app.config.get("STREAM_PROBE_INTERVAL_MINUTES", 5)
+
+    try:
+        scheduler.add_job(
+            run_stream_probe_job,
+            "interval",
+            minutes=interval_minutes,
+            id="stream_probe_job",
+            replace_existing=True,
+        )
+        logger.info("Stream probe job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling stream probe job: {e}")
+
+
+def schedule_nas_watch():
+    """Monitor NAS news/calendar files and import to RadioDJ folder."""
+    if flask_app is None:
+        return
+    interval = 5  # minutes
+    try:
+        scheduler.add_job(
+            run_nas_watch_job,
+            "interval",
+            minutes=interval,
+            id="nas_watch_job",
+            replace_existing=True,
+        )
+        logger.info("NAS watch job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling NAS watch job: {e}")
+
+
+def run_nas_watch_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        for kind in ("news", "community_calendar"):
+            try:
+                import_news_or_calendar(kind)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("NAS watch import failed for %s: %s", kind, exc)
+
+
+def run_stream_probe_job():
+    if flask_app is None:
+        return
+
+    with flask_app.app_context():
+        probe_and_record()
