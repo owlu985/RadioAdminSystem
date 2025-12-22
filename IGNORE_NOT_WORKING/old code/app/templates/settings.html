@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Settings</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+
+{% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="position-fixed top-0 start-50 translate-middle-x mt-3 d-inline-block" style="z-index: 1050; max-width: 90%;">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+        <script>
+            setTimeout(function() {
+                var alerts = document.querySelectorAll('.alert');
+                alerts.forEach(function(alert) {
+                    alert.classList.remove('show');
+                });
+            }, 2500);
+        </script>
+    {% endif %}
+{% endwith %}
+
+<!-- Pause Modal -->
+<div class="modal fade" id="pauseModal" tabindex="-1" aria-labelledby="pauseModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="pauseModalLabel">Pause Confirmation</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <form id="pauseForm" method="POST" action="{{ url_for('main.pause') }}">
+                    <div class="mb-3">
+                        <label for="pause_end_date" class="form-label">End Date for Pausing (optional)</label>
+                        <input type="date" name="pause_end_date" id="pause_end_date" class="form-control">
+                    </div>
+                    <p>Are you sure you want to pause recordings?</p>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="submit" form="pauseForm" class="btn btn-warning">Confirm Pause</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="container mt-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h2>Settings</h2>
+        <div>
+            {% if config.PAUSE_SHOWS_RECORDING == True %}
+                <form action="{{ url_for('main.resume') }}" method="POST" style="display:inline;">
+                    <button type="submit" class="btn btn-secondary" aria-label="Resume Recordings">
+                        <i class="bi bi-play-circle"></i> Resume Recordings
+                    </button>
+                </form>
+            {% else %}
+                <a href="#" class="btn btn-secondary" aria-label="Pause Recordings" data-bs-toggle="modal" data-bs-target="#pauseModal">
+                    <i class="bi bi-pause-circle"></i> Pause Recordings
+                </a>
+            {% endif %}
+        </div>
+    </div>
+    <form method="post">
+        <!-- Admin Username Field -->
+        <div class="mb-3">
+            <label for="admin_username" class="form-label">
+                Admin Username
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The username used to log in as an admin."></i>
+            </label>
+            <input type="text" name="admin_username" id="admin_username" class="form-control" value="{{ admin_username }}" required>
+        </div>
+        
+        <!-- Admin Password Field -->
+        <div class="mb-3">
+            <label for="admin_password" class="form-label">
+                Admin Password
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The password for admin access. Keep this secure."></i>
+            </label>
+            <div class="input-group">
+                <input type="password" name="admin_password" id="admin_password" class="form-control" value="{{ admin_password }}" required>
+                <button type="button" class="btn btn-outline-secondary" onclick="togglePassword()">Show/Hide</button>
+            </div>
+        </div>
+        
+        <!-- Stream URL Field -->
+        <div class="mb-3">
+            <label for="stream_url" class="form-label">
+                Stream URL
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The URL of the stream to be recorded."></i>
+            </label>
+            <input type="text" name="stream_url" id="stream_url" class="form-control" value="{{ stream_url }}" required>
+        </div>
+        
+        <!-- Output Folder Field -->
+        <div class="mb-3">
+            <label for="output_folder" class="form-label">
+                Output Folder
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The folder where recordings will be saved. This is the server path. DO NOT change this if you dont know what you are doing."></i>
+            </label>
+            <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
+        </div>
+
+        <!-- Default Dates Fields -->
+        <div class="mb-3">
+            <label for="default_start_date" class="form-label">
+                Default Start Date
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The default start date for shows. Does not change existing shows"></i>
+            </label>
+            <input type="date" name="default_start_date" id="default_start_date" class="form-control" value="{{ default_start_date }}" required>
+        </div>
+        
+        <div class="mb-3">
+            <label for="default_end_date" class="form-label">
+                Default End Date
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The default end date for shows. Make sure this is after the default start date.  Does not change existing shows"></i>
+            </label>
+            <input type="date" name="default_end_date" id="default_end_date" class="form-control" value="{{ default_end_date }}" required>
+        </div>
+        
+        <!-- Save Folder Option-->
+        <div class="mb-3">
+            <label for="auto_create_show_folders" class="form-label">
+                Auto Create Show Folders
+                <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="Automatically create folders for each show under the output directory. Ensure correct permissions are set."></i>
+                <input type="checkbox" name="auto_create_show_folders" id="auto_create_show_folders" class="form-check-input" {% if auto_create_show_folders %}checked{% endif %}>
+            </label>
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-save"></i> Save Settings
+        </button>
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+            <i class="bi bi-x-circle"></i> Cancel
+        </a>
+    </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function () {
+        let tooltipTriggerList = [].slice.call(document.querySelectorAll('[data-bs-toggle="tooltip"]'));
+        tooltipTriggerList.map(function (tooltipTriggerEl) {
+            return new bootstrap.Tooltip(tooltipTriggerEl);
+        });
+    });
+
+    function togglePassword() {
+        const passwordInput = document.getElementById("admin_password");
+        passwordInput.type = passwordInput.type === "password" ? "text" : "password";
+    }
+</script>
+</body>
+</html>

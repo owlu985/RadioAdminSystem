@@ -1,0 +1,84 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edit Show</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
+</head>
+<body>
+
+<div class="container mt-5">
+
+    {% with messages = get_flashed_messages(with_categories=true) %}
+    {% if messages %}
+        <div class="position-fixed top-0 start-50 translate-middle-x mt-3 d-inline-block" style="z-index: 1050; max-width: 90%;">
+            {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show" role="alert">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                </div>
+            {% endfor %}
+        </div>
+        <script>
+            setTimeout(function() {
+                var alerts = document.querySelectorAll('.alert');
+                alerts.forEach(function(alert) {
+                    alert.classList.remove('show');
+                });
+            }, 2500);
+        </script>
+    {% endif %}
+{% endwith %}
+
+    <h2>Edit Show</h2>
+    <form method="post">
+        <div class="mb-3">
+            <label for="host_first_name" class="form-label">Host First Name:</label>
+            <input type="text" name="host_first_name" id="host_first_name" class="form-control" value="{{ show.host_first_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="host_last_name" class="form-label">Host Last Name:</label>
+            <input type="text" name="host_last_name" id="host_last_name" class="form-control" value="{{ show.host_last_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="start_date" class="form-label">Start Date:</label>
+            <input type="date" name="start_date" id="start_date" class="form-control" value="{{ show.start_date }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="end_date" class="form-label">End Date:</label>
+            <input type="date" name="end_date" id="end_date" class="form-control" value="{{ show.end_date }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="start_time" class="form-label">Start Time:</label>
+            <input type="time" name="start_time" id="start_time" class="form-control" value="{{ show.start_time.strftime('%H:%M') }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="end_time" class="form-label">End Time:</label>
+            <input type="time" name="end_time" id="end_time" class="form-control" value="{{ show.end_time.strftime('%H:%M') }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="days_of_week" class="form-label">Day of the Week:</label>
+            <select name="days_of_week" id="days_of_week" class="form-select" required>
+                <option value="Monday" {% if show and show.days_of_week == "mon" %}selected{% endif %}>Monday</option>
+                <option value="Tuesday" {% if show and show.days_of_week == "tue" %}selected{% endif %}>Tuesday</option>
+                <option value="Wednesday" {% if show and show.days_of_week == "wed" %}selected{% endif %}>Wednesday</option>
+                <option value="Thursday" {% if show and show.days_of_week == "thu" %}selected{% endif %}>Thursday</option>
+                <option value="Friday" {% if show and show.days_of_week == "fri" %}selected{% endif %}>Friday</option>
+                <option value="Saturday" {% if show and show.days_of_week == "sat" %}selected{% endif %}>Saturday</option>
+                <option value="Sunday" {% if show and show.days_of_week == "sun" %}selected{% endif %}>Sunday</option>
+            </select>            
+        </div>
+        <button type="submit" class="btn btn-primary">
+            <i class="bi bi-check-circle"></i> Update Show
+        </button>
+        <a href="{{ url_for('main.index') }}" class="btn btn-secondary">
+            <i class="bi bi-x-circle"></i> Cancel
+        </a>
+    </form>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

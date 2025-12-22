@@ -3,7 +3,7 @@ import json
 import secrets
 from flask import Flask
 from config import Config
-from .models import db, Show
+from .models import db
 from .utils import init_utils
 from .logger import init_logger
 from flask_migrate import Migrate
@@ -49,6 +49,10 @@ def create_app(config_class=Config):
 #Init Database
     try:
         db.init_app(app)
+        
+        with app.app_context():
+            db.create_all()
+
         Migrate(app, db)
 
         with app.app_context():
@@ -100,8 +104,10 @@ def create_app(config_class=Config):
     except Exception as e:
         initial_logger.error(f"Error pausing shows on Init: {e}")
     
+    from app.services.show_run_service import start_show_run, end_show_run
     from .routes import main_bp
     app.register_blueprint(main_bp)
+    
     
     initial_logger.info("Application startup complete.")
 
