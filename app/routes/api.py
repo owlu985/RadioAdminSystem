@@ -5,6 +5,7 @@ from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
+from sqlalchemy import func
 from app.logger import init_logger
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
@@ -125,6 +126,32 @@ def latest_probe():
     })
 
 
+@api_bp.route("/reports/artist-frequency")
+def artist_frequency():
+    """
+    Returns artist play counts grouped by artist (optionally filtered by show_run_id or date range).
+    """
+    show_run_id = request.args.get("show_run_id", type=int)
+    start = request.args.get("start")
+    end = request.args.get("end")
+
+    q = LogEntry.query.filter(LogEntry.entry_type == "music")
+    if show_run_id:
+        q = q.filter(LogEntry.show_run_id == show_run_id)
+    if start:
+        q = q.filter(LogEntry.timestamp >= datetime.fromisoformat(start))
+    if end:
+        q = q.filter(LogEntry.timestamp <= datetime.fromisoformat(end))
+
+    counts = (
+        q.with_entities(LogEntry.artist, func.count(LogEntry.id))
+        .group_by(LogEntry.artist)
+        .order_by(func.count(LogEntry.id).desc())
+        .all()
+    )
+    return jsonify([{"artist": artist or "Unknown", "plays": plays} for artist, plays in counts])
+
+
 @api_bp.route("/radiodj/psas")
 def list_psas():
     client = RadioDJClient()
@@ -146,3 +173,47 @@ def import_radiodj(kind: str):
         return jsonify({"status": "error", "message": str(exc)}), 500
 
     return jsonify({"status": "ok", "imported_path": str(target)})
+
+
+@api_bp.route("/radiodj/psas/<psa_id>/metadata", methods=["PATCH"])
+def update_psa(psa_id: str):
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "error", "message": "RadioDJ API disabled"}), 400
+    metadata = request.get_json(silent=True) or {}
+    try:
+        updated = client.update_psa_metadata(psa_id, metadata)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Metadata update failed: %s", exc)
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    return jsonify({"status": "ok", "psa": updated})
+
+
+@api_bp.route("/radiodj/psas/<psa_id>/enable", methods=["POST"])
+def enable_psa(psa_id: str):
+    client = RadioDJClient()
+    try:
+        res = client.enable_psa(psa_id)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    return jsonify({"status": "ok", "psa": res})
+
+
+@api_bp.route("/radiodj/psas/<psa_id>/disable", methods=["POST"])
+def disable_psa(psa_id: str):
+    client = RadioDJClient()
+    try:
+        res = client.disable_psa(psa_id)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    return jsonify({"status": "ok", "psa": res})
+
+
+@api_bp.route("/radiodj/psas/<psa_id>", methods=["DELETE"])
+def delete_psa(psa_id: str):
+    client = RadioDJClient()
+    try:
+        res = client.delete_psa(psa_id)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    return jsonify({"status": "ok", "psa": res})

@@ -3,6 +3,18 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+
+class LogSheet(db.Model):
+    __tablename__ = "log_sheet"
+
+    id = db.Column(db.Integer, primary_key=True)
+    dj_first_name = db.Column(db.String(64), nullable=False)
+    dj_last_name = db.Column(db.String(64), nullable=False)
+    show_name = db.Column(db.String(128), nullable=False)
+    show_date = db.Column(db.Date, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class Show(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     host_first_name = db.Column(db.String(50), nullable=False)
@@ -61,11 +73,24 @@ class LogEntry(db.Model):
     show_run_id = db.Column(
         db.Integer,
         db.ForeignKey("show_run.id"),
-        nullable=False
+        nullable=True
+    )
+    log_sheet_id = db.Column(
+        db.Integer,
+        db.ForeignKey("log_sheet.id"),
+        nullable=True
     )
 
     timestamp = db.Column(db.DateTime, nullable=False)
     message = db.Column(db.String(255), nullable=False)
+    entry_time = db.Column(db.Time, nullable=True)
+
+    # Optional metadata for PSA/news compliance and file linkage
+    entry_type = db.Column(db.String(32), nullable=True)  # psa | live_read | music | news | probe
+    title = db.Column(db.String(200), nullable=True)
+    artist = db.Column(db.String(200), nullable=True)
+    recording_file = db.Column(db.String(300), nullable=True)
+    description = db.Column(db.Text, nullable=True)
 
     # Optional metadata for PSA/news compliance and file linkage
     entry_type = db.Column(db.String(32), nullable=True)  # psa | live_read | music | news | probe
@@ -75,6 +100,7 @@ class LogEntry(db.Model):
     description = db.Column(db.Text, nullable=True)
 
     show_run = db.relationship("ShowRun", backref="log_entries")
+    log_sheet = db.relationship("LogSheet", backref="entries")
 
 
 class StreamProbe(db.Model):

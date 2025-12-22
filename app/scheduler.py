@@ -5,6 +5,7 @@ from flask import current_app
 from .logger import init_logger
 from .models import db, Show
 from app.services.detection import probe_and_record
+from app.services.radiodj_client import import_news_or_calendar
 from .utils import update_user_config
 import ffmpeg
 import json
@@ -28,6 +29,7 @@ def init_scheduler(app):
             logger.info("Scheduler initialized and started.")
             refresh_schedule()
             schedule_stream_probe()
+            schedule_nas_watch()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -156,6 +158,35 @@ def schedule_stream_probe():
         logger.info("Stream probe job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling stream probe job: {e}")
+
+
+def schedule_nas_watch():
+    """Monitor NAS news/calendar files and import to RadioDJ folder."""
+    if flask_app is None:
+        return
+    interval = 5  # minutes
+    try:
+        scheduler.add_job(
+            run_nas_watch_job,
+            "interval",
+            minutes=interval,
+            id="nas_watch_job",
+            replace_existing=True,
+        )
+        logger.info("NAS watch job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling NAS watch job: {e}")
+
+
+def run_nas_watch_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        for kind in ("news", "community_calendar"):
+            try:
+                import_news_or_calendar(kind)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("NAS watch import failed for %s: %s", kind, exc)
 
 
 def run_stream_probe_job():

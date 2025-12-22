@@ -52,6 +52,27 @@ class RadioDJClient:
         resp.raise_for_status()
         return resp.json()
 
+    def enable_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.post(f"{self.base_url}/psas/{psa_id}/enable", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def disable_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.post(f"{self.base_url}/psas/{psa_id}/disable", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.delete(f"{self.base_url}/psas/{psa_id}", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
     def import_file(self, source_path: str, target_name: Optional[str] = None) -> Path:
         """
         Stage a file into the RadioDJ import folder (local handoff).
