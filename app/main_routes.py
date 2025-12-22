@@ -86,7 +86,7 @@ def login():
 			session['authenticated'] = True
 			logger.info("Admin logged in successfully.")
 			flash("You are now logged in.", "success")
-			return redirect(url_for('main.shows'))
+			return redirect(url_for('main.dashboard'))
 		else:
 			logger.warning("Invalid login attempt.")
 			flash("Invalid credentials. Please try again.", "danger")

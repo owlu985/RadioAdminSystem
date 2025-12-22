@@ -3,7 +3,7 @@ import json
 import secrets
 from flask import Flask
 from config import Config
-from .models import db
+from .models import db, Show
 from .utils import init_utils
 from .logger import init_logger
 from flask_migrate import Migrate
@@ -52,6 +52,16 @@ def create_app(config_class=Config):
         
         with app.app_context():
             db.create_all()
+
+            # Lightweight compatibility patching for new columns without manual migrations.
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols = {col["name"] for col in insp.get_columns("log_entry")}
+            with db.engine.begin() as conn:
+                if "log_sheet_id" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN log_sheet_id INTEGER"))
+                if "entry_time" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
 
         Migrate(app, db)
 
@@ -104,9 +114,15 @@ def create_app(config_class=Config):
     except Exception as e:
         initial_logger.error(f"Error pausing shows on Init: {e}")
     
-    from app.services.show_run_service import start_show_run, end_show_run
-    from .routes import main_bp
+    from app.services.show_run_service import start_show_run, end_show_run  # noqa: F401
+    from app.main_routes import main_bp
+    from app.routes.api import api_bp
+    from app.routes.logging_api import logs_bp
+    from app.routes.news import news_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(logs_bp)
+    app.register_blueprint(news_bp)
     
     
     initial_logger.info("Application startup complete.")
