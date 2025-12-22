@@ -121,6 +121,10 @@ def add_show():
 			show = Show(
 				host_first_name=request.form['host_first_name'],
 				host_last_name=request.form['host_last_name'],
+				show_name=request.form.get('show_name'),
+				genre=request.form.get('genre'),
+				description=request.form.get('description'),
+				is_regular_host='is_regular_host' in request.form,
 				start_date=start_date_obj,
 				end_date=end_date_obj,
 				start_time=start_time_obj,
@@ -135,7 +139,7 @@ def add_show():
 			return redirect(url_for('main.shows'))
 
 		logger.info("Rendering add show page.")
-		return render_template('add_show.html')
+		return render_template('add_show.html', config=current_app.config)
 	except Exception as e:
 		logger.error(f"Error adding show: {e}")
 		flash(f"Error adding show: {e}", "danger")
@@ -153,6 +157,10 @@ def edit_show(id):
 
 			show.host_first_name = request.form['host_first_name']
 			show.host_last_name = request.form['host_last_name']
+			show.show_name = request.form.get('show_name')
+			show.genre = request.form.get('genre')
+			show.description = request.form.get('description')
+			show.is_regular_host = 'is_regular_host' in request.form
 			show.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
 			show.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
 			show.start_time = datetime.strptime(request.form['start_time'].strip(), '%H:%M').time()
