@@ -105,7 +105,7 @@ def create_app(config_class=Config):
         initial_logger.error(f"Error pausing shows on Init: {e}")
     
     from app.services.show_run_service import start_show_run, end_show_run  # noqa: F401
-    from .routes import main_bp
+    from app.main_routes import main_bp
     from app.routes.api import api_bp
     from app.routes.logging_api import logs_bp
     app.register_blueprint(main_bp)
