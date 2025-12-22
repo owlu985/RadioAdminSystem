@@ -6,22 +6,11 @@ from .models import db, Show
 from sqlalchemy import case
 from functools import wraps
 from .logger import init_logger
+from app.auth_utils import admin_required
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
 logger.info("Routes logger initialized.")
-
-def admin_required(f):
-	"""Decorator to require admin authentication."""
- 
-	@wraps(f)
-	def decorated_function(*args, **kwargs):
-		if not session.get('authenticated'):
-			logger.warning("Unauthorized access attempt.")
-			flash("Please log in to access this page.", "danger")
-			return redirect(url_for('main.login'))
-		return f(*args, **kwargs)
-	return decorated_function
 
 @main_bp.route('/')
 def index():

@@ -7,7 +7,7 @@ from app.models import db, LogEntry, LogSheet
 from app.utils import get_current_show
 from app.services.show_run_service import get_or_create_active_run
 from app.logger import init_logger
-from . import admin_required
+from app.auth_utils import admin_required
 
 logs_bp = Blueprint("logs", __name__, url_prefix="/logs")
 logger = init_logger()
