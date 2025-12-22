@@ -1,12 +1,13 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
 from .scheduler import refresh_schedule, pause_shows_until
-from .utils import update_user_config
+from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time
 from .models import db, Show
 from sqlalchemy import case
 from functools import wraps
 from .logger import init_logger
 from app.auth_utils import admin_required
+from app.routes.logging_api import logs_bp
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -14,10 +15,13 @@ logger.info("Routes logger initialized.")
 
 @main_bp.route('/')
 def index():
-	"""Redirect to the shows page."""
+	"""Redirect to login or dashboard depending on authentication."""
 
-	logger.info("Redirecting to shows page.")
-	return redirect(url_for('main.shows'))
+	if session.get('authenticated'):
+		logger.info("Redirecting to dashboard.")
+		return redirect(url_for('main.dashboard'))
+	logger.info("Redirecting to login.")
+	return redirect(url_for('main.login'))
 
 # noinspection PyTypeChecker
 @main_bp.route('/shows')
@@ -44,6 +48,31 @@ def shows():
 
 	logger.info("Rendering shows database page.")
 	return render_template('shows_database.html', shows=shows_column)
+
+
+@main_bp.route('/dashboard')
+@admin_required
+def dashboard():
+	"""Admin landing page with current show status and quick links."""
+
+	current_show = get_current_show()
+	current_run = None
+	window = None
+	if current_show:
+		window = format_show_window(current_show)
+		from app.services.show_run_service import get_or_create_active_run
+		current_run = get_or_create_active_run(
+			show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
+			dj_first_name=current_show.host_first_name,
+			dj_last_name=current_show.host_last_name,
+		)
+
+	return render_template(
+		'dashboard.html',
+		current_show=current_show,
+		current_run=current_run,
+		window=window,
+	)
 
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
