@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>WLMC Logs</title>
+</head>
+<body>
+
+<h1>WLMC Log Archive</h1>
+
+<p>
+Sort:
+<a href="/?sort=date">By Date</a> |
+<a href="/?sort=dj">By DJ</a>
+</p>
+
+<table border="1" cellpadding="6">
+<tr>
+  <th>Date</th>
+  <th>DJ</th>
+  <th>Actions</th>
+  <th>Status</th>
+</tr>
+
+{% for log in logs %}
+<tr>
+  <td>{{ log.start_time.strftime("%Y-%m-%d %H:%M") }}</td>
+  <td>{{ log.dj_first }} {{ log.dj_last }}</td>
+  <td>
+    <a href="/view/{{ log.filename }}">View</a> |
+    <a href="/download/{{ log.filename }}/csv">CSV</a> |
+    <a href="/download/{{ log.filename }}/docx">DOCX</a>
+	
+  </td>
+  <td>
+  {% if log.flags %}
+    ⚠ {{ log.flags | length }} flag(s)
+  {% else %}
+    ✅ OK
+  {% endif %}
+</td>
+</tr>
+{% endfor %}
+</table>
+
+</body>
+</html>

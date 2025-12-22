@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Compliance Report</title>
+</head>
+<body>
+
+<h2>{{ filename }}</h2>
+
+<h3>Compliance Flags</h3>
+
+{% if flags %}
+<ul>
+  {% for flag in flags %}
+    <li>
+      <strong>{{ flag.flag }}</strong>
+      ({{ flag.confidence }}) — {{ flag.reason }}
+    </li>
+  {% endfor %}
+</ul>
+{% else %}
+<p>✅ No issues detected.</p>
+{% endif %}
+
+<a href="/">← Back</a>
+
+
+</body>
+</html>
