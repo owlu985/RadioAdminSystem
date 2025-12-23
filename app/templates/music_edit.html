@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Edit Track</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h3>Edit Track</h3>
+    {% if error %}
+        <div class="alert alert-danger">{{ error }}</div>
+    {% endif %}
+    {% if track %}
+    <form method="post">
+        {% for field in ['title','artist','album','composer','isrc','year','track','disc','copyright'] %}
+        <div class="mb-2">
+            <label class="form-label text-capitalize">{{ field }}</label>
+            <input type="text" class="form-control" name="{{ field }}" value="{{ track[field] or '' }}">
+        </div>
+        {% endfor %}
+        <input type="hidden" name="path" value="{{ track.path }}">
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Cancel</a>
+    </form>
+    {% else %}
+        <p>Track not found.</p>
+    {% endif %}
+</div>
+</body>
+{% include '_footer.html' %}
+</html>
