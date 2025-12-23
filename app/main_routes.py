@@ -12,6 +12,7 @@ from app.services.music_search import search_music, get_track
 from app.services.audit import audit_recordings, audit_explicit_music
 from datetime import datetime
 from app.models import DJ
+from app.oauth import oauth
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -231,6 +232,9 @@ def audit_page():
 def login():
 	"""Login route for admin authentication."""
 
+	oauth_client = oauth.create_client("google")
+	oauth_enabled = oauth_client is not None
+
 	if request.method == 'POST':
 		username = request.form['username']
 		password = request.form['password']
@@ -243,7 +247,63 @@ def login():
 		else:
 			logger.warning("Invalid login attempt.")
 			flash("Invalid credentials. Please try again.", "danger")
-	return render_template('login.html')
+	return render_template(
+		'login.html',
+		oauth_enabled=oauth_enabled,
+		oauth_allowed_domain=current_app.config.get("OAUTH_ALLOWED_DOMAIN"),
+	)
+
+
+@main_bp.route("/login/oauth")
+def login_oauth():
+	"""Start an OAuth login (Google)."""
+
+	client = oauth.create_client("google")
+	if client is None:
+		flash("OAuth is not configured.", "danger")
+		return redirect(url_for("main.login"))
+
+	redirect_uri = url_for("main.oauth_callback", _external=True)
+	return client.authorize_redirect(redirect_uri)
+
+
+@main_bp.route("/login/oauth/callback")
+def oauth_callback():
+	"""Handle OAuth callback and establish a session."""
+
+	client = oauth.create_client("google")
+	if client is None:
+		flash("OAuth is not configured.", "danger")
+		return redirect(url_for("main.login"))
+
+	try:
+		token = client.authorize_access_token()
+		userinfo = client.parse_id_token(token)
+		if not userinfo:
+			resp = client.get("userinfo")
+			userinfo = resp.json() if resp else {}
+	except Exception as exc:  # noqa: BLE001
+		logger.error(f"OAuth login failed: {exc}")
+		flash("OAuth login failed. Please try again or contact an admin.", "danger")
+		return redirect(url_for("main.login"))
+
+	email = (userinfo or {}).get("email")
+	if not email:
+		flash("OAuth login failed: missing email.", "danger")
+		return redirect(url_for("main.login"))
+
+	allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
+	if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
+		logger.warning("OAuth login blocked due to domain restriction.")
+		flash("Your account is not permitted to log in with this station.", "danger")
+		return redirect(url_for("main.login"))
+
+	session['authenticated'] = True
+	session['user_email'] = email
+	session['auth_provider'] = "google"
+	logger.info("Admin logged in via OAuth.")
+	flash("You are now logged in via Google.", "success")
+	return redirect(url_for('main.dashboard'))
 
 @main_bp.route('/logout')
 def logout():
@@ -251,6 +311,8 @@ def logout():
 
 	try:
 		session.pop('authenticated', None)
+		session.pop('user_email', None)
+		session.pop('auth_provider', None)
 		logger.info("Admin logged out successfully.")
 		flash("You have successfully logged out.", "success")
 		return redirect(url_for('main.login'))  #Change to index if index ever exists as other than redirect
@@ -370,6 +432,9 @@ def settings():
 				'STATION_NAME': request.form['station_name'],
 				'STATION_SLOGAN': request.form['station_slogan'],
 				'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
+				'OAUTH_CLIENT_ID': request.form.get('oauth_client_id', '').strip() or None,
+				'OAUTH_CLIENT_SECRET': request.form.get('oauth_client_secret', '').strip() or None,
+				'OAUTH_ALLOWED_DOMAIN': request.form.get('oauth_allowed_domain', '').strip() or None,
 			}
 
 			update_user_config(updated_settings)
@@ -394,6 +459,9 @@ def settings():
 		'station_name': config.get('STATION_NAME', ''),
 		'station_slogan': config.get('STATION_SLOGAN', ''),
 		'station_background': config.get('STATION_BACKGROUND', ''),
+		'oauth_client_id': config.get('OAUTH_CLIENT_ID', ''),
+		'oauth_client_secret': config.get('OAUTH_CLIENT_SECRET', ''),
+		'oauth_allowed_domain': config.get('OAUTH_ALLOWED_DOMAIN', ''),
 	}
 
 	logger.info(f'Rendering settings page.')

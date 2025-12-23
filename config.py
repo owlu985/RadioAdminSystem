@@ -46,3 +46,8 @@ class Config:
     STATION_NAME = "WLMC"
     STATION_SLOGAN = "The Voice of Landmark College"
     STATION_BACKGROUND = "first-bkg-variant.jpg"  # filename in static/ or a full URL
+
+    # OAuth
+    OAUTH_CLIENT_ID = None
+    OAUTH_CLIENT_SECRET = None
+    OAUTH_ALLOWED_DOMAIN = None  # e.g. "example.edu" to restrict logins

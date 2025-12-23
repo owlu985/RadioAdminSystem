@@ -131,6 +131,22 @@
             </label>
             <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
         </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">OAuth (Google)</h5>
+            <div class="mb-3">
+                <label for="oauth_client_id" class="form-label">Client ID</label>
+                <input type="text" name="oauth_client_id" id="oauth_client_id" class="form-control" value="{{ oauth_client_id }}" placeholder="Google OAuth client ID">
+            </div>
+            <div class="mb-3">
+                <label for="oauth_client_secret" class="form-label">Client Secret</label>
+                <input type="text" name="oauth_client_secret" id="oauth_client_secret" class="form-control" value="{{ oauth_client_secret }}" placeholder="Google OAuth client secret">
+            </div>
+            <div class="mb-0">
+                <label for="oauth_allowed_domain" class="form-label">Allowed Email Domain (optional)</label>
+                <input type="text" name="oauth_allowed_domain" id="oauth_allowed_domain" class="form-control" value="{{ oauth_allowed_domain }}" placeholder="example.edu">
+                <div class="form-text">Only emails from this domain may log in via OAuth.</div>
+            </div>
+        </div>
 
         <!-- Default Dates Fields -->
         <div class="mb-3">

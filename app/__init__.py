@@ -5,6 +5,7 @@ from flask import Flask
 from config import Config
 from .models import db, Show
 from .utils import init_utils
+from .oauth import init_oauth, oauth
 from .logger import init_logger
 from flask_migrate import Migrate
 from datetime import datetime, timedelta
@@ -118,6 +119,12 @@ def create_app(config_class=Config):
     except Exception as e:
         initial_logger.error(f"Error initializing utils: {e}")
 
+# Init OAuth (optional)
+    try:
+        init_oauth(app)
+    except Exception as e:
+        initial_logger.error(f"Error initializing OAuth: {e}")
+
 #Init Show pausing restart roll over
     try:
         if app.config['PAUSE_SHOWS_RECORDING'] is True and app.config['PAUSE_SHOW_END_DATE'] is not None :
@@ -137,6 +144,7 @@ def create_app(config_class=Config):
     app.register_blueprint(api_bp)
     app.register_blueprint(logs_bp)
     app.register_blueprint(news_bp)
+    app.oauth_client = oauth
     
     
     initial_logger.info("Application startup complete.")
