@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body>
+{% include '_nav.html' %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -112,6 +113,25 @@
             <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
         </div>
 
+        <div class="mb-3">
+            <label for="station_name" class="form-label">
+                Station Name
+            </label>
+            <input type="text" name="station_name" id="station_name" class="form-control" value="{{ station_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_slogan" class="form-label">
+                Station Slogan
+            </label>
+            <input type="text" name="station_slogan" id="station_slogan" class="form-control" value="{{ station_slogan }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_background" class="form-label">
+                Station Background (filename in static/ or full URL)
+            </label>
+            <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
+        </div>
+
         <!-- Default Dates Fields -->
         <div class="mb-3">
             <label for="default_start_date" class="form-label">
@@ -144,7 +164,7 @@
             <i class="bi bi-x-circle"></i> Cancel
         </a>
     </form>
-</div>
+{% include '_footer.html' %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
