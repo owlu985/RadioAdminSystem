@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body>
+{% include '_nav.html' %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -112,6 +113,53 @@
             <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
         </div>
 
+        <div class="mb-3">
+            <label for="station_name" class="form-label">
+                Station Name
+            </label>
+            <input type="text" name="station_name" id="station_name" class="form-control" value="{{ station_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_slogan" class="form-label">
+                Station Slogan
+            </label>
+            <input type="text" name="station_slogan" id="station_slogan" class="form-control" value="{{ station_slogan }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_background" class="form-label">
+                Station Background (filename in static/ or full URL)
+            </label>
+            <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Weather (Tempest)</h5>
+            <div class="mb-3">
+                <label for="tempest_api_key" class="form-label">Tempest API Key</label>
+                <input type="text" name="tempest_api_key" id="tempest_api_key" class="form-control" value="{{ tempest_api_key }}" placeholder="Enter Tempest API token">
+                <div class="form-text">Required for DJ status weather cards.</div>
+            </div>
+            <div class="mb-0">
+                <label for="tempest_station_id" class="form-label">Station ID</label>
+                <input type="number" name="tempest_station_id" id="tempest_station_id" class="form-control" value="{{ tempest_station_id }}" min="1">
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">OAuth (Google)</h5>
+            <div class="mb-3">
+                <label for="oauth_client_id" class="form-label">Client ID</label>
+                <input type="text" name="oauth_client_id" id="oauth_client_id" class="form-control" value="{{ oauth_client_id }}" placeholder="Google OAuth client ID">
+            </div>
+            <div class="mb-3">
+                <label for="oauth_client_secret" class="form-label">Client Secret</label>
+                <input type="text" name="oauth_client_secret" id="oauth_client_secret" class="form-control" value="{{ oauth_client_secret }}" placeholder="Google OAuth client secret">
+            </div>
+            <div class="mb-0">
+                <label for="oauth_allowed_domain" class="form-label">Allowed Email Domain (optional)</label>
+                <input type="text" name="oauth_allowed_domain" id="oauth_allowed_domain" class="form-control" value="{{ oauth_allowed_domain }}" placeholder="example.edu">
+                <div class="form-text">Only emails from this domain may log in via OAuth.</div>
+            </div>
+        </div>
+
         <!-- Default Dates Fields -->
         <div class="mb-3">
             <label for="default_start_date" class="form-label">
@@ -144,7 +192,7 @@
             <i class="bi bi-x-circle"></i> Cancel
         </a>
     </form>
-</div>
+{% include '_footer.html' %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
