@@ -8,10 +8,24 @@ from functools import wraps
 from .logger import init_logger
 from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
+from app.services.music_search import search_music, get_track
+from app.services.audit import audit_recordings, audit_explicit_music
+from datetime import datetime
+from app.models import DJ
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
 logger.info("Routes logger initialized.")
+
+
+@main_bp.app_context_processor
+def inject_branding():
+	return {
+		"rams_name": "RAMS",
+		"station_name": current_app.config.get("STATION_NAME", "WLMC"),
+		"station_slogan": current_app.config.get("STATION_SLOGAN", ""),
+		"current_year": datetime.utcnow().year,
+	}
 
 @main_bp.route('/')
 def index():
@@ -74,6 +88,130 @@ def dashboard():
 		window=window,
 	)
 
+
+@main_bp.route("/api-docs")
+@admin_required
+def api_docs_page():
+	return render_template("api_docs.html")
+
+
+@main_bp.route("/djs")
+@admin_required
+def list_djs():
+	djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+	return render_template("djs_list.html", djs=djs)
+
+
+@main_bp.route("/djs/add", methods=["GET", "POST"])
+@admin_required
+def add_dj():
+	from app.models import Show
+	if request.method == "POST":
+		dj = DJ(
+			first_name=request.form.get("first_name").strip(),
+			last_name=request.form.get("last_name").strip(),
+			bio=request.form.get("bio"),
+			photo_url=request.form.get("photo_url"),
+		)
+		selected = request.form.getlist("show_ids")
+		if selected:
+			dj.shows = Show.query.filter(Show.id.in_(selected)).all()
+		db.session.add(dj)
+		db.session.commit()
+		flash("DJ added.", "success")
+		return redirect(url_for("main.list_djs"))
+
+	shows = Show.query.order_by(Show.start_time).all()
+	return render_template("dj_form.html", dj=None, shows=shows)
+
+
+@main_bp.route("/djs/<int:dj_id>/edit", methods=["GET", "POST"])
+@admin_required
+def edit_dj(dj_id):
+	from app.models import Show
+	dj = DJ.query.get_or_404(dj_id)
+	if request.method == "POST":
+		dj.first_name = request.form.get("first_name").strip()
+		dj.last_name = request.form.get("last_name").strip()
+		dj.bio = request.form.get("bio")
+		dj.photo_url = request.form.get("photo_url")
+		selected = request.form.getlist("show_ids")
+		dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
+		db.session.commit()
+		flash("DJ updated.", "success")
+		return redirect(url_for("main.list_djs"))
+
+	shows = Show.query.order_by(Show.start_time).all()
+	return render_template("dj_form.html", dj=dj, shows=shows)
+
+
+@main_bp.route("/music/search")
+@admin_required
+def music_search_page():
+	return render_template("music_search.html")
+
+
+@main_bp.route("/music/detail")
+@admin_required
+def music_detail_page():
+	path = request.args.get("path")
+	track = get_track(path) if path else None
+	return render_template("music_detail.html", track=track)
+
+
+@main_bp.route("/music/edit", methods=["GET", "POST"])
+@admin_required
+def music_edit_page():
+	path = request.values.get("path")
+	if not path:
+		return render_template("music_edit.html", track=None, error="Missing path")
+	track = get_track(path)
+	if request.method == "POST":
+		if not track:
+			return render_template("music_edit.html", track=None, error="Track not found")
+		if not search_music.__globals__.get("mutagen"):
+			return render_template("music_edit.html", track=track, error="Metadata editing requires mutagen installed.")
+		try:
+			audio = search_music.__globals__["mutagen"].File(path, easy=True)
+			if not audio:
+				return render_template("music_edit.html", track=track, error="Unsupported file format.")
+			for field in ["title","artist","album","composer","isrc","year","track","disc","copyright"]:
+				val = request.form.get(field) or None
+				if val:
+					audio[field] = [val]
+				elif field in audio:
+					del audio[field]
+			audio.save()
+			track = get_track(path)
+			flash("Metadata updated.", "success")
+			return redirect(url_for("main.music_detail_page", path=path))
+		except Exception as exc:  # noqa: BLE001
+			return render_template("music_edit.html", track=track, error=str(exc))
+	return render_template("music_edit.html", track=track, error=None)
+
+
+@main_bp.route("/audit", methods=["GET", "POST"])
+@admin_required
+def audit_page():
+	recordings_results = None
+	explicit_results = None
+	if request.method == "POST":
+		action = request.form.get("action")
+		if action == "recordings":
+			folder = request.form.get("recordings_folder") or None
+			recordings_results = audit_recordings(folder)
+		if action == "explicit":
+			rate = float(request.form.get("rate_limit") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"])
+			limit = int(request.form.get("max_files") or current_app.config["AUDIT_MUSIC_MAX_FILES"])
+			explicit_results = audit_explicit_music(rate_limit_s=rate, max_files=limit)
+	return render_template(
+		"audit.html",
+		recordings_results=recordings_results,
+		explicit_results=explicit_results,
+		default_rate=current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"],
+		default_limit=current_app.config["AUDIT_MUSIC_MAX_FILES"],
+	)
+
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
 	"""Login route for admin authentication."""
@@ -86,7 +224,7 @@ def login():
 			session['authenticated'] = True
 			logger.info("Admin logged in successfully.")
 			flash("You are now logged in.", "success")
-			return redirect(url_for('main.shows'))
+			return redirect(url_for('main.dashboard'))
 		else:
 			logger.warning("Invalid login attempt.")
 			flash("Invalid credentials. Please try again.", "danger")
@@ -214,6 +352,8 @@ def settings():
 				'DEFAULT_START_DATE': request.form['default_start_date'],
 				'DEFAULT_END_DATE': request.form['default_end_date'],
 				'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
+				'STATION_NAME': request.form['station_name'],
+				'STATION_SLOGAN': request.form['station_slogan'],
 			}
 
 			update_user_config(updated_settings)
@@ -235,6 +375,8 @@ def settings():
 		'default_start_date': config['DEFAULT_START_DATE'],
 		'default_end_date': config['DEFAULT_END_DATE'],
 		'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
+		'station_name': config.get('STATION_NAME', ''),
+		'station_slogan': config.get('STATION_SLOGAN', ''),
 	}
 
 	logger.info(f'Rendering settings page.')
