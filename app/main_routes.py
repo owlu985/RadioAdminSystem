@@ -9,6 +9,7 @@ from .logger import init_logger
 from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track
+from app.services.audit import audit_recordings, audit_explicit_music
 from app.models import DJ
 
 main_bp = Blueprint('main', __name__)
@@ -176,6 +177,29 @@ def music_edit_page():
 		except Exception as exc:  # noqa: BLE001
 			return render_template("music_edit.html", track=track, error=str(exc))
 	return render_template("music_edit.html", track=track, error=None)
+
+
+@main_bp.route("/audit", methods=["GET", "POST"])
+@admin_required
+def audit_page():
+	recordings_results = None
+	explicit_results = None
+	if request.method == "POST":
+		action = request.form.get("action")
+		if action == "recordings":
+			folder = request.form.get("recordings_folder") or None
+			recordings_results = audit_recordings(folder)
+		if action == "explicit":
+			rate = float(request.form.get("rate_limit") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"])
+			limit = int(request.form.get("max_files") or current_app.config["AUDIT_MUSIC_MAX_FILES"])
+			explicit_results = audit_explicit_music(rate_limit_s=rate, max_files=limit)
+	return render_template(
+		"audit.html",
+		recordings_results=recordings_results,
+		explicit_results=explicit_results,
+		default_rate=current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"],
+		default_limit=current_app.config["AUDIT_MUSIC_MAX_FILES"],
+	)
 
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():

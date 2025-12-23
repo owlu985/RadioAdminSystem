@@ -37,3 +37,7 @@ class Config:
     RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")
     RADIODJ_API_BASE_URL = None
     RADIODJ_API_KEY = None
+
+    # Audits
+    AUDIT_ITUNES_RATE_LIMIT_SECONDS = 0.5
+    AUDIT_MUSIC_MAX_FILES = 500
