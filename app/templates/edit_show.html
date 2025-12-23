@@ -35,12 +35,30 @@
     <h2>Edit Show</h2>
     <form method="post">
         <div class="mb-3">
+            <label for="show_name" class="form-label">Show Name:</label>
+            <input type="text" name="show_name" id="show_name" class="form-control" value="{{ show.show_name }}">
+        </div>
+        <div class="mb-3">
             <label for="host_first_name" class="form-label">Host First Name:</label>
             <input type="text" name="host_first_name" id="host_first_name" class="form-control" value="{{ show.host_first_name }}" required>
         </div>
         <div class="mb-3">
             <label for="host_last_name" class="form-label">Host Last Name:</label>
             <input type="text" name="host_last_name" id="host_last_name" class="form-control" value="{{ show.host_last_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="genre" class="form-label">Genre:</label>
+            <input type="text" name="genre" id="genre" class="form-control" value="{{ show.genre }}">
+        </div>
+        <div class="mb-3">
+            <label for="description" class="form-label">Description:</label>
+            <textarea name="description" id="description" class="form-control" rows="3">{{ show.description }}</textarea>
+        </div>
+        <div class="form-check mb-3">
+            <input class="form-check-input" type="checkbox" value="1" id="is_regular_host" name="is_regular_host" {% if show.is_regular_host %}checked{% endif %}>
+            <label class="form-check-label" for="is_regular_host">
+                Regular host
+            </label>
         </div>
         <div class="mb-3">
             <label for="start_date" class="form-label">Start Date:</label>
