@@ -27,6 +27,12 @@ class Config:
     # REST/API defaults
     DEFAULT_OFF_AIR_MESSAGE = "WLMC is currently off-air"
 
+    # Weather / Tempest
+    TEMPEST_API_KEY = None
+    TEMPEST_STATION_ID = 118392
+    TEMPEST_UNITS_TEMP = "f"
+    TEMPEST_UNITS_WIND = "mph"
+
     # NAS / RadioDJ integration
     NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")
     NAS_NEWS_FILE = os.path.join(NAS_ROOT, "wlmc_news.mp3")

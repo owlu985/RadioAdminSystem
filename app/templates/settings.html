@@ -132,6 +132,18 @@
             <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
         </div>
         <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Weather (Tempest)</h5>
+            <div class="mb-3">
+                <label for="tempest_api_key" class="form-label">Tempest API Key</label>
+                <input type="text" name="tempest_api_key" id="tempest_api_key" class="form-control" value="{{ tempest_api_key }}" placeholder="Enter Tempest API token">
+                <div class="form-text">Required for DJ status weather cards.</div>
+            </div>
+            <div class="mb-0">
+                <label for="tempest_station_id" class="form-label">Station ID</label>
+                <input type="number" name="tempest_station_id" id="tempest_station_id" class="form-control" value="{{ tempest_station_id }}" min="1">
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
             <h5 class="mb-3">OAuth (Google)</h5>
             <div class="mb-3">
                 <label for="oauth_client_id" class="form-label">Client ID</label>

@@ -417,55 +417,59 @@ def edit_show(id):
 @main_bp.route('/settings', methods=['GET', 'POST'])
 @admin_required
 def settings():
-	"""Route to update the application settings."""
+    """Route to update the application settings."""
 
-	if request.method == 'POST':
-		try:
-			updated_settings = {
-				'ADMIN_USERNAME': request.form['admin_username'],
-				'ADMIN_PASSWORD': request.form['admin_password'],
-				'STREAM_URL': request.form['stream_url'],
-				'OUTPUT_FOLDER': request.form['output_folder'],
-				'DEFAULT_START_DATE': request.form['default_start_date'],
-				'DEFAULT_END_DATE': request.form['default_end_date'],
-				'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
-				'STATION_NAME': request.form['station_name'],
-				'STATION_SLOGAN': request.form['station_slogan'],
-				'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
-				'OAUTH_CLIENT_ID': request.form.get('oauth_client_id', '').strip() or None,
-				'OAUTH_CLIENT_SECRET': request.form.get('oauth_client_secret', '').strip() or None,
-				'OAUTH_ALLOWED_DOMAIN': request.form.get('oauth_allowed_domain', '').strip() or None,
-			}
+    if request.method == 'POST':
+        try:
+            updated_settings = {
+                'ADMIN_USERNAME': request.form['admin_username'],
+                'ADMIN_PASSWORD': request.form['admin_password'],
+                'STREAM_URL': request.form['stream_url'],
+                'OUTPUT_FOLDER': request.form['output_folder'],
+                'DEFAULT_START_DATE': request.form['default_start_date'],
+                'DEFAULT_END_DATE': request.form['default_end_date'],
+                'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
+                'STATION_NAME': request.form['station_name'],
+                'STATION_SLOGAN': request.form['station_slogan'],
+                'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
+                'TEMPEST_API_KEY': request.form.get('tempest_api_key', '').strip() or None,
+                'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
+                'OAUTH_CLIENT_ID': request.form.get('oauth_client_id', '').strip() or None,
+                'OAUTH_CLIENT_SECRET': request.form.get('oauth_client_secret', '').strip() or None,
+                'OAUTH_ALLOWED_DOMAIN': request.form.get('oauth_allowed_domain', '').strip() or None,
+            }
 
-			update_user_config(updated_settings)
+            update_user_config(updated_settings)
 
-			flash("Settings updated successfully!", "success")
-			return redirect(url_for('main.shows'))
+            flash("Settings updated successfully!", "success")
+            return redirect(url_for('main.shows'))
 
-		except Exception as e:
-			logger.error(f"An error occurred while updating settings: {e}")
-			flash(f"An error occurred while updating settings: {e}", "danger")
-			return redirect(url_for('main.settings'))
+        except Exception as e:
+            logger.error(f"An error occurred while updating settings: {e}")
+            flash(f"An error occurred while updating settings: {e}", "danger")
+            return redirect(url_for('main.settings'))
 
-	config = current_app.config
-	settings_data = {
-		'admin_username': config['ADMIN_USERNAME'],
-		'admin_password': config['ADMIN_PASSWORD'],
-		'stream_url': config['STREAM_URL'],
-		'output_folder': config['OUTPUT_FOLDER'],
-		'default_start_date': config['DEFAULT_START_DATE'],
-		'default_end_date': config['DEFAULT_END_DATE'],
-		'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
-		'station_name': config.get('STATION_NAME', ''),
-		'station_slogan': config.get('STATION_SLOGAN', ''),
-		'station_background': config.get('STATION_BACKGROUND', ''),
-		'oauth_client_id': config.get('OAUTH_CLIENT_ID', ''),
-		'oauth_client_secret': config.get('OAUTH_CLIENT_SECRET', ''),
-		'oauth_allowed_domain': config.get('OAUTH_ALLOWED_DOMAIN', ''),
-	}
+    config = current_app.config
+    settings_data = {
+        'admin_username': config['ADMIN_USERNAME'],
+        'admin_password': config['ADMIN_PASSWORD'],
+        'stream_url': config['STREAM_URL'],
+        'output_folder': config['OUTPUT_FOLDER'],
+        'default_start_date': config['DEFAULT_START_DATE'],
+        'default_end_date': config['DEFAULT_END_DATE'],
+        'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
+        'station_name': config.get('STATION_NAME', ''),
+        'station_slogan': config.get('STATION_SLOGAN', ''),
+        'station_background': config.get('STATION_BACKGROUND', ''),
+        'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
+        'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
+        'oauth_client_id': config.get('OAUTH_CLIENT_ID', ''),
+        'oauth_client_secret': config.get('OAUTH_CLIENT_SECRET', ''),
+        'oauth_allowed_domain': config.get('OAUTH_ALLOWED_DOMAIN', ''),
+    }
 
-	logger.info(f'Rendering settings page.')
-	return render_template('settings.html', **settings_data)
+    logger.info(f'Rendering settings page.')
+    return render_template('settings.html', **settings_data)
 
 @main_bp.route('/update_schedule', methods=['POST'])
 @admin_required

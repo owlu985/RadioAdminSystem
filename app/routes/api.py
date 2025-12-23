@@ -10,7 +10,6 @@ from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status
 import requests
-
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
 
@@ -173,6 +172,104 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/weather/tempest")
+def weather_tempest():
+    token = current_app.config.get("TEMPEST_API_KEY")
+    station_id = current_app.config.get("TEMPEST_STATION_ID", 118392)
+    units_temp = current_app.config.get("TEMPEST_UNITS_TEMP", "f")
+    units_wind = current_app.config.get("TEMPEST_UNITS_WIND", "mph")
+
+    if not token:
+        return jsonify({"status": "error", "message": "tempest_not_configured"}), 400
+
+    params = {
+        "station_id": station_id,
+        "units_temp": units_temp,
+        "units_wind": units_wind,
+        "token": token,
+    }
+
+    try:
+        resp = requests.get("https://swd.weatherflow.com/swd/rest/better_forecast", params=params, timeout=8)
+        resp.raise_for_status()
+        payload = resp.json() or {}
+    except Exception as e:
+        logger.error(f"Tempest fetch failed: {e}")
+        return jsonify({"status": "error", "message": "tempest_fetch_failed"}), 502
+
+    forecast_root = payload.get("forecast") or payload
+    current = forecast_root.get("current_conditions") or payload.get("current_conditions") or {}
+
+    def _fmt_time(value):
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(value).strftime("%I:%M %p").lstrip("0")
+            except Exception:
+                return str(value)
+        if isinstance(value, str):
+            return value
+        return ""
+
+    def _fmt_day(value):
+        if isinstance(value, (int, float)):
+            try:
+                return datetime.fromtimestamp(value).strftime("%a")
+            except Exception:
+                return str(value)
+        if isinstance(value, str):
+            return value
+        return ""
+
+    hourly = (
+        forecast_root.get("hourly")
+        or forecast_root.get("hourly_forecast")
+        or payload.get("hourly")
+        or payload.get("hourly_forecast")
+        or []
+    )
+    next_hours = []
+    for item in hourly[:6]:
+        next_hours.append(
+            {
+                "time": _fmt_time(item.get("time") or item.get("timestamp") or item.get("start_time")),
+                "temp": item.get("air_temperature") or item.get("temperature"),
+                "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
+                "icon": item.get("icon") or item.get("icon_code"),
+            }
+        )
+
+    daily = (
+        forecast_root.get("daily")
+        or forecast_root.get("daily_forecast")
+        or payload.get("daily_forecast")
+        or []
+    )
+    next_days = []
+    for item in daily[:3]:
+        next_days.append(
+            {
+                "day": _fmt_day(item.get("day_start_local") or item.get("day") or item.get("start_time")),
+                "high": item.get("air_temp_high") or item.get("high_temperature"),
+                "low": item.get("air_temp_low") or item.get("low_temperature"),
+                "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
+                "icon": item.get("icon") or item.get("icon_code"),
+            }
+        )
+
+    current_block = {
+        "temp": current.get("air_temperature") or current.get("temperature"),
+        "condition": current.get("conditions") or current.get("icon") or current.get("weather"),
+        "icon": current.get("icon") or current.get("icon_code"),
+    }
+
+    return jsonify({
+        "status": "ok",
+        "current": current_block,
+        "next_hours": next_hours,
+        "next_days": next_days,
+    })
 
 
 @api_bp.route("/stream/status")
