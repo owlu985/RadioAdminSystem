@@ -45,3 +45,4 @@ class Config:
     # Branding
     STATION_NAME = "WLMC"
     STATION_SLOGAN = "The Voice of Landmark College"
+    STATION_BACKGROUND = "first-bkg-variant.jpg"  # filename in static/ or a full URL

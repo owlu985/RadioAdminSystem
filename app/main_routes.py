@@ -20,10 +20,19 @@ logger.info("Routes logger initialized.")
 
 @main_bp.app_context_processor
 def inject_branding():
+	def _resolve_station_background():
+		background = current_app.config.get("STATION_BACKGROUND")
+		if not background:
+			return url_for("static", filename="first-bkg-variant.jpg")
+		if isinstance(background, str) and background.startswith(("http://", "https://", "//")):
+			return background
+		return url_for("static", filename=background.lstrip("/"))
+
 	return {
 		"rams_name": "RAMS",
 		"station_name": current_app.config.get("STATION_NAME", "WLMC"),
 		"station_slogan": current_app.config.get("STATION_SLOGAN", ""),
+		"station_background": _resolve_station_background(),
 		"current_year": datetime.utcnow().year,
 	}
 
@@ -93,6 +102,12 @@ def dashboard():
 @admin_required
 def api_docs_page():
 	return render_template("api_docs.html")
+
+
+@main_bp.route("/dj/status")
+def dj_status_page():
+	"""Public DJ status screen."""
+	return render_template("dj_status.html")
 
 
 @main_bp.route("/djs")
@@ -354,6 +369,7 @@ def settings():
 				'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
 				'STATION_NAME': request.form['station_name'],
 				'STATION_SLOGAN': request.form['station_slogan'],
+				'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
 			}
 
 			update_user_config(updated_settings)
@@ -377,6 +393,7 @@ def settings():
 		'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
 		'station_name': config.get('STATION_NAME', ''),
 		'station_slogan': config.get('STATION_SLOGAN', ''),
+		'station_background': config.get('STATION_BACKGROUND', ''),
 	}
 
 	logger.info(f'Rendering settings page.')
