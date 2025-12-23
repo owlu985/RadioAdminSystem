@@ -3,6 +3,24 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+show_dj = db.Table(
+    "show_dj",
+    db.Column("show_id", db.Integer, db.ForeignKey("show.id"), primary_key=True),
+    db.Column("dj_id", db.Integer, db.ForeignKey("dj.id"), primary_key=True),
+)
+
+
+class DJ(db.Model):
+    __tablename__ = "dj"
+
+    id = db.Column(db.Integer, primary_key=True)
+    first_name = db.Column(db.String(64), nullable=False)
+    last_name = db.Column(db.String(64), nullable=False)
+    bio = db.Column(db.Text, nullable=True)
+    photo_url = db.Column(db.String(255), nullable=True)
+
+    shows = db.relationship("Show", secondary=show_dj, back_populates="djs")
+
 
 class LogSheet(db.Model):
     __tablename__ = "log_sheet"
@@ -30,6 +48,8 @@ class Show(db.Model):
     start_time = db.Column(db.Time, nullable=False)
     end_time = db.Column(db.Time, nullable=False)
     days_of_week = db.Column(db.String(20), nullable=False)
+
+    djs = db.relationship("DJ", secondary=show_dj, back_populates="shows")
 
 class ShowRun(db.Model):
     __tablename__ = "show_run"

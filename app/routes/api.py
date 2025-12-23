@@ -1,6 +1,6 @@
 from datetime import datetime
 from flask import Blueprint, jsonify, current_app, request
-from app.models import ShowRun, StreamProbe, LogEntry
+from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show
 from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
@@ -171,6 +171,33 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/djs")
+def list_djs_api():
+    items = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+    payload = []
+    for dj in items:
+        payload.append({
+            "id": dj.id,
+            "first_name": dj.first_name,
+            "last_name": dj.last_name,
+            "bio": dj.bio,
+            "photo_url": dj.photo_url,
+            "shows": [
+                {
+                    "id": s.id,
+                    "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
+                    "start_time": s.start_time.strftime("%H:%M"),
+                    "end_time": s.end_time.strftime("%H:%M"),
+                    "days_of_week": s.days_of_week,
+                    "genre": s.genre,
+                    "description": s.description,
+                }
+                for s in dj.shows
+            ]
+        })
+    return jsonify(payload)
 
 
 @api_bp.route("/radiodj/psas")

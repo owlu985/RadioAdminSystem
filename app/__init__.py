@@ -62,6 +62,10 @@ def create_app(config_class=Config):
                     conn.execute(text("ALTER TABLE log_entry ADD COLUMN log_sheet_id INTEGER"))
                 if "entry_time" not in cols:
                     conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
+                if "dj" not in insp.get_table_names():
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, photo_url VARCHAR(255))"))
+                if "show_dj" not in insp.get_table_names():
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS show_dj (show_id INTEGER NOT NULL, dj_id INTEGER NOT NULL, PRIMARY KEY (show_id, dj_id))"))
 
             # Ensure news types config exists with defaults
             news_config_path = app.config["NEWS_TYPES_CONFIG"]

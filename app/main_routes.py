@@ -9,6 +9,7 @@ from .logger import init_logger
 from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track
+from app.models import DJ
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -74,6 +75,56 @@ def dashboard():
 		current_run=current_run,
 		window=window,
 	)
+
+
+@main_bp.route("/djs")
+@admin_required
+def list_djs():
+	djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+	return render_template("djs_list.html", djs=djs)
+
+
+@main_bp.route("/djs/add", methods=["GET", "POST"])
+@admin_required
+def add_dj():
+	from app.models import Show
+	if request.method == "POST":
+		dj = DJ(
+			first_name=request.form.get("first_name").strip(),
+			last_name=request.form.get("last_name").strip(),
+			bio=request.form.get("bio"),
+			photo_url=request.form.get("photo_url"),
+		)
+		selected = request.form.getlist("show_ids")
+		if selected:
+			dj.shows = Show.query.filter(Show.id.in_(selected)).all()
+		db.session.add(dj)
+		db.session.commit()
+		flash("DJ added.", "success")
+		return redirect(url_for("main.list_djs"))
+
+	shows = Show.query.order_by(Show.start_time).all()
+	return render_template("dj_form.html", dj=None, shows=shows)
+
+
+@main_bp.route("/djs/<int:dj_id>/edit", methods=["GET", "POST"])
+@admin_required
+def edit_dj(dj_id):
+	from app.models import Show
+	dj = DJ.query.get_or_404(dj_id)
+	if request.method == "POST":
+		dj.first_name = request.form.get("first_name").strip()
+		dj.last_name = request.form.get("last_name").strip()
+		dj.bio = request.form.get("bio")
+		dj.photo_url = request.form.get("photo_url")
+		selected = request.form.getlist("show_ids")
+		dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
+		db.session.commit()
+		flash("DJ updated.", "success")
+		return redirect(url_for("main.list_djs"))
+
+	shows = Show.query.order_by(Show.start_time).all()
+	return render_template("dj_form.html", dj=dj, shows=shows)
 
 
 @main_bp.route("/music/search")
