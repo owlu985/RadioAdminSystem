@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DJs</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h3>DJs</h3>
+        <div>
+            <a class="btn btn-sm btn-primary" href="{{ url_for('main.add_dj') }}">Add DJ</a>
+            <a class="btn btn-sm btn-secondary" href="{{ url_for('main.dashboard') }}">Back</a>
+        </div>
+    </div>
+
+    <table class="table table-striped">
+        <thead>
+        <tr>
+            <th>Name</th>
+            <th>Shows</th>
+            <th></th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for dj in djs %}
+            <tr>
+                <td>{{ dj.first_name }} {{ dj.last_name }}</td>
+                <td>
+                    {% for show in dj.shows %}
+                        <span class="badge bg-primary">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</span>
+                    {% endfor %}
+                </td>
+                <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.edit_dj', dj_id=dj.id) }}">Edit</a></td>
+            </tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+</body>
+</html>
