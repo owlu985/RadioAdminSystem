@@ -38,13 +38,15 @@
 
     <h4>Tempest Weather</h4>
     <pre><code>GET /api/weather/tempest</code></pre>
-    <p>Returns current conditions plus the next 6 hours and next 3 days. Requires Tempest API key and station ID in Settings.</p>
+    <p>Returns current conditions plus snapshots for the next 1, 2, 4, and 8 hours, and the next 3 days. Requires Tempest API key and station ID in Settings.</p>
     <pre><code>{
   "status": "ok",
   "current": {"temp": 72.4, "condition": "partly_cloudy", "icon": "partly_cloudy"},
   "next_hours": [
     {"time": "02:00 PM", "temp": 73.1, "condition": "sunny", "icon": "clear-day"},
-    ... (6 items)
+    {"time": "03:00 PM", "temp": 74.0, "condition": "sunny"},
+    {"time": "05:00 PM", "temp": 72.5, "condition": "partly cloudy"},
+    {"time": "09:00 PM", "temp": 68.0, "condition": "clear"}
   ],
   "next_days": [
     {"day": "Mon", "high": 75.0, "low": 62.0, "condition": "rain", "icon": "rain"},

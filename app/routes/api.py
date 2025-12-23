@@ -1,4 +1,5 @@
 from datetime import datetime
+import time
 from flask import Blueprint, jsonify, current_app, request
 from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show
 from app.utils import get_current_show, format_show_window
@@ -229,14 +230,52 @@ def weather_tempest():
         or payload.get("hourly_forecast")
         or []
     )
+
+    def _parse_ts(value):
+        if isinstance(value, (int, float)):
+            return float(value)
+        if isinstance(value, str):
+            if value.isdigit():
+                try:
+                    return float(value)
+                except Exception:
+                    return None
+        return None
+
     next_hours = []
-    for item in hourly[:6]:
+    targets = [1, 2, 4, 8]
+    now_ts = time.time()
+    for target in targets:
+        target_ts = now_ts + target * 3600
+        best_item = None
+        best_diff = None
+        fallback_item = None
+        for item in hourly:
+            ts_raw = item.get("time") or item.get("timestamp") or item.get("start_time")
+            ts = _parse_ts(ts_raw)
+            if ts is None:
+                if fallback_item is None:
+                    fallback_item = item
+                continue
+            if ts < now_ts and fallback_item is None:
+                fallback_item = item
+            diff = ts - target_ts
+            if diff >= 0 and (best_diff is None or diff < best_diff):
+                best_item = item
+                best_diff = diff
+        chosen = best_item or fallback_item
+        if not chosen:
+            continue
         next_hours.append(
             {
-                "time": _fmt_time(item.get("time") or item.get("timestamp") or item.get("start_time")),
-                "temp": item.get("air_temperature") or item.get("temperature"),
-                "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
-                "icon": item.get("icon") or item.get("icon_code"),
+                "time": _fmt_time(
+                    chosen.get("time")
+                    or chosen.get("timestamp")
+                    or chosen.get("start_time")
+                ),
+                "temp": chosen.get("air_temperature") or chosen.get("temperature"),
+                "condition": chosen.get("conditions") or chosen.get("icon") or chosen.get("weather"),
+                "icon": chosen.get("icon") or chosen.get("icon_code"),
             }
         )
 
