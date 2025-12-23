@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>DJ Status</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
     <style>
         body, html {
             height: 100%;
@@ -18,26 +21,30 @@
         }
         .overlay {
             backdrop-filter: blur(3px);
-            background: rgba(0,0,0,0.45);
+            background: rgba(0,0,0,0.35);
             min-height: 100%;
         }
         .clock {
             font-size: 5rem;
             font-weight: 700;
             letter-spacing: 0.1rem;
+            font-family: 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
         .overlay .text-muted {
             color: rgba(255, 255, 255, 0.8) !important;
         }
         .card {
-            background-color: rgba(0, 0, 0, 0.7);
+            background-color: rgba(0, 0, 0, 0.55);
             color: #f8f9fa;
         }
         .card-header {
             color: #f8f9fa;
         }
+        .card-body {
+            color: #f8f9fa;
+        }
         .weather-grid .tile {
-            background-color: rgba(255, 255, 255, 0.08);
+            background-color: rgba(255, 255, 255, 0.06);
             border-radius: 0.5rem;
             padding: 0.5rem 0.75rem;
             color: #f8f9fa;
@@ -45,6 +52,18 @@
         }
         .weather-grid small {
             color: rgba(255,255,255,0.8);
+        }
+        .weather-card-body {
+            max-height: 420px;
+            overflow: hidden;
+        }
+        @media (max-width: 767px) {
+            .clock {
+                font-size: 3.75rem;
+            }
+            .weather-card-body {
+                max-height: none;
+            }
         }
     </style>
 </head>
@@ -60,20 +79,28 @@
     <div class="mt-2 text-muted">Eastern Time</div>
 
     <div class="row g-3 mt-4 w-100" style="max-width: 1200px;">
-        <div class="col-md-4">
-            <div class="card bg-dark text-light h-100">
-                <div class="card-header">Stream / Silence</div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Stream / Silence &amp; Now / Next</div>
                 <div class="card-body">
-                    <p class="mb-1"><strong>Stream:</strong> <span id="streamUp">...</span></p>
-                    <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
-                    <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
+                    <div class="row g-3">
+                        <div class="col-md-6">
+                            <p class="mb-1"><strong>Stream:</strong> <span id="streamUp">...</span></p>
+                            <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
+                            <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
+                        </div>
+                        <div class="col-md-6" id="nowNext">
+                            <p class="mb-1"><strong>Current:</strong> <span id="currentShow">Loading...</span></p>
+                            <p class="mb-0 text-muted"><small id="currentWindow"></small></p>
+                        </div>
+                    </div>
                 </div>
             </div>
         </div>
-        <div class="col-md-4">
+        <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-header">Weather</div>
-                <div class="card-body" id="weatherCard">
+                <div class="card-body weather-card-body" id="weatherCard">
                     <div class="d-flex align-items-center mb-2">
                         <div class="display-6 me-3" id="currentTemp">--</div>
                         <div>
@@ -89,15 +116,6 @@
                         <div class="fw-semibold">Next 3 days</div>
                         <div class="d-flex flex-wrap gap-2 weather-grid" id="dailyWeather"></div>
                     </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-md-4">
-            <div class="card bg-dark text-light h-100">
-                <div class="card-header">Now / Next</div>
-                <div class="card-body" id="nowNext">
-                    <p class="mb-1"><strong>Current:</strong> <span id="currentShow">Loading...</span></p>
-                    <p class="mb-0 text-muted"><small id="currentWindow"></small></p>
                 </div>
             </div>
         </div>
