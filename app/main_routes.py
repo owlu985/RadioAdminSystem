@@ -77,6 +77,12 @@ def dashboard():
 	)
 
 
+@main_bp.route("/api-docs")
+@admin_required
+def api_docs_page():
+	return render_template("api_docs.html")
+
+
 @main_bp.route("/djs")
 @admin_required
 def list_djs():
