@@ -41,3 +41,7 @@ class Config:
     # Audits
     AUDIT_ITUNES_RATE_LIMIT_SECONDS = 0.5
     AUDIT_MUSIC_MAX_FILES = 500
+
+    # Branding
+    STATION_NAME = "WLMC"
+    STATION_SLOGAN = "The Voice of Landmark College"

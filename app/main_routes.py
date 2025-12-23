@@ -10,11 +10,22 @@ from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track
 from app.services.audit import audit_recordings, audit_explicit_music
+from datetime import datetime
 from app.models import DJ
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
 logger.info("Routes logger initialized.")
+
+
+@main_bp.app_context_processor
+def inject_branding():
+	return {
+		"rams_name": "RAMS",
+		"station_name": current_app.config.get("STATION_NAME", "WLMC"),
+		"station_slogan": current_app.config.get("STATION_SLOGAN", ""),
+		"current_year": datetime.utcnow().year,
+	}
 
 @main_bp.route('/')
 def index():
@@ -341,6 +352,8 @@ def settings():
 				'DEFAULT_START_DATE': request.form['default_start_date'],
 				'DEFAULT_END_DATE': request.form['default_end_date'],
 				'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
+				'STATION_NAME': request.form['station_name'],
+				'STATION_SLOGAN': request.form['station_slogan'],
 			}
 
 			update_user_config(updated_settings)
@@ -362,6 +375,8 @@ def settings():
 		'default_start_date': config['DEFAULT_START_DATE'],
 		'default_end_date': config['DEFAULT_END_DATE'],
 		'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
+		'station_name': config.get('STATION_NAME', ''),
+		'station_slogan': config.get('STATION_SLOGAN', ''),
 	}
 
 	logger.info(f'Rendering settings page.')
