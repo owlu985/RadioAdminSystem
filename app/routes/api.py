@@ -8,6 +8,8 @@ from app.services.detection import probe_stream
 from app.services.music_search import search_music, get_track
 from sqlalchemy import func
 from app.logger import init_logger
+from app.services.audit import start_audit_job, get_audit_status
+import requests
 
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
@@ -171,6 +173,47 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/stream/status")
+def stream_status():
+    url = current_app.config["STREAM_URL"]
+    status = {"stream_up": False, "probe": None}
+    try:
+        resp = requests.get(url, stream=True, timeout=3)
+        status["stream_up"] = resp.status_code < 500
+    except Exception:
+        status["stream_up"] = False
+    # reuse probe for silence/automation check
+    probe = probe_stream(url)
+    if probe:
+        status["probe"] = {
+            "classification": probe.classification,
+            "reason": probe.reason,
+            "avg_db": probe.avg_db,
+            "silence_ratio": probe.silence_ratio,
+            "automation_ratio": probe.automation_ratio,
+        }
+    return jsonify(status)
+
+
+@api_bp.route("/audit/start", methods=["POST"])
+def start_audit():
+    data = request.get_json(silent=True) or {}
+    action = data.get("action")
+    if action not in {"recordings", "explicit"}:
+        return jsonify({"status": "error", "message": "invalid action"}), 400
+    params = {
+        "folder": data.get("folder"),
+        "rate": float(data.get("rate") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"]),
+    }
+    job_id = start_audit_job(action, params)
+    return jsonify({"status": "queued", "job_id": job_id})
+
+
+@api_bp.route("/audit/status/<job_id>")
+def audit_status(job_id):
+    return jsonify(get_audit_status(job_id))
 
 
 @api_bp.route("/djs")
