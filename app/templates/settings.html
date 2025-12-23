@@ -144,6 +144,70 @@
             </div>
         </div>
         <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Alerts (Stream / Dead Air)</h5>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_enabled" name="alerts_enabled" {% if alerts_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_enabled">Enable alerts</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_dry_run" name="alerts_dry_run" {% if alerts_dry_run %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_dry_run">Simulate only (log instead of sending)</label>
+            </div>
+            <div class="mb-3">
+                <label for="alerts_discord_webhook" class="form-label">Discord Webhook URL</label>
+                <input type="text" name="alerts_discord_webhook" id="alerts_discord_webhook" class="form-control" value="{{ alerts_discord_webhook }}" placeholder="https://discord.com/api/webhooks/...">
+                <div class="form-text">If set, alerts post to this webhook.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_email_enabled" name="alerts_email_enabled" {% if alerts_email_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_email_enabled">Send email alerts</label>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_email_to" class="form-label">Email To</label>
+                    <input type="email" name="alerts_email_to" id="alerts_email_to" class="form-control" value="{{ alerts_email_to }}" placeholder="alerts@example.com">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_email_from" class="form-label">Email From</label>
+                    <input type="email" name="alerts_email_from" id="alerts_email_from" class="form-control" value="{{ alerts_email_from }}" placeholder="rams@example.com">
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_smtp_server" class="form-label">SMTP Server</label>
+                    <input type="text" name="alerts_smtp_server" id="alerts_smtp_server" class="form-control" value="{{ alerts_smtp_server }}" placeholder="smtp.example.com">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_smtp_port" class="form-label">SMTP Port</label>
+                    <input type="number" name="alerts_smtp_port" id="alerts_smtp_port" class="form-control" value="{{ alerts_smtp_port }}" min="1">
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_smtp_username" class="form-label">SMTP Username</label>
+                    <input type="text" name="alerts_smtp_username" id="alerts_smtp_username" class="form-control" value="{{ alerts_smtp_username }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_smtp_password" class="form-label">SMTP Password</label>
+                    <input type="password" name="alerts_smtp_password" id="alerts_smtp_password" class="form-control" value="{{ alerts_smtp_password }}">
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="alert_dead_air_threshold_minutes" class="form-label">Dead Air Threshold (minutes)</label>
+                    <input type="number" name="alert_dead_air_threshold_minutes" id="alert_dead_air_threshold_minutes" class="form-control" value="{{ alert_dead_air_threshold_minutes }}" min="1">
+                </div>
+                <div class="col-md-4">
+                    <label for="alert_stream_down_threshold_minutes" class="form-label">Stream Down Threshold (minutes)</label>
+                    <input type="number" name="alert_stream_down_threshold_minutes" id="alert_stream_down_threshold_minutes" class="form-control" value="{{ alert_stream_down_threshold_minutes }}" min="1">
+                </div>
+                <div class="col-md-4">
+                    <label for="alert_repeat_minutes" class="form-label">Repeat Cooldown (minutes)</label>
+                    <input type="number" name="alert_repeat_minutes" id="alert_repeat_minutes" class="form-control" value="{{ alert_repeat_minutes }}" min="1">
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
             <h5 class="mb-3">OAuth (Google)</h5>
             <div class="mb-3">
                 <label for="oauth_client_id" class="form-label">Client ID</label>

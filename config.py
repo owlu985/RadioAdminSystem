@@ -33,6 +33,21 @@ class Config:
     TEMPEST_UNITS_TEMP = "f"
     TEMPEST_UNITS_WIND = "mph"
 
+    # Alerts
+    ALERTS_ENABLED = False
+    ALERTS_DRY_RUN = True
+    ALERTS_DISCORD_WEBHOOK = None
+    ALERTS_EMAIL_ENABLED = False
+    ALERTS_EMAIL_TO = None
+    ALERTS_EMAIL_FROM = None
+    ALERTS_SMTP_SERVER = None
+    ALERTS_SMTP_PORT = 587
+    ALERTS_SMTP_USERNAME = None
+    ALERTS_SMTP_PASSWORD = None
+    ALERT_DEAD_AIR_THRESHOLD_MINUTES = 5
+    ALERT_STREAM_DOWN_THRESHOLD_MINUTES = 1
+    ALERT_REPEAT_MINUTES = 15
+
     # NAS / RadioDJ integration
     NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")
     NAS_NEWS_FILE = os.path.join(NAS_ROOT, "wlmc_news.mp3")

@@ -12,6 +12,7 @@ from datetime import datetime
 from app.logger import init_logger
 from app.models import StreamProbe, db, LogEntry
 from app.services.show_run_service import get_or_create_active_run
+from app.services.alerts import check_stream_up, process_probe_alerts
 from app.utils import get_current_show
 
 logger = init_logger()
@@ -125,8 +126,10 @@ def probe_and_record():
     (if any), and store it for API access.
     """
     stream_url = current_app.config["STREAM_URL"]
-    result = probe_stream(stream_url)
+    stream_up = check_stream_up(stream_url)
+    result = probe_stream(stream_url) if stream_up else DetectionResult(0, 1.0, 0, "stream_down", "unreachable")
     if result is None:
+        process_probe_alerts(stream_up, None)
         return
 
     show = get_current_show()
@@ -167,6 +170,8 @@ def probe_and_record():
         ))
 
     db.session.commit()
+
+    process_probe_alerts(stream_up, result)
 
     logger.info(
         "Stream probe: %s (avg_db=%.2f, silence=%.2f, automation=%.2f)",
