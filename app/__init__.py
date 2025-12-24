@@ -3,8 +3,9 @@ import json
 import secrets
 from flask import Flask
 from config import Config
-from .models import db
+from .models import db, Show
 from .utils import init_utils
+from .oauth import init_oauth, oauth
 from .logger import init_logger
 from flask_migrate import Migrate
 from datetime import datetime, timedelta
@@ -42,6 +43,34 @@ def create_app(config_class=Config):
         try:
             with open(user_config_path, 'r') as f:
                 user_config = json.load(f)
+
+                def _normalize_optional(val):
+                    if val is None:
+                        return None
+                    if isinstance(val, str) and val.strip().lower() in {"", "none", "null"}:
+                        return None
+                    return val
+
+                optional_keys = {
+                    "TEMPEST_API_KEY",
+                    "OAUTH_CLIENT_ID",
+                    "OAUTH_CLIENT_SECRET",
+                    "OAUTH_ALLOWED_DOMAIN",
+                    "DISCORD_OAUTH_CLIENT_ID",
+                    "DISCORD_OAUTH_CLIENT_SECRET",
+                    "DISCORD_ALLOWED_GUILD_ID",
+                    "ALERTS_DISCORD_WEBHOOK",
+                    "ALERTS_EMAIL_TO",
+                    "ALERTS_EMAIL_FROM",
+                    "ALERTS_SMTP_SERVER",
+                    "ALERTS_SMTP_USERNAME",
+                    "ALERTS_SMTP_PASSWORD",
+                }
+
+                for key in optional_keys:
+                    if key in user_config:
+                        user_config[key] = _normalize_optional(user_config[key])
+
                 app.config.update(user_config)
         except Exception as e:
             initial_logger.error(f"Error loading user config: {e}")
@@ -52,6 +81,30 @@ def create_app(config_class=Config):
         
         with app.app_context():
             db.create_all()
+
+            # Lightweight compatibility patching for new columns without manual migrations.
+            from sqlalchemy import inspect, text
+            insp = inspect(db.engine)
+            cols = {col["name"] for col in insp.get_columns("log_entry")}
+            with db.engine.begin() as conn:
+                if "log_sheet_id" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN log_sheet_id INTEGER"))
+                if "entry_time" not in cols:
+                    conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
+                if "dj" not in insp.get_table_names():
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, photo_url VARCHAR(255))"))
+                if "show_dj" not in insp.get_table_names():
+                    conn.execute(text("CREATE TABLE IF NOT EXISTS show_dj (show_id INTEGER NOT NULL, dj_id INTEGER NOT NULL, PRIMARY KEY (show_id, dj_id))"))
+
+            # Ensure news types config exists with defaults
+            news_config_path = app.config["NEWS_TYPES_CONFIG"]
+            if not os.path.exists(news_config_path):
+                os.makedirs(os.path.dirname(news_config_path), exist_ok=True)
+                with open(news_config_path, "w") as f:
+                    json.dump([
+                        {"key": "news", "label": "News", "filename": "wlmc_news.mp3"},
+                        {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3"},
+                    ], f, indent=2)
 
         Migrate(app, db)
 
@@ -94,6 +147,12 @@ def create_app(config_class=Config):
     except Exception as e:
         initial_logger.error(f"Error initializing utils: {e}")
 
+# Init OAuth (optional)
+    try:
+        init_oauth(app)
+    except Exception as e:
+        initial_logger.error(f"Error initializing OAuth: {e}")
+
 #Init Show pausing restart roll over
     try:
         if app.config['PAUSE_SHOWS_RECORDING'] is True and app.config['PAUSE_SHOW_END_DATE'] is not None :
@@ -104,9 +163,16 @@ def create_app(config_class=Config):
     except Exception as e:
         initial_logger.error(f"Error pausing shows on Init: {e}")
     
-    from app.services.show_run_service import start_show_run, end_show_run
-    from .routes import main_bp
+    from app.services.show_run_service import start_show_run, end_show_run  # noqa: F401
+    from app.main_routes import main_bp
+    from app.routes.api import api_bp
+    from app.routes.logging_api import logs_bp
+    from app.routes.news import news_bp
     app.register_blueprint(main_bp)
+    app.register_blueprint(api_bp)
+    app.register_blueprint(logs_bp)
+    app.register_blueprint(news_bp)
+    app.oauth_client = oauth
     
     
     initial_logger.info("Application startup complete.")
