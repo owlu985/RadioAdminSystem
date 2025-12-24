@@ -108,14 +108,12 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
 
     with NamedTemporaryFile(suffix=".mp3", delete=True) as tmp:
         try:
-            stream_input = (
-                ffmpeg
-                .input(stream_url, t=duration)
-                .global_args(
-                    "-reconnect", "1",
-                    "-reconnect_streamed", "1",
-                    "-reconnect_delay_max", "2",
-                )
+            stream_input = ffmpeg.input(
+                stream_url,
+                t=duration,
+                reconnect=1,
+                reconnect_streamed=1,
+                reconnect_delay_max=2,
             )
 
             _, stderr = (
