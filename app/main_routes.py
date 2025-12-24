@@ -230,80 +230,149 @@ def audit_page():
 
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
-	"""Login route for admin authentication."""
+    """Login route for admin authentication."""
 
-	oauth_client = oauth.create_client("google")
-	oauth_enabled = oauth_client is not None
+    google_client = oauth.create_client("google")
+    discord_client = oauth.create_client("discord")
+    oauth_enabled = google_client is not None or discord_client is not None
 
-	if request.method == 'POST':
-		username = request.form['username']
-		password = request.form['password']
-		if (username == current_app.config['ADMIN_USERNAME'] and
-				password == current_app.config['ADMIN_PASSWORD']):
-			session['authenticated'] = True
-			logger.info("Admin logged in successfully.")
-			flash("You are now logged in.", "success")
-			return redirect(url_for('main.dashboard'))
-		else:
-			logger.warning("Invalid login attempt.")
-			flash("Invalid credentials. Please try again.", "danger")
-	return render_template(
-		'login.html',
-		oauth_enabled=oauth_enabled,
-		oauth_allowed_domain=current_app.config.get("OAUTH_ALLOWED_DOMAIN"),
-	)
+    if request.method == 'POST':
+        username = request.form['username']
+        password = request.form['password']
+        if (username == current_app.config['ADMIN_USERNAME'] and
+                password == current_app.config['ADMIN_PASSWORD']):
+            session['authenticated'] = True
+            logger.info("Admin logged in successfully.")
+            flash("You are now logged in.", "success")
+            return redirect(url_for('main.dashboard'))
+        else:
+            logger.warning("Invalid login attempt.")
+            flash("Invalid credentials. Please try again.", "danger")
 
-
-@main_bp.route("/login/oauth")
-def login_oauth():
-	"""Start an OAuth login (Google)."""
-
-	client = oauth.create_client("google")
-	if client is None:
-		flash("OAuth is not configured.", "danger")
-		return redirect(url_for("main.login"))
-
-	redirect_uri = url_for("main.oauth_callback", _external=True)
-	return client.authorize_redirect(redirect_uri)
+    return render_template(
+        'login.html',
+        oauth_enabled=oauth_enabled,
+        oauth_google_enabled=google_client is not None,
+        oauth_discord_enabled=discord_client is not None,
+        oauth_allowed_domain=current_app.config.get("OAUTH_ALLOWED_DOMAIN"),
+    )
 
 
-@main_bp.route("/login/oauth/callback")
-def oauth_callback():
-	"""Handle OAuth callback and establish a session."""
+@main_bp.route("/login/oauth/google")
+def login_oauth_google():
+        """Start a Google OAuth login."""
 
-	client = oauth.create_client("google")
-	if client is None:
-		flash("OAuth is not configured.", "danger")
-		return redirect(url_for("main.login"))
+        client = oauth.create_client("google")
+        if client is None:
+                flash("OAuth is not configured.", "danger")
+                return redirect(url_for("main.login"))
 
-	try:
-		token = client.authorize_access_token()
-		userinfo = client.parse_id_token(token)
-		if not userinfo:
-			resp = client.get("userinfo")
-			userinfo = resp.json() if resp else {}
-	except Exception as exc:  # noqa: BLE001
-		logger.error(f"OAuth login failed: {exc}")
-		flash("OAuth login failed. Please try again or contact an admin.", "danger")
-		return redirect(url_for("main.login"))
+        redirect_uri = url_for("main.oauth_callback_google", _external=True)
+        return client.authorize_redirect(redirect_uri)
 
-	email = (userinfo or {}).get("email")
-	if not email:
-		flash("OAuth login failed: missing email.", "danger")
-		return redirect(url_for("main.login"))
 
-	allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
-	if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
-		logger.warning("OAuth login blocked due to domain restriction.")
-		flash("Your account is not permitted to log in with this station.", "danger")
-		return redirect(url_for("main.login"))
+@main_bp.route("/login/oauth/google/callback")
+def oauth_callback_google():
+        """Handle Google OAuth callback and establish a session."""
 
-	session['authenticated'] = True
-	session['user_email'] = email
-	session['auth_provider'] = "google"
-	logger.info("Admin logged in via OAuth.")
-	flash("You are now logged in via Google.", "success")
-	return redirect(url_for('main.dashboard'))
+        client = oauth.create_client("google")
+        if client is None:
+                flash("OAuth is not configured.", "danger")
+                return redirect(url_for("main.login"))
+
+        try:
+                token = client.authorize_access_token()
+                userinfo = client.parse_id_token(token)
+                if not userinfo:
+                        resp = client.get("userinfo")
+                        userinfo = resp.json() if resp else {}
+        except Exception as exc:  # noqa: BLE001
+                logger.error(f"OAuth login failed: {exc}")
+                flash("OAuth login failed. Please try again or contact an admin.", "danger")
+                return redirect(url_for("main.login"))
+
+        email = (userinfo or {}).get("email")
+        if not email:
+                flash("OAuth login failed: missing email.", "danger")
+                return redirect(url_for("main.login"))
+
+        allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
+        if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
+                logger.warning("OAuth login blocked due to domain restriction.")
+                flash("Your account is not permitted to log in with this station.", "danger")
+                return redirect(url_for("main.login"))
+
+        session['authenticated'] = True
+        session['user_email'] = email
+        session['auth_provider'] = "google"
+        logger.info("Admin logged in via Google OAuth.")
+        flash("You are now logged in via Google.", "success")
+        return redirect(url_for('main.dashboard'))
+
+
+@main_bp.route("/login/oauth/discord")
+def login_oauth_discord():
+        """Start a Discord OAuth login."""
+
+        client = oauth.create_client("discord")
+        if client is None:
+                flash("Discord OAuth is not configured.", "danger")
+                return redirect(url_for("main.login"))
+
+        redirect_uri = url_for("main.oauth_callback_discord", _external=True)
+        return client.authorize_redirect(redirect_uri)
+
+
+@main_bp.route("/login/oauth/discord/callback")
+def oauth_callback_discord():
+        """Handle Discord OAuth callback and establish a session."""
+
+        client = oauth.create_client("discord")
+        if client is None:
+                flash("Discord OAuth is not configured.", "danger")
+                return redirect(url_for("main.login"))
+
+        try:
+                token = client.authorize_access_token()
+                userinfo_resp = client.get("users/@me")
+                userinfo = userinfo_resp.json() if userinfo_resp else {}
+        except Exception as exc:  # noqa: BLE001
+                logger.error(f"Discord OAuth login failed: {exc}")
+                flash("Discord login failed. Please try again or contact an admin.", "danger")
+                return redirect(url_for("main.login"))
+
+        if not userinfo:
+                flash("Discord login failed: missing user info.", "danger")
+                return redirect(url_for("main.login"))
+
+        email = userinfo.get("email")
+        if not email:
+                logger.warning("Discord OAuth did not return an email; access denied.")
+                flash("Discord account is missing an email address; cannot log in.", "danger")
+                return redirect(url_for("main.login"))
+
+        allowed_guild_id = current_app.config.get("DISCORD_ALLOWED_GUILD_ID")
+        if allowed_guild_id:
+                try:
+                        guilds_resp = client.get("users/@me/guilds")
+                        guilds = guilds_resp.json() if guilds_resp else []
+                except Exception as exc:  # noqa: BLE001
+                        logger.error(f"Discord guild lookup failed: {exc}")
+                        flash("Discord login failed while checking permissions.", "danger")
+                        return redirect(url_for("main.login"))
+
+                if not any(str(g.get("id")) == str(allowed_guild_id) for g in guilds):
+                        logger.warning("Discord login blocked; user not in allowed guild.")
+                        flash("Your Discord account is not authorized for this station.", "danger")
+                        return redirect(url_for("main.login"))
+
+        session['authenticated'] = True
+        session['user_email'] = email
+        session['auth_provider'] = "discord"
+        session['user_name'] = userinfo.get("username")
+        logger.info("Admin logged in via Discord OAuth.")
+        flash("You are now logged in via Discord.", "success")
+        return redirect(url_for('main.dashboard'))
 
 @main_bp.route('/logout')
 def logout():
@@ -450,6 +519,9 @@ def settings():
                 'OAUTH_CLIENT_ID': request.form.get('oauth_client_id', '').strip() or None,
                 'OAUTH_CLIENT_SECRET': request.form.get('oauth_client_secret', '').strip() or None,
                 'OAUTH_ALLOWED_DOMAIN': request.form.get('oauth_allowed_domain', '').strip() or None,
+                'DISCORD_OAUTH_CLIENT_ID': request.form.get('discord_oauth_client_id', '').strip() or None,
+                'DISCORD_OAUTH_CLIENT_SECRET': request.form.get('discord_oauth_client_secret', '').strip() or None,
+                'DISCORD_ALLOWED_GUILD_ID': request.form.get('discord_allowed_guild_id', '').strip() or None,
             }
 
             update_user_config(updated_settings)
@@ -492,6 +564,9 @@ def settings():
         'oauth_client_id': config.get('OAUTH_CLIENT_ID', ''),
         'oauth_client_secret': config.get('OAUTH_CLIENT_SECRET', ''),
         'oauth_allowed_domain': config.get('OAUTH_ALLOWED_DOMAIN', ''),
+        'discord_oauth_client_id': config.get('DISCORD_OAUTH_CLIENT_ID', ''),
+        'discord_oauth_client_secret': config.get('DISCORD_OAUTH_CLIENT_SECRET', ''),
+        'discord_allowed_guild_id': config.get('DISCORD_ALLOWED_GUILD_ID', ''),
     }
 
     logger.info(f'Rendering settings page.')

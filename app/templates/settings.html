@@ -223,6 +223,22 @@
                 <div class="form-text">Only emails from this domain may log in via OAuth.</div>
             </div>
         </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">OAuth (Discord)</h5>
+            <div class="mb-3">
+                <label for="discord_oauth_client_id" class="form-label">Client ID</label>
+                <input type="text" name="discord_oauth_client_id" id="discord_oauth_client_id" class="form-control" value="{{ discord_oauth_client_id }}" placeholder="Discord application client ID">
+            </div>
+            <div class="mb-3">
+                <label for="discord_oauth_client_secret" class="form-label">Client Secret</label>
+                <input type="text" name="discord_oauth_client_secret" id="discord_oauth_client_secret" class="form-control" value="{{ discord_oauth_client_secret }}" placeholder="Discord application client secret">
+            </div>
+            <div class="mb-0">
+                <label for="discord_allowed_guild_id" class="form-label">Allowed Guild ID (optional)</label>
+                <input type="text" name="discord_allowed_guild_id" id="discord_allowed_guild_id" class="form-control" value="{{ discord_allowed_guild_id }}" placeholder="e.g. 123456789012345678">
+                <div class="form-text">If set, only Discord users in this guild may log in.</div>
+            </div>
+        </div>
 
         <!-- Default Dates Fields -->
         <div class="mb-3">

@@ -72,3 +72,6 @@ class Config:
     OAUTH_CLIENT_ID = None
     OAUTH_CLIENT_SECRET = None
     OAUTH_ALLOWED_DOMAIN = None  # e.g. "example.edu" to restrict logins
+    DISCORD_OAUTH_CLIENT_ID = None
+    DISCORD_OAUTH_CLIENT_SECRET = None
+    DISCORD_ALLOWED_GUILD_ID = None  # optional: require membership in this guild

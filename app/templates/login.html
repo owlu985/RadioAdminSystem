@@ -49,9 +49,16 @@
     {% if oauth_enabled %}
         <hr>
         <div class="d-flex flex-column gap-2">
-            <a class="btn btn-outline-primary" href="{{ url_for('main.login_oauth') }}">
-                <i class="bi bi-google"></i> Continue with Google
-            </a>
+            {% if oauth_google_enabled %}
+                <a class="btn btn-outline-primary" href="{{ url_for('main.login_oauth_google') }}">
+                    <i class="bi bi-google"></i> Continue with Google
+                </a>
+            {% endif %}
+            {% if oauth_discord_enabled %}
+                <a class="btn btn-outline-secondary" href="{{ url_for('main.login_oauth_discord') }}">
+                    <i class="bi bi-discord"></i> Continue with Discord
+                </a>
+            {% endif %}
             {% if oauth_allowed_domain %}
                 <div class="text-muted small">Only Google accounts from {{ oauth_allowed_domain }} can sign in.</div>
             {% endif %}
