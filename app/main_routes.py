@@ -452,18 +452,15 @@ def oauth_callback_discord():
                 return redirect(url_for("main.login"))
 
         allowed_guild_id = _clean_optional(current_app.config.get("DISCORD_ALLOWED_GUILD_ID"))
+        guild_member = True
         if allowed_guild_id:
                 try:
                         guilds_resp = client.get("users/@me/guilds")
                         guilds = guilds_resp.json() if guilds_resp else []
+                        guild_member = any(str(g.get("id")) == str(allowed_guild_id) for g in guilds)
                 except Exception as exc:  # noqa: BLE001
                         logger.error(f"Discord guild lookup failed: {exc}")
                         flash("Discord login failed while checking permissions.", "danger")
-                        return redirect(url_for("main.login"))
-
-                if not any(str(g.get("id")) == str(allowed_guild_id) for g in guilds):
-                        logger.warning("Discord login blocked; user not in allowed guild.")
-                        flash("Your Discord account is not authorized for this station.", "danger")
                         return redirect(url_for("main.login"))
 
         external_id = (userinfo or {}).get("id")
@@ -479,6 +476,9 @@ def oauth_callback_discord():
                 session['pending_user_id'] = existing.id
                 flash("Your account is pending approval.", "info")
                 return redirect(url_for('main.oauth_pending'))
+
+        if allowed_guild_id and not guild_member:
+                flash("Please submit your name to request access; you aren't in the authorized Discord guild yet.", "info")
 
         profile = {
                 "provider": "discord",
