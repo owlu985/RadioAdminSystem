@@ -33,6 +33,7 @@
 {% endwith %}
 
     <h2>Admin Login</h2>
+    {% if not oauth_only %}
     <form method="post">
         <div class="mb-3">
             <label for="username" class="form-label">Username:</label>
@@ -46,6 +47,9 @@
             <i class="bi bi-box-arrow-in-right"></i> Login
         </button>
     </form>
+    {% else %}
+    <div class="alert alert-info">Password login disabled. Use an OAuth provider below.</div>
+    {% endif %}
     {% if oauth_enabled %}
         <hr>
         <div class="d-flex flex-column gap-2">

@@ -251,6 +251,17 @@
             </div>
         </div>
 
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Roles & Access</h5>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="oauth_only" name="oauth_only" {% if oauth_only %}checked{% endif %}>
+                <label class="form-check-label" for="oauth_only">OAuth-only admin login (disable password form)</label>
+            </div>
+            <label class="form-label">Custom Roles (comma-separated)</label>
+            <input type="text" name="custom_roles" class="form-control" value="{{ custom_roles }}" placeholder="producer,engineering">
+            <div class="form-text">Custom roles appear in the user management dropdown. Use permissions field per user to grant scopes.</div>
+        </div>
+
         <!-- Default Dates Fields -->
         <div class="mb-3">
             <label for="default_start_date" class="form-label">

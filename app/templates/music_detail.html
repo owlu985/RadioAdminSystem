@@ -21,9 +21,23 @@
             <dt class="col-sm-3">Disc/Track</dt><dd class="col-sm-9">{{ track.disc }} / {{ track.track }}</dd>
             <dt class="col-sm-3">Copyright</dt><dd class="col-sm-9">{{ track.copyright }}</dd>
             <dt class="col-sm-3">Path</dt><dd class="col-sm-9">{{ track.path }}</dd>
+            <dt class="col-sm-3">Duration</dt><dd class="col-sm-9">{{ track.duration_seconds }}s</dd>
+            <dt class="col-sm-3">Peak / RMS</dt><dd class="col-sm-9">{{ track.peak_db }} / {{ track.rms_db }}</dd>
+            <dt class="col-sm-3">Bitrate</dt><dd class="col-sm-9">{{ track.bitrate }}</dd>
         </dl>
+        {% if track.peaks %}
+        <div class="mb-3">
+            <div class="fw-bold">Waveform preview</div>
+            <div class="d-flex align-items-end" style="gap:2px; height:80px;">
+                {% for p in track.peaks %}
+                <div style="width:3px; background:#0d6efd; height:{{ (p*80)|round(0,'floor') }}px"></div>
+                {% endfor %}
+            </div>
+        </div>
+        {% endif %}
         <a class="btn btn-secondary" href="/music/search">Back to search</a>
         <a class="btn btn-primary" href="/music/edit?path={{ track.path|urlencode }}">Edit</a>
+        <a class="btn btn-outline-info" href="/music/cue?path={{ track.path|urlencode }}">CUE Editor</a>
     {% else %}
         <p>Track not found.</p>
     {% endif %}

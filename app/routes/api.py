@@ -6,7 +6,16 @@ from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
-from app.services.music_search import search_music, get_track
+from app.services.music_search import (
+    search_music,
+    get_track,
+    bulk_update_metadata,
+    queues_snapshot,
+    load_cue,
+    save_cue,
+    scan_library,
+    find_duplicates_and_quality,
+)
 from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status
@@ -173,6 +182,82 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/music/bulk-update", methods=["POST"])
+def music_bulk_update():
+    payload = request.get_json(force=True, silent=True) or {}
+    paths = payload.get("paths") or []
+    updates = payload.get("updates") or {}
+    cover_art_b64 = payload.get("cover_art")
+    cover_bytes = None
+    if cover_art_b64:
+        try:
+            import base64
+
+            cover_bytes = base64.b64decode(cover_art_b64)
+        except Exception:
+            cover_bytes = None
+    if not paths:
+        return jsonify({"status": "error", "message": "paths required"}), 400
+    result = bulk_update_metadata(paths, updates, cover_bytes)
+    return jsonify(result)
+
+
+@api_bp.route("/music/scan/library")
+def music_scan_library():
+    snapshot = queues_snapshot()
+    return jsonify(snapshot)
+
+
+@api_bp.route("/music/cue", methods=["GET", "POST"])
+def music_cue():
+    path = request.values.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    if request.method == "GET":
+        cue = load_cue(path)
+        return jsonify({
+            "path": path,
+            "cue": {
+                "cue_in": cue.cue_in if cue else None,
+                "intro": cue.intro if cue else None,
+                "outro": cue.outro if cue else None,
+                "fade_in": cue.fade_in if cue else None,
+                "fade_out": cue.fade_out if cue else None,
+            },
+        })
+    payload = request.get_json(force=True, silent=True) or {}
+    cue = save_cue(path, payload)
+    return jsonify({"status": "ok", "cue": {
+        "cue_in": cue.cue_in,
+        "intro": cue.intro,
+        "outro": cue.outro,
+        "fade_in": cue.fade_in,
+        "fade_out": cue.fade_out,
+    }})
+
+
+@api_bp.route("/schedule")
+def schedule_api():
+    tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
+    shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
+    events = []
+    for show in shows:
+        days = [d.strip() for d in (show.days_of_week or "").split(',') if d.strip()]
+        for day in days:
+            events.append({
+                "title": show.show_name or f"{show.host_first_name} {show.host_last_name}",
+                "day": day,
+                "start_time": show.start_time.strftime("%H:%M"),
+                "end_time": show.end_time.strftime("%H:%M"),
+                "start_date": show.start_date.isoformat(),
+                "end_date": show.end_date.isoformat(),
+                "timezone": tz,
+                "description": show.description,
+                "genre": show.genre,
+            })
+    return jsonify({"events": events, "timezone": tz})
 
 
 @api_bp.route("/weather/tempest")

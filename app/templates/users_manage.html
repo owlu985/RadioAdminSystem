@@ -23,7 +23,7 @@
           <th>Name</th>
           <th>Email</th>
           <th>Provider</th>
-          <th>Role</th>
+          <th>Roles / Permissions</th>
           <th>Status</th>
           <th>Actions</th>
         </tr>
@@ -45,12 +45,15 @@
                   <option value="{{ value }}" {% if user.role==value %}selected{% endif %}>{{ label }}</option>
                 {% endfor %}
               </select>
+              <input type="text" class="form-control form-control-sm mt-1" name="custom_role" placeholder="Custom role" value="{{ user.custom_role or '' }}">
+              <textarea class="form-control form-control-sm mt-1" name="permissions" placeholder="Comma-separated permissions">{{ user.permissions or '' }}</textarea>
           </td>
           <td>
-            <div class="form-check">
-              <input class="form-check-input" type="checkbox" name="approved" id="approve_{{ user.id }}" {% if user.approved %}checked{% endif %}>
-              <label class="form-check-label" for="approve_{{ user.id }}">Approved</label>
-            </div>
+            <select name="approval_status" class="form-select form-select-sm">
+              <option value="pending" {% if user.approval_status=='pending' %}selected{% endif %}>Pending</option>
+              <option value="approved" {% if user.approval_status=='approved' %}selected{% endif %}>Approved</option>
+              <option value="rejected" {% if user.approval_status=='rejected' %}selected{% endif %}>Rejected</option>
+            </select>
             <div class="text-muted small">
               Requested {{ user.requested_at.strftime('%Y-%m-%d') if user.requested_at else 'n/a' }}
               {% if user.approved_at %}<br>Approved {{ user.approved_at.strftime('%Y-%m-%d') }}{% endif %}
@@ -58,6 +61,7 @@
           </td>
           <td>
             <button type="submit" class="btn btn-sm btn-primary">Save</button>
+            <button type="submit" name="action" value="delete" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete this user?')">Delete</button>
             </form>
           </td>
         </tr>

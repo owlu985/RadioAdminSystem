@@ -13,6 +13,10 @@ class User(db.Model):
     external_id = db.Column(db.String(255), nullable=True)
     display_name = db.Column(db.String(255), nullable=True)
     role = db.Column(db.String(50), nullable=True)
+    custom_role = db.Column(db.String(50), nullable=True)
+    permissions = db.Column(db.Text, nullable=True)
+    approval_status = db.Column(db.String(32), default="pending", nullable=False)
+    rejected = db.Column(db.Boolean, default=False, nullable=False)
     approved = db.Column(db.Boolean, default=False, nullable=False)
     requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     approved_at = db.Column(db.DateTime, nullable=True)
@@ -148,3 +152,49 @@ class StreamProbe(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     show_run = db.relationship("ShowRun", backref="probes")
+
+
+class DJAbsence(db.Model):
+    __tablename__ = "dj_absence"
+
+    id = db.Column(db.Integer, primary_key=True)
+    dj_name = db.Column(db.String(128), nullable=False)
+    show_name = db.Column(db.String(128), nullable=False)
+    show_id = db.Column(db.Integer, db.ForeignKey("show.id"), nullable=True)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    replacement_name = db.Column(db.String(128), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    status = db.Column(db.String(32), default="pending", nullable=False)  # pending|approved|rejected|resolved
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    show = db.relationship("Show", backref="absences")
+
+
+class MusicAnalysis(db.Model):
+    __tablename__ = "music_analysis"
+
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(500), unique=True, nullable=False)
+    duration_seconds = db.Column(db.Float, nullable=True)
+    peak_db = db.Column(db.Float, nullable=True)
+    rms_db = db.Column(db.Float, nullable=True)
+    peaks = db.Column(db.Text, nullable=True)  # JSON list of sample peaks for waveform previews
+    bitrate = db.Column(db.Integer, nullable=True)
+    hash = db.Column(db.String(64), nullable=True)
+    missing_tags = db.Column(db.Boolean, default=False, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class MusicCue(db.Model):
+    __tablename__ = "music_cue"
+
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(500), unique=True, nullable=False)
+    cue_in = db.Column(db.Float, nullable=True)
+    intro = db.Column(db.Float, nullable=True)
+    outro = db.Column(db.Float, nullable=True)
+    fade_in = db.Column(db.Float, nullable=True)
+    fade_out = db.Column(db.Float, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)

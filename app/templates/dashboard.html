@@ -64,10 +64,26 @@
                 <li><a href="{{ url_for('main.shows') }}">Manage show recorder schedule</a></li>
                 <li><a href="{{ url_for('logs.manage_logs') }}">View/Export station logs</a></li>
                 <li><a href="{{ url_for('logs.submit_log') }}" target="_blank">Public logger form</a></li>
+                <li><a href="{{ url_for('main.dj_absence_submit') }}" target="_blank">Submit DJ absence</a> | <a href="{{ url_for('main.manage_absences') }}">Review absences</a></li>
                 <li><a href="{{ url_for('news.upload_news') }}">Upload daily newscast</a></li>
                 <li>REST: <code>/api/now</code> (current show), <code>/api/probes/latest</code> (silence/automation), <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code></li>
                 <li>NAS watcher + RadioDJ import runs periodically (news/calendar)</li>
             </ul>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Upcoming/Pending Absences</div>
+        <div class="card-body">
+            {% if absences %}
+            <ul class="mb-0">
+                {% for a in absences %}
+                <li><strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time }} to {{ a.end_time }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="mb-0 text-muted">No pending absences.</p>
+            {% endif %}
         </div>
     </div>
 {% include '_footer.html' %}

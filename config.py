@@ -33,6 +33,10 @@ class Config:
     TEMPEST_UNITS_TEMP = "f"
     TEMPEST_UNITS_WIND = "mph"
 
+    # Roles / auth
+    CUSTOM_ROLES = []
+    OAUTH_ONLY = False
+
     # Alerts
     ALERTS_ENABLED = False
     ALERTS_DRY_RUN = True
@@ -67,6 +71,7 @@ class Config:
     STATION_NAME = "WLMC"
     STATION_SLOGAN = "The Voice of Landmark College"
     STATION_BACKGROUND = "first-bkg-variant.jpg"  # filename in static/ or a full URL
+    SCHEDULE_TIMEZONE = "America/New_York"
 
     # OAuth
     OAUTH_CLIENT_ID = None

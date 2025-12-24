@@ -112,6 +112,65 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                user_cols = {c["name"] for c in insp.get_columns("user")}
+                if "custom_role" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN custom_role VARCHAR(50)"))
+                if "permissions" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN permissions TEXT"))
+                if "approval_status" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN approval_status VARCHAR(32) DEFAULT 'pending'"))
+                if "rejected" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN rejected BOOLEAN DEFAULT 0"))
+                if "dj_absence" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS dj_absence (
+                            id INTEGER PRIMARY KEY,
+                            dj_name VARCHAR(128) NOT NULL,
+                            show_name VARCHAR(128) NOT NULL,
+                            show_id INTEGER,
+                            start_time DATETIME NOT NULL,
+                            end_time DATETIME NOT NULL,
+                            replacement_name VARCHAR(128),
+                            notes TEXT,
+                            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "music_analysis" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS music_analysis (
+                            id INTEGER PRIMARY KEY,
+                            path VARCHAR(500) NOT NULL UNIQUE,
+                            duration_seconds FLOAT,
+                            peak_db FLOAT,
+                            rms_db FLOAT,
+                            peaks TEXT,
+                            bitrate INTEGER,
+                            hash VARCHAR(64),
+                            missing_tags BOOLEAN NOT NULL DEFAULT 0,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "music_cue" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS music_cue (
+                            id INTEGER PRIMARY KEY,
+                            path VARCHAR(500) NOT NULL UNIQUE,
+                            cue_in FLOAT,
+                            intro FLOAT,
+                            outro FLOAT,
+                            fade_in FLOAT,
+                            fade_out FLOAT,
+                            updated_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
 
             # Ensure news types config exists with defaults
             news_config_path = app.config["NEWS_TYPES_CONFIG"]
