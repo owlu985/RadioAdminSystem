@@ -12,3 +12,4 @@ instance/
 test files/
 .idea/
 .gitignore
+.log
