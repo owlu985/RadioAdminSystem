@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CUE Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h3>CUE Editor</h3>
+    {% if track %}
+    <p class="text-muted">{{ track.title }} — {{ track.artist }}</p>
+    <form method="post" class="row g-3">
+        {% for field,label in {"cue_in":"Cue In (s)","intro":"Intro (s)","outro":"Outro (s)","fade_in":"Fade In (s)","fade_out":"Fade Out (s)"}.items() %}
+        <div class="col-md-4">
+            <label class="form-label">{{ label }}</label>
+            <input type="number" step="0.1" name="{{ field }}" value="{{ cue[field] if cue else '' }}" class="form-control">
+        </div>
+        {% endfor %}
+        <div class="col-12">
+            <button class="btn btn-primary" type="submit">Save CUE</button>
+            <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Back</a>
+        </div>
+    </form>
+    {% else %}
+    <p>Track not found.</p>
+    {% endif %}
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
