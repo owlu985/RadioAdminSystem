@@ -65,6 +65,10 @@ def create_app(config_class=Config):
                     "ALERTS_SMTP_SERVER",
                     "ALERTS_SMTP_USERNAME",
                     "ALERTS_SMTP_PASSWORD",
+                    "ICECAST_STATUS_URL",
+                    "ICECAST_USERNAME",
+                    "ICECAST_PASSWORD",
+                    "ICECAST_MOUNT",
                 }
 
                 for key in optional_keys:
@@ -171,6 +175,20 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "job_health" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS job_health (
+                            id INTEGER PRIMARY KEY,
+                            name VARCHAR(64) NOT NULL UNIQUE,
+                            failure_count INTEGER NOT NULL DEFAULT 0,
+                            restart_count INTEGER NOT NULL DEFAULT 0,
+                            last_failure_at DATETIME,
+                            last_restart_at DATETIME,
+                            last_failure_reason VARCHAR(255)
+                        )
+                        """
+                    ))
 
             # Ensure news types config exists with defaults
             news_config_path = app.config["NEWS_TYPES_CONFIG"]
@@ -178,8 +196,8 @@ def create_app(config_class=Config):
                 os.makedirs(os.path.dirname(news_config_path), exist_ok=True)
                 with open(news_config_path, "w") as f:
                     json.dump([
-                        {"key": "news", "label": "News", "filename": "wlmc_news.mp3"},
-                        {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3"},
+                        {"key": "news", "label": "News", "filename": "wlmc_news.mp3", "frequency": "daily"},
+                        {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3", "frequency": "weekly", "rotation_day": 0},
                     ], f, indent=2)
 
         Migrate(app, db)

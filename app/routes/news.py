@@ -27,12 +27,40 @@ def activate_news_for_date(target_date: date, news_key: str | None = None) -> bo
     targets = [t for t in news_types if (news_key is None or t["key"] == news_key)]
     activated = False
     for nt in targets:
+        rotation_day = nt.get("rotation_day")
+        frequency = (nt.get("frequency") or "daily").lower()
+        if rotation_day is not None and target_date.weekday() != rotation_day:
+            # Only rotate on the configured weekday
+            continue
         storage_dir = _news_storage_dir(nt["key"])
         base = nt["filename"].replace(".mp3", "")
-        dated_name = f"{base}_{target_date.isoformat()}.mp3"
-        dated_path = os.path.join(storage_dir, dated_name)
-        if not os.path.exists(dated_path):
+        dated_path = None
+
+        if frequency == "weekly":
+            candidates = []
+            for fname in os.listdir(storage_dir):
+                if not fname.startswith(f"{base}_") or not fname.endswith(".mp3"):
+                    continue
+                try:
+                    dt = datetime.strptime(fname.replace(base + "_", "").replace(".mp3", ""), "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                if rotation_day is not None and dt.weekday() != rotation_day:
+                    continue
+                if dt <= target_date:
+                    candidates.append((dt, os.path.join(storage_dir, fname)))
+            if candidates:
+                candidates.sort(key=lambda x: x[0], reverse=True)
+                dated_path = candidates[0][1]
+        else:
+            dated_name = f"{base}_{target_date.isoformat()}.mp3"
+            candidate = os.path.join(storage_dir, dated_name)
+            if os.path.exists(candidate):
+                dated_path = candidate
+
+        if not dated_path:
             continue
+
         dest = os.path.join(current_app.config["NAS_ROOT"], nt["filename"])
         shutil.copy(dated_path, dest)
         logger.info("Activated %s file for %s -> %s", nt["key"], target_date, dest)

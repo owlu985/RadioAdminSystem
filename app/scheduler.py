@@ -1,11 +1,13 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, time, timedelta
+import time
 from sqlalchemy import inspect
 from flask import current_app
 from .logger import init_logger
 from .models import db, Show
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
+from app.services.health import record_failure
 from .utils import update_user_config
 from datetime import date as date_cls
 import ffmpeg
@@ -61,6 +63,10 @@ def pause_shows_until(date):
 def record_stream(stream_url, duration, output_file, config_file_path):
     """Records the stream using FFmpeg."""
 
+    ctx = flask_app.app_context() if flask_app else None
+    if ctx:
+        ctx.push()
+
     with open(config_file_path, 'r') as file:
         config = json.load(file)
     if config['PAUSE_SHOWS_RECORDING'] is True:
@@ -71,17 +77,36 @@ def record_stream(stream_url, duration, output_file, config_file_path):
     output_file = f"{output_file}_{datetime.now().strftime('%m-%d-%y')}_RAWDATA.mp3"
     start_time = datetime.now().strftime('%H-%M-%S')
     try:
-        (
-            ffmpeg
-            .input(stream_url, t=duration)
-            .output(output_file, acodec='copy')
-            .overwrite_output()
-            .run()
-        )
-        logger.info(f"Recording started for {output_file}.")
-        logger.info(f"Start time:{start_time}.")
-    except ffmpeg.Error as e:
-        logger.error(f"FFFmpeg error: {e.stderr.decode()}")
+        for attempt in (1, 2):
+            try:
+                (
+                    ffmpeg
+                    .input(stream_url, t=duration)
+                    .output(output_file, acodec='copy')
+                    .overwrite_output()
+                    .run()
+                )
+                logger.info(f"Recording started for {output_file}.")
+                logger.info(f"Start time:{start_time}.")
+                if attempt == 2:
+                    record_failure("recorder", reason="retry_success", restarted=True)
+                return
+            except ffmpeg.Error as e:
+                err_msg = e.stderr.decode() if getattr(e, "stderr", None) else str(e)
+                record_failure("recorder", reason=err_msg, restarted=False)
+                logger.error(f"FFmpeg error (attempt {attempt}): {err_msg}")
+            except Exception as exc:  # noqa: BLE001
+                record_failure("recorder", reason=str(exc), restarted=False)
+                logger.error(f"Recording error (attempt {attempt}): {exc}")
+
+            if attempt == 1 and (flask_app and flask_app.config.get("SELF_HEAL_ENABLED", True)):
+                logger.warning("Retrying recording after failure...")
+                time.sleep(1)
+                continue
+            break
+    finally:
+        if ctx:
+            ctx.pop()
 
 def delete_show(show_id):
     """Delete a show from the database."""
@@ -222,4 +247,16 @@ def run_stream_probe_job():
         return
 
     with flask_app.app_context():
-        probe_and_record()
+        try:
+            probe_and_record()
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Probe job crashed: %s", exc)
+            record_failure("stream_probe", reason=str(exc), restarted=False)
+            if flask_app.config.get("SELF_HEAL_ENABLED", True):
+                logger.warning("Retrying probe after crash...")
+                time.sleep(1)
+                try:
+                    probe_and_record()
+                    record_failure("stream_probe", reason="job_retry_success", restarted=True)
+                except Exception as exc2:  # noqa: BLE001
+                    logger.error("Probe retry failed: %s", exc2)

@@ -52,6 +52,15 @@ class Config:
     ALERT_STREAM_DOWN_THRESHOLD_MINUTES = 1
     ALERT_REPEAT_MINUTES = 15
 
+    # Stream/Icecast monitoring
+    ICECAST_STATUS_URL = None
+    ICECAST_USERNAME = None
+    ICECAST_PASSWORD = None
+    ICECAST_MOUNT = None
+
+    # Self-heal / health reporting defaults
+    SELF_HEAL_ENABLED = True
+
     # NAS / RadioDJ integration
     NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")
     NAS_NEWS_FILE = os.path.join(NAS_ROOT, "wlmc_news.mp3")

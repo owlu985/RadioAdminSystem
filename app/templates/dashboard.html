@@ -52,10 +52,37 @@
         </div>
         <div class="card-body" id="streamStatus">
             <p class="mb-1"><strong>Stream:</strong> <span id="streamUp">...</span></p>
+            <p class="mb-1"><strong>Listeners:</strong> <span id="listeners">n/a</span></p>
             <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
             <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
         </div>
     </div>
+
+    {% if health %}
+    <div class="card mb-3">
+        <div class="card-header">Self-heal / Job Health</div>
+        <div class="card-body">
+            <div class="row">
+                {% for name, h in health.items() %}
+                <div class="col-md-6 mb-2">
+                    <div class="border rounded p-2 h-100">
+                        <div class="fw-bold text-uppercase small">{{ name.replace('_', ' ') }}</div>
+                        <div class="d-flex justify-content-between">
+                            <span>Failures</span><span class="fw-semibold">{{ h['failures'] }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Restarts</span><span class="fw-semibold">{{ h['restarts'] }}</span>
+                        </div>
+                        {% if h['reason'] %}
+                        <div class="text-muted small">Last reason: {{ h['reason'] }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
 
     <div class="card mb-3">
         <div class="card-header">Quick Links</div>
@@ -94,6 +121,11 @@
             const res = await fetch('/api/stream/status');
             const data = await res.json();
             document.getElementById('streamUp').textContent = data.stream_up ? 'Up' : 'Down';
+            if (data.listeners !== undefined) {
+                document.getElementById('listeners').textContent = data.listeners;
+            } else {
+                document.getElementById('listeners').textContent = 'n/a';
+            }
             if (data.probe) {
                 document.getElementById('probeClass').textContent = data.probe.classification;
                 document.getElementById('probeDetails').textContent =

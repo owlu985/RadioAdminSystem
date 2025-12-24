@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
+import time
 
 import ffmpeg
 import numpy as np
@@ -13,6 +14,7 @@ from app.logger import init_logger
 from app.models import StreamProbe, db, LogEntry
 from app.services.show_run_service import get_or_create_active_run
 from app.services.alerts import check_stream_up, process_probe_alerts
+from app.services.health import record_failure
 from app.utils import get_current_show
 
 logger = init_logger()
@@ -127,8 +129,19 @@ def probe_and_record():
     """
     stream_url = current_app.config["STREAM_URL"]
     stream_up = check_stream_up(stream_url)
-    result = probe_stream(stream_url) if stream_up else DetectionResult(0, 1.0, 0, "stream_down", "unreachable")
+
+    def _attempt_probe() -> Optional[DetectionResult]:
+        return probe_stream(stream_url) if stream_up else DetectionResult(0, 1.0, 0, "stream_down", "unreachable")
+
+    result = _attempt_probe()
+
+    if result is None and current_app.config.get("SELF_HEAL_ENABLED", True):
+        record_failure("stream_probe", reason="probe_failed", restarted=True)
+        time.sleep(1)
+        result = _attempt_probe()
+
     if result is None:
+        record_failure("stream_probe", reason="probe_failed_final", restarted=False)
         process_probe_alerts(stream_up, None)
         return
 

@@ -218,6 +218,33 @@
                 </div>
             </div>
         </div>
+
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Stream Monitoring (Icecast)</h5>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="self_heal_enabled" name="self_heal_enabled" {% if self_heal_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="self_heal_enabled">Enable self-heal/restarts for probes & recordings</label>
+            </div>
+            <div class="mb-3">
+                <label for="icecast_status_url" class="form-label">Icecast Status URL</label>
+                <input type="text" name="icecast_status_url" id="icecast_status_url" class="form-control" value="{{ icecast_status_url }}" placeholder="https://host:port/admin/stats">
+                <div class="form-text">Used to show listener counts on the dashboard.</div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="icecast_username" class="form-label">Icecast Admin Username</label>
+                    <input type="text" name="icecast_username" id="icecast_username" class="form-control" value="{{ icecast_username }}" placeholder="admin">
+                </div>
+                <div class="col-md-6">
+                    <label for="icecast_password" class="form-label">Icecast Admin Password</label>
+                    <input type="password" name="icecast_password" id="icecast_password" class="form-control" value="{{ icecast_password }}">
+                </div>
+            </div>
+            <div class="mb-0">
+                <label for="icecast_mount" class="form-label">Mount Name (e.g., /stream)</label>
+                <input type="text" name="icecast_mount" id="icecast_mount" class="form-control" value="{{ icecast_mount }}">
+            </div>
+        </div>
         <div class="mb-3 border rounded p-3 bg-light">
             <h5 class="mb-3">OAuth (Google)</h5>
             <div class="mb-3">

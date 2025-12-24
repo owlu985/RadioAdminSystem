@@ -1,11 +1,13 @@
 from datetime import datetime
 import time
+from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request
 from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show
 from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
+from app.services.stream_monitor import fetch_icecast_listeners
 from app.services.music_search import (
     search_music,
     get_track,
@@ -405,16 +407,31 @@ def stream_status():
         status["stream_up"] = resp.status_code < 500
     except Exception:
         status["stream_up"] = False
-    # reuse probe for silence/automation check
-    probe = probe_stream(url)
-    if probe:
+
+    probe = StreamProbe.query.order_by(StreamProbe.created_at.desc()).first()
+    if probe is None or (datetime.utcnow() - probe.created_at) > timedelta(minutes=10):
+        probe_result = probe_stream(url)
+        if probe_result:
+            status["probe"] = {
+                "classification": probe_result.classification,
+                "reason": probe_result.reason,
+                "avg_db": probe_result.avg_db,
+                "silence_ratio": probe_result.silence_ratio,
+                "automation_ratio": probe_result.automation_ratio,
+            }
+    else:
         status["probe"] = {
             "classification": probe.classification,
             "reason": probe.reason,
             "avg_db": probe.avg_db,
             "silence_ratio": probe.silence_ratio,
             "automation_ratio": probe.automation_ratio,
+            "timestamp": probe.created_at.isoformat(),
         }
+
+    listeners = fetch_icecast_listeners()
+    if listeners is not None:
+        status["listeners"] = listeners
     return jsonify(status)
 
 

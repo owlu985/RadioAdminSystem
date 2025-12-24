@@ -198,3 +198,15 @@ class MusicCue(db.Model):
     fade_in = db.Column(db.Float, nullable=True)
     fade_out = db.Column(db.Float, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class JobHealth(db.Model):
+    __tablename__ = "job_health"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(64), unique=True, nullable=False)
+    failure_count = db.Column(db.Integer, default=0, nullable=False)
+    restart_count = db.Column(db.Integer, default=0, nullable=False)
+    last_failure_at = db.Column(db.DateTime, nullable=True)
+    last_restart_at = db.Column(db.DateTime, nullable=True)
+    last_failure_reason = db.Column(db.String(255), nullable=True)

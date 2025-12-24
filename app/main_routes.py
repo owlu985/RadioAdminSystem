@@ -11,6 +11,8 @@ from app.auth_utils import admin_required
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track, load_cue, save_cue
 from app.services.audit import audit_recordings, audit_explicit_music
+from app.services.health import get_health_snapshot
+from app.services.stream_monitor import fetch_icecast_listeners
 from datetime import datetime
 from app.models import DJ
 from app.oauth import oauth, init_oauth, ensure_oauth_initialized
@@ -179,12 +181,17 @@ def dashboard():
                 DJAbsence.status.in_(["pending", "approved"])
         ).order_by(DJAbsence.start_time).limit(10).all()
 
+        health = get_health_snapshot()
+        listeners = fetch_icecast_listeners()
+
         return render_template(
                 'dashboard.html',
                 current_show=current_show,
                 current_run=current_run,
                 window=window,
                 absences=absences,
+                health=health,
+                listeners=listeners,
         )
 
 
@@ -835,7 +842,8 @@ ALLOWED_SETTINGS_KEYS = [
     'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM', 'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_PORT', 'ALERTS_SMTP_USERNAME',
     'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
     'ALERT_REPEAT_MINUTES', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
-    'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID'
+    'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
+    'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'SELF_HEAL_ENABLED'
 ]
 
 
@@ -880,6 +888,11 @@ def settings():
                 'ALERT_DEAD_AIR_THRESHOLD_MINUTES': int(request.form.get('alert_dead_air_threshold_minutes') or current_app.config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5)),
                 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES': int(request.form.get('alert_stream_down_threshold_minutes') or current_app.config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1)),
                 'ALERT_REPEAT_MINUTES': int(request.form.get('alert_repeat_minutes') or current_app.config.get('ALERT_REPEAT_MINUTES', 15)),
+                'ICECAST_STATUS_URL': _clean_optional(request.form.get('icecast_status_url', '').strip()),
+                'ICECAST_USERNAME': _clean_optional(request.form.get('icecast_username', '').strip()),
+                'ICECAST_PASSWORD': _clean_optional(request.form.get('icecast_password', '').strip()),
+                'ICECAST_MOUNT': _clean_optional(request.form.get('icecast_mount', '').strip()),
+                'SELF_HEAL_ENABLED': 'self_heal_enabled' in request.form,
                 'OAUTH_CLIENT_ID': _clean_optional(request.form.get('oauth_client_id', '').strip()),
                 'OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('oauth_client_secret', '').strip()),
                 'OAUTH_ALLOWED_DOMAIN': _clean_optional(request.form.get('oauth_allowed_domain', '').strip()),
@@ -932,6 +945,11 @@ def settings():
         'alert_dead_air_threshold_minutes': config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5),
         'alert_stream_down_threshold_minutes': config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1),
         'alert_repeat_minutes': config.get('ALERT_REPEAT_MINUTES', 15),
+        'icecast_status_url': _clean_optional(config.get('ICECAST_STATUS_URL', '')) or '',
+        'icecast_username': _clean_optional(config.get('ICECAST_USERNAME', '')) or '',
+        'icecast_password': _clean_optional(config.get('ICECAST_PASSWORD', '')) or '',
+        'icecast_mount': _clean_optional(config.get('ICECAST_MOUNT', '')) or '',
+        'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
         'oauth_client_id': _clean_optional(config.get('OAUTH_CLIENT_ID', '')) or '',
         'oauth_client_secret': _clean_optional(config.get('OAUTH_CLIENT_SECRET', '')) or '',
         'oauth_allowed_domain': _clean_optional(config.get('OAUTH_ALLOWED_DOMAIN', '')) or '',
@@ -978,7 +996,8 @@ def import_settings():
         'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
         'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
         'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
-        'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND'
+        'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
+        'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT'
     } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
     if not filtered:
