@@ -26,7 +26,14 @@ def _clean_optional(value):
 def init_oauth(app):
         """Initialize OAuth providers when credentials are configured."""
         # Clear any previously-registered clients so changes in settings take effect
-        oauth.clients.clear()
+        # Authlib exposes the registry as a private _clients dict; some versions
+        # do not provide a public .clients attribute. Safely clear whichever is
+        # present to avoid AttributeError.
+        clients_registry = getattr(oauth, "clients", None)
+        if clients_registry is not None:
+                clients_registry.clear()
+        elif hasattr(oauth, "_clients"):
+                oauth._clients.clear()
         oauth.init_app(app)
 
         client_id = _clean_optional(app.config.get("OAUTH_CLIENT_ID"))
