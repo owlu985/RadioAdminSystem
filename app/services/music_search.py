@@ -53,8 +53,23 @@ def _read_tags(path: str) -> Dict:
 
     def _coerce(val):
         if isinstance(val, list):
-            return val[0]
-        return val
+            val = val[0]
+        if hasattr(val, "decode"):
+            try:
+                val = val.decode("utf-8", errors="ignore")
+            except Exception:
+                pass
+        # Handle MP4FreeForm and tuple track/disc values
+        if hasattr(val, "__iter__") and not isinstance(val, (str, bytes)):
+            try:
+                if len(val) == 2 and all(isinstance(x, (int, float)) for x in val):
+                    return val
+            except Exception:
+                pass
+        try:
+            return str(val)
+        except Exception:
+            return val
 
     try:
         audio_easy = mutagen.File(path, easy=True)
@@ -77,14 +92,13 @@ def _read_tags(path: str) -> Dict:
                 if val:
                     data[target] = _coerce(val)
 
-        needs_mp4 = path.lower().endswith((".m4a", ".mp4")) and (not data["artist"] or not data["title"])
-        if needs_mp4:
+        # Always attempt MP4 atom parsing for M4A/MP4 to capture richer tags
+        if path.lower().endswith((".m4a", ".mp4")):
             try:
                 from mutagen.mp4 import MP4  # type: ignore
 
                 mp4 = MP4(path)
                 mp4_tags = mp4.tags or {}
-                # Map common MP4 atom names to our fields
                 mp4_map = {
                     "\xa9nam": "title",
                     "\xa9ART": "artist",
@@ -99,8 +113,9 @@ def _read_tags(path: str) -> Dict:
                 for atom, target in mp4_map.items():
                     val = mp4_tags.get(atom)
                     if val:
-                        data[target] = _coerce(val)
-                if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data["bitrate"]:
+                        coerced = _coerce(val)
+                        data[target] = coerced
+                if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
                 pass
@@ -154,7 +169,8 @@ def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
     duration_seconds, peak_db, rms_db, peaks = _audio_stats(path)
     bitrate = tags.get("bitrate")
     file_hash = _hash_file(path)
-    missing_tags = not (tags.get("artist") and tags.get("title"))
+    base_title = os.path.splitext(os.path.basename(path))[0]
+    missing_tags = not (tags.get("artist") and tags.get("title") and tags.get("title") != base_title)
     analysis = MusicAnalysis(
         path=path,
         duration_seconds=duration_seconds,
@@ -311,6 +327,10 @@ def save_cue(path: str, payload: Dict) -> MusicCue:
     cue.cue_in = payload.get("cue_in")
     cue.intro = payload.get("intro")
     cue.outro = payload.get("outro")
+    cue.cue_out = payload.get("cue_out")
+    cue.hook_in = payload.get("hook_in")
+    cue.hook_out = payload.get("hook_out")
+    cue.start_next = payload.get("start_next")
     cue.fade_in = payload.get("fade_in")
     cue.fade_out = payload.get("fade_out")
     db.session.add(cue)

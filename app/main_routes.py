@@ -1,5 +1,6 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort
 import json
+import os
 from .scheduler import refresh_schedule, pause_shows_until
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time, timedelta
@@ -377,6 +378,29 @@ def music_search_page():
     return render_template("music_search.html")
 
 
+def _safe_music_path(path: str) -> str:
+    root = current_app.config.get("NAS_MUSIC_ROOT") or ""
+    if not root:
+        abort(404)
+    normalized = os.path.realpath(path)
+    root_norm = os.path.realpath(root)
+    if not normalized.startswith(root_norm):
+        abort(403)
+    if not os.path.exists(normalized):
+        abort(404)
+    return normalized
+
+
+@main_bp.route("/music/stream")
+@admin_required
+def music_stream():
+    path = request.args.get("path")
+    if not path:
+        abort(404)
+    safe_path = _safe_music_path(path)
+    return send_file(safe_path, conditional=True)
+
+
 @main_bp.route("/music/detail")
 @admin_required
 def music_detail_page():
@@ -419,28 +443,32 @@ def music_edit_page():
 @main_bp.route("/music/cue", methods=["GET", "POST"])
 @admin_required
 def music_cue_page():
-        path = request.values.get("path")
-        if not path:
-                return render_template("music_edit.html", track=None, error="Missing path for cue editor")
-        track = get_track(path)
-        cue_obj = load_cue(path)
-        cue = {
-                "cue_in": cue_obj.cue_in if cue_obj else None,
-                "intro": cue_obj.intro if cue_obj else None,
-                "outro": cue_obj.outro if cue_obj else None,
-                "fade_in": cue_obj.fade_in if cue_obj else None,
-                "fade_out": cue_obj.fade_out if cue_obj else None,
-        }
-        if request.method == "POST":
-                payload = {}
-                for field in ["cue_in", "intro", "outro", "fade_in", "fade_out"]:
-                        val = request.form.get(field)
-                        payload[field] = float(val) if val else None
-                cue_obj = save_cue(path, payload)
-                cue.update(payload)
-                flash("CUE points saved.", "success")
-                return redirect(url_for("main.music_cue_page", path=path))
-        return render_template("music_cue.html", track=track, cue=cue)
+    path = request.values.get("path")
+    if not path:
+        return render_template("music_edit.html", track=None, error="Missing path for cue editor")
+    track = get_track(path)
+    cue_obj = load_cue(path)
+    cue = {
+        "cue_in": cue_obj.cue_in if cue_obj else None,
+        "intro": cue_obj.intro if cue_obj else None,
+        "outro": cue_obj.outro if cue_obj else None,
+        "cue_out": cue_obj.cue_out if cue_obj else None,
+        "hook_in": cue_obj.hook_in if cue_obj else None,
+        "hook_out": cue_obj.hook_out if cue_obj else None,
+        "start_next": cue_obj.start_next if cue_obj else None,
+        "fade_in": cue_obj.fade_in if cue_obj else None,
+        "fade_out": cue_obj.fade_out if cue_obj else None,
+    }
+    if request.method == "POST":
+        payload = {}
+        for field in ["cue_in", "intro", "outro", "cue_out", "hook_in", "hook_out", "start_next", "fade_in", "fade_out"]:
+            val = request.form.get(field)
+            payload[field] = float(val) if val else None
+        cue_obj = save_cue(path, payload)
+        cue.update(payload)
+        flash("CUE points saved.", "success")
+        return redirect(url_for("main.music_cue_page", path=path))
+    return render_template("music_cue.html", track=track, cue=cue)
 
 
 @main_bp.route("/audit", methods=["GET", "POST"])
