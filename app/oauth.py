@@ -3,6 +3,18 @@ from authlib.integrations.flask_client import OAuth
 oauth = OAuth()
 
 
+def ensure_oauth_initialized(app):
+    """Safely initialize OAuth if it hasn't been bound to the app yet.
+
+    This guards routes that might run before create_app() completed init_oauth,
+    avoiding runtime errors like "OAuth is not init with Flask app." when
+    credentials are present but the extension was not bound due to earlier
+    startup ordering.
+    """
+    if getattr(oauth, "app", None) is None:
+        init_oauth(app)
+
+
 def _clean_optional(value):
         if value is None:
                 return None

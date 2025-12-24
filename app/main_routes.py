@@ -13,7 +13,7 @@ from app.services.music_search import search_music, get_track
 from app.services.audit import audit_recordings, audit_explicit_music
 from datetime import datetime
 from app.models import DJ
-from app.oauth import oauth, init_oauth
+from app.oauth import oauth, init_oauth, ensure_oauth_initialized
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -301,6 +301,8 @@ def audit_page():
 def login():
     """Login route for admin authentication."""
 
+    ensure_oauth_initialized(current_app)
+
     google_client = oauth.create_client("google")
     discord_client = oauth.create_client("discord")
     oauth_enabled = google_client is not None or discord_client is not None
@@ -337,6 +339,8 @@ def login():
 def login_oauth_google():
         """Start a Google OAuth login."""
 
+        ensure_oauth_initialized(current_app)
+
         client = oauth.create_client("google")
         if client is None:
                 flash("Google OAuth is not configured. Please add a client id/secret in Settings.", "danger")
@@ -349,6 +353,8 @@ def login_oauth_google():
 @main_bp.route("/login/oauth/google/callback")
 def oauth_callback_google():
         """Handle Google OAuth callback and establish a session."""
+
+        ensure_oauth_initialized(current_app)
 
         client = oauth.create_client("google")
         if client is None:
@@ -404,6 +410,8 @@ def oauth_callback_google():
 def login_oauth_discord():
         """Start a Discord OAuth login."""
 
+        ensure_oauth_initialized(current_app)
+
         client = oauth.create_client("discord")
         if client is None:
                 flash("Discord OAuth is not configured. Please add the Discord client id/secret in Settings.", "danger")
@@ -416,6 +424,8 @@ def login_oauth_discord():
 @main_bp.route("/login/oauth/discord/callback")
 def oauth_callback_discord():
         """Handle Discord OAuth callback and establish a session."""
+
+        ensure_oauth_initialized(current_app)
 
         client = oauth.create_client("discord")
         if client is None:
