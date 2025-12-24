@@ -108,15 +108,38 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
 
     with NamedTemporaryFile(suffix=".mp3", delete=True) as tmp:
         try:
-            (
+            stream_input = (
                 ffmpeg
                 .input(stream_url, t=duration)
+                .global_args(
+                    "-reconnect", "1",
+                    "-reconnect_streamed", "1",
+                    "-reconnect_delay_max", "2",
+                )
+            )
+
+            _, stderr = (
+                stream_input
                 .output(tmp.name, acodec="copy")
                 .overwrite_output()
-                .run(quiet=True)
+                .run(capture_stdout=True, capture_stderr=True)
             )
+
+            if stderr:
+                detail = stderr.decode(errors="ignore").strip()
+                if detail:
+                    logger.debug("FFmpeg probe stderr: %s", detail)
+
+        except ffmpeg.Error as exc:  # type: ignore[attr-defined]
+            detail = ""
+            try:
+                detail = exc.stderr.decode(errors="ignore") if exc.stderr else ""
+            except Exception:  # noqa: BLE001
+                detail = str(exc)
+            logger.error("FFmpeg probe error: %s", (detail or str(exc)).strip())
+            return None
         except Exception as exc:  # noqa: BLE001
-            logger.error(f"FFmpeg probe error: {exc}")
+            logger.error("FFmpeg probe unexpected error: %s", exc)
             return None
 
         return analyze_audio(tmp.name, config)
