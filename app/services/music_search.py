@@ -35,9 +35,10 @@ def _walk_music():
 
 
 def _read_tags(path: str) -> Dict:
+    base_title = os.path.splitext(os.path.basename(path))[0]
     data = {
         "path": path,
-        "title": os.path.splitext(os.path.basename(path))[0],
+        "title": None,
         "artist": None,
         "album": None,
         "composer": None,
@@ -115,6 +116,32 @@ def _read_tags(path: str) -> Dict:
 
         # Always attempt MP4 atom parsing for M4A/MP4 to capture richer tags
         if path.lower().endswith((".m4a", ".mp4")):
+            # First try the friendly EasyMP4 mapper; fall back to raw atoms if needed
+            try:
+                from mutagen.mp4 import EasyMP4  # type: ignore
+
+                easy_mp4 = EasyMP4(path)
+                if easy_mp4 and easy_mp4.tags:
+                    for key, target in [
+                        ("title", "title"),
+                        ("artist", "artist"),
+                        ("album", "album"),
+                        ("composer", "composer"),
+                        ("isrc", "isrc"),
+                        ("date", "year"),
+                        ("year", "year"),
+                        ("tracknumber", "track"),
+                        ("discnumber", "disc"),
+                        ("copyright", "copyright"),
+                    ]:
+                        val = easy_mp4.tags.get(key)
+                        if val and not data.get(target):
+                            coerced = _coerce(val)
+                            if coerced:
+                                data[target] = coerced
+            except Exception:
+                pass
+
             try:
                 from mutagen.mp4 import MP4  # type: ignore
 
@@ -135,6 +162,8 @@ def _read_tags(path: str) -> Dict:
                 }
 
                 for target, atoms in atom_map.items():
+                    if data.get(target):
+                        continue
                     for atom in atoms:
                         val = mp4_tags.get(atom)
                         if val:
@@ -158,12 +187,31 @@ def _read_tags(path: str) -> Dict:
                             if coerced:
                                 data["title"] = coerced
 
+                # As an ultimate fallback, scan all remaining tag values for string-like content
+                if not data.get("artist") or not data.get("title") or not data.get("album"):
+                    for key, val in mp4_tags.items():
+                        coerced = _coerce(val)
+                        if not coerced:
+                            continue
+                        if isinstance(coerced, str):
+                            lower_val = coerced.lower()
+                            if not data.get("artist") and "artist" in lower_val:
+                                data["artist"] = coerced
+                            if not data.get("title") and ("title" in lower_val or "name" in lower_val):
+                                data["title"] = coerced
+                            if not data.get("album") and "album" in lower_val:
+                                data["album"] = coerced
+
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
                 pass
+        if not data.get("title"):
+            data["title"] = base_title
         return data
     except Exception:
+        if not data.get("title"):
+            data["title"] = base_title
         return data
 
 
