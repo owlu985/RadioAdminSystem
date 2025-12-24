@@ -43,6 +43,34 @@ def create_app(config_class=Config):
         try:
             with open(user_config_path, 'r') as f:
                 user_config = json.load(f)
+
+                def _normalize_optional(val):
+                    if val is None:
+                        return None
+                    if isinstance(val, str) and val.strip().lower() in {"", "none", "null"}:
+                        return None
+                    return val
+
+                optional_keys = {
+                    "TEMPEST_API_KEY",
+                    "OAUTH_CLIENT_ID",
+                    "OAUTH_CLIENT_SECRET",
+                    "OAUTH_ALLOWED_DOMAIN",
+                    "DISCORD_OAUTH_CLIENT_ID",
+                    "DISCORD_OAUTH_CLIENT_SECRET",
+                    "DISCORD_ALLOWED_GUILD_ID",
+                    "ALERTS_DISCORD_WEBHOOK",
+                    "ALERTS_EMAIL_TO",
+                    "ALERTS_EMAIL_FROM",
+                    "ALERTS_SMTP_SERVER",
+                    "ALERTS_SMTP_USERNAME",
+                    "ALERTS_SMTP_PASSWORD",
+                }
+
+                for key in optional_keys:
+                    if key in user_config:
+                        user_config[key] = _normalize_optional(user_config[key])
+
                 app.config.update(user_config)
         except Exception as e:
             initial_logger.error(f"Error loading user config: {e}")

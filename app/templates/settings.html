@@ -59,7 +59,18 @@
 <div class="container mt-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Settings</h2>
-        <div>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <form action="{{ url_for('main.export_settings') }}" method="get" class="m-0">
+                <button type="submit" class="btn btn-outline-primary" aria-label="Export settings JSON">
+                    <i class="bi bi-download"></i> Export JSON
+                </button>
+            </form>
+            <form action="{{ url_for('main.import_settings') }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center m-0">
+                <input type="file" name="settings_file" accept="application/json" class="form-control form-control-sm" aria-label="Choose settings JSON">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" aria-label="Import settings JSON">
+                    <i class="bi bi-upload"></i> Import JSON
+                </button>
+            </form>
             {% if config.PAUSE_SHOWS_RECORDING == True %}
                 <form action="{{ url_for('main.resume') }}" method="POST" style="display:inline;">
                     <button type="submit" class="btn btn-secondary" aria-label="Resume Recordings">

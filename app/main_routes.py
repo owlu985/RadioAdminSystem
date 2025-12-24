@@ -1,4 +1,5 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app
+import json
 from .scheduler import refresh_schedule, pause_shows_until
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time
@@ -249,12 +250,16 @@ def login():
             logger.warning("Invalid login attempt.")
             flash("Invalid credentials. Please try again.", "danger")
 
+    allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
+    if isinstance(allowed_domain, str) and allowed_domain.strip().lower() in {"", "none", "null"}:
+        allowed_domain = None
+
     return render_template(
         'login.html',
         oauth_enabled=oauth_enabled,
         oauth_google_enabled=google_client is not None,
         oauth_discord_enabled=discord_client is not None,
-        oauth_allowed_domain=current_app.config.get("OAUTH_ALLOWED_DOMAIN"),
+        oauth_allowed_domain=allowed_domain,
     )
 
 
@@ -483,6 +488,25 @@ def edit_show(id):
 		flash(f"Error editing show: {e}", "danger")
 		return redirect(url_for('main.shows'))
 
+ALLOWED_SETTINGS_KEYS = [
+    'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',
+    'AUTO_CREATE_SHOW_FOLDERS', 'STATION_NAME', 'STATION_SLOGAN', 'STATION_BACKGROUND', 'TEMPEST_API_KEY',
+    'TEMPEST_STATION_ID', 'ALERTS_ENABLED', 'ALERTS_DRY_RUN', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_ENABLED',
+    'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM', 'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_PORT', 'ALERTS_SMTP_USERNAME',
+    'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
+    'ALERT_REPEAT_MINUTES', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
+    'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID'
+]
+
+
+def _clean_optional(value):
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+        return None
+    return value
+
+
 @main_bp.route('/settings', methods=['GET', 'POST'])
 @admin_required
 def settings():
@@ -501,27 +525,27 @@ def settings():
                 'STATION_NAME': request.form['station_name'],
                 'STATION_SLOGAN': request.form['station_slogan'],
                 'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
-                'TEMPEST_API_KEY': request.form.get('tempest_api_key', '').strip() or None,
+                'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
                 'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
                 'ALERTS_ENABLED': 'alerts_enabled' in request.form,
                 'ALERTS_DRY_RUN': 'alerts_dry_run' in request.form,
-                'ALERTS_DISCORD_WEBHOOK': request.form.get('alerts_discord_webhook', '').strip() or None,
+                'ALERTS_DISCORD_WEBHOOK': _clean_optional(request.form.get('alerts_discord_webhook', '').strip()),
                 'ALERTS_EMAIL_ENABLED': 'alerts_email_enabled' in request.form,
-                'ALERTS_EMAIL_TO': request.form.get('alerts_email_to', '').strip() or None,
-                'ALERTS_EMAIL_FROM': request.form.get('alerts_email_from', '').strip() or None,
-                'ALERTS_SMTP_SERVER': request.form.get('alerts_smtp_server', '').strip() or None,
+                'ALERTS_EMAIL_TO': _clean_optional(request.form.get('alerts_email_to', '').strip()),
+                'ALERTS_EMAIL_FROM': _clean_optional(request.form.get('alerts_email_from', '').strip()),
+                'ALERTS_SMTP_SERVER': _clean_optional(request.form.get('alerts_smtp_server', '').strip()),
                 'ALERTS_SMTP_PORT': int(request.form.get('alerts_smtp_port') or current_app.config.get('ALERTS_SMTP_PORT', 587)),
-                'ALERTS_SMTP_USERNAME': request.form.get('alerts_smtp_username', '').strip() or None,
-                'ALERTS_SMTP_PASSWORD': request.form.get('alerts_smtp_password', '').strip() or None,
+                'ALERTS_SMTP_USERNAME': _clean_optional(request.form.get('alerts_smtp_username', '').strip()),
+                'ALERTS_SMTP_PASSWORD': _clean_optional(request.form.get('alerts_smtp_password', '').strip()),
                 'ALERT_DEAD_AIR_THRESHOLD_MINUTES': int(request.form.get('alert_dead_air_threshold_minutes') or current_app.config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5)),
                 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES': int(request.form.get('alert_stream_down_threshold_minutes') or current_app.config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1)),
                 'ALERT_REPEAT_MINUTES': int(request.form.get('alert_repeat_minutes') or current_app.config.get('ALERT_REPEAT_MINUTES', 15)),
-                'OAUTH_CLIENT_ID': request.form.get('oauth_client_id', '').strip() or None,
-                'OAUTH_CLIENT_SECRET': request.form.get('oauth_client_secret', '').strip() or None,
-                'OAUTH_ALLOWED_DOMAIN': request.form.get('oauth_allowed_domain', '').strip() or None,
-                'DISCORD_OAUTH_CLIENT_ID': request.form.get('discord_oauth_client_id', '').strip() or None,
-                'DISCORD_OAUTH_CLIENT_SECRET': request.form.get('discord_oauth_client_secret', '').strip() or None,
-                'DISCORD_ALLOWED_GUILD_ID': request.form.get('discord_allowed_guild_id', '').strip() or None,
+                'OAUTH_CLIENT_ID': _clean_optional(request.form.get('oauth_client_id', '').strip()),
+                'OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('oauth_client_secret', '').strip()),
+                'OAUTH_ALLOWED_DOMAIN': _clean_optional(request.form.get('oauth_allowed_domain', '').strip()),
+                'DISCORD_OAUTH_CLIENT_ID': _clean_optional(request.form.get('discord_oauth_client_id', '').strip()),
+                'DISCORD_OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('discord_oauth_client_secret', '').strip()),
+                'DISCORD_ALLOWED_GUILD_ID': _clean_optional(request.form.get('discord_allowed_guild_id', '').strip()),
             }
 
             update_user_config(updated_settings)
@@ -561,16 +585,65 @@ def settings():
         'alert_dead_air_threshold_minutes': config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5),
         'alert_stream_down_threshold_minutes': config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1),
         'alert_repeat_minutes': config.get('ALERT_REPEAT_MINUTES', 15),
-        'oauth_client_id': config.get('OAUTH_CLIENT_ID', ''),
-        'oauth_client_secret': config.get('OAUTH_CLIENT_SECRET', ''),
-        'oauth_allowed_domain': config.get('OAUTH_ALLOWED_DOMAIN', ''),
-        'discord_oauth_client_id': config.get('DISCORD_OAUTH_CLIENT_ID', ''),
-        'discord_oauth_client_secret': config.get('DISCORD_OAUTH_CLIENT_SECRET', ''),
-        'discord_allowed_guild_id': config.get('DISCORD_ALLOWED_GUILD_ID', ''),
+        'oauth_client_id': _clean_optional(config.get('OAUTH_CLIENT_ID', '')) or '',
+        'oauth_client_secret': _clean_optional(config.get('OAUTH_CLIENT_SECRET', '')) or '',
+        'oauth_allowed_domain': _clean_optional(config.get('OAUTH_ALLOWED_DOMAIN', '')) or '',
+        'discord_oauth_client_id': _clean_optional(config.get('DISCORD_OAUTH_CLIENT_ID', '')) or '',
+        'discord_oauth_client_secret': _clean_optional(config.get('DISCORD_OAUTH_CLIENT_SECRET', '')) or '',
+        'discord_allowed_guild_id': _clean_optional(config.get('DISCORD_ALLOWED_GUILD_ID', '')) or '',
     }
 
     logger.info(f'Rendering settings page.')
     return render_template('settings.html', **settings_data)
+
+
+@main_bp.route('/settings/export', methods=['GET'])
+@admin_required
+def export_settings():
+    """Export current settings as JSON for backup/transfer."""
+    payload = {key: current_app.config.get(key) for key in ALLOWED_SETTINGS_KEYS}
+    return current_app.response_class(
+        json.dumps(payload, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename="rams-settings.json"'}
+    )
+
+
+@main_bp.route('/settings/import', methods=['POST'])
+@admin_required
+def import_settings():
+    """Import settings from an uploaded JSON file."""
+    file = request.files.get('settings_file')
+    if not file or file.filename == '':
+        flash('Please choose a settings JSON file to import.', 'warning')
+        return redirect(url_for('main.settings'))
+
+    try:
+        data = json.load(file)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Failed to parse settings JSON: {exc}")
+        flash('Could not read the uploaded settings file. Please check the JSON.', 'danger')
+        return redirect(url_for('main.settings'))
+
+    filtered = {k: _clean_optional(v) if k in {
+        'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
+        'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
+        'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
+        'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND'
+    } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
+
+    if not filtered:
+        flash('No recognized settings were found in the uploaded file.', 'warning')
+        return redirect(url_for('main.settings'))
+
+    try:
+        update_user_config(filtered)
+        flash('Settings imported successfully.', 'success')
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Failed to import settings: {exc}")
+        flash('Import failed. Please try again with a valid settings file.', 'danger')
+
+    return redirect(url_for('main.settings'))
 
 @main_bp.route('/update_schedule', methods=['POST'])
 @admin_required

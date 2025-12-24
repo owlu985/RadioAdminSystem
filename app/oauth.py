@@ -3,14 +3,22 @@ from authlib.integrations.flask_client import OAuth
 oauth = OAuth()
 
 
+def _clean_optional(value):
+        if value is None:
+                return None
+        if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+                return None
+        return value
+
+
 def init_oauth(app):
         """Initialize OAuth providers when credentials are configured."""
         oauth.init_app(app)
 
-        client_id = app.config.get("OAUTH_CLIENT_ID")
-        client_secret = app.config.get("OAUTH_CLIENT_SECRET")
-        discord_client_id = app.config.get("DISCORD_OAUTH_CLIENT_ID")
-        discord_client_secret = app.config.get("DISCORD_OAUTH_CLIENT_SECRET")
+        client_id = _clean_optional(app.config.get("OAUTH_CLIENT_ID"))
+        client_secret = _clean_optional(app.config.get("OAUTH_CLIENT_SECRET"))
+        discord_client_id = _clean_optional(app.config.get("DISCORD_OAUTH_CLIENT_ID"))
+        discord_client_secret = _clean_optional(app.config.get("DISCORD_OAUTH_CLIENT_SECRET"))
 
         if not client_id or not client_secret:
                 app.logger.info("Google OAuth is not configured; skipping Google provider registration.")
