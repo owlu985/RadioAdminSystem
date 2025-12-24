@@ -53,19 +53,40 @@ def _read_tags(path: str) -> Dict:
 
     def _coerce(val):
         if isinstance(val, list):
-            val = val[0]
+            if len(val) == 1:
+                return _coerce(val[0])
+            return [_coerce(v) for v in val]
+
         if hasattr(val, "decode"):
             try:
                 val = val.decode("utf-8", errors="ignore")
             except Exception:
                 pass
-        # Handle MP4FreeForm and tuple track/disc values
-        if hasattr(val, "__iter__") and not isinstance(val, (str, bytes)):
+
+        # Handle MP4FreeForm, tuples (track/disc), and bytes gracefully
+        try:
+            from mutagen.mp4 import MP4FreeForm  # type: ignore
+        except Exception:  # noqa: BLE001
+            MP4FreeForm = None  # type: ignore
+
+        if MP4FreeForm is not None and isinstance(val, MP4FreeForm):
             try:
-                if len(val) == 2 and all(isinstance(x, (int, float)) for x in val):
-                    return val
+                return val.decode("utf-8", errors="ignore").strip("\x00")
             except Exception:
-                pass
+                try:
+                    return bytes(val).decode("utf-8", errors="ignore").strip("\x00")
+                except Exception:
+                    return str(val)
+
+        if isinstance(val, bytes):
+            try:
+                return val.decode("utf-8", errors="ignore").strip("\x00")
+            except Exception:
+                return val
+
+        if isinstance(val, tuple) and len(val) == 2 and all(isinstance(x, (int, float)) for x in val):
+            return val
+
         try:
             return str(val)
         except Exception:
@@ -114,7 +135,9 @@ def _read_tags(path: str) -> Dict:
                     val = mp4_tags.get(atom)
                     if val:
                         coerced = _coerce(val)
-                        data[target] = coerced
+                        # Prefer richer MP4 atoms over easy tags when empty
+                        if coerced:
+                            data[target] = coerced
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
