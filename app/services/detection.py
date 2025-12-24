@@ -106,41 +106,53 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
         logger.info("Using test sample audio for probe: %s", sample)
         return analyze_audio(str(sample), config)
 
-    with NamedTemporaryFile(suffix=".mp3", delete=True) as tmp:
+    tmp = NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp_path = tmp.name
+    tmp.close()  # On Windows, keep the path but close the handle so ffmpeg can write
+
+    result: Optional[DetectionResult] = None
+
+    try:
+        stream_input = ffmpeg.input(
+            stream_url,
+            t=duration,
+            reconnect=1,
+            reconnect_streamed=1,
+            reconnect_delay_max=2,
+        )
+
+        _, stderr = (
+            stream_input
+            .output(tmp_path, acodec="copy")
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+
+        if stderr:
+            detail = stderr.decode(errors="ignore").strip()
+            if detail:
+                logger.debug("FFmpeg probe stderr: %s", detail)
+
+        result = analyze_audio(tmp_path, config)
+
+    except ffmpeg.Error as exc:  # type: ignore[attr-defined]
+        detail = ""
         try:
-            stream_input = ffmpeg.input(
-                stream_url,
-                t=duration,
-                reconnect=1,
-                reconnect_streamed=1,
-                reconnect_delay_max=2,
-            )
+            detail = exc.stderr.decode(errors="ignore") if exc.stderr else ""
+        except Exception:  # noqa: BLE001
+            detail = str(exc)
+        logger.error("FFmpeg probe error: %s", (detail or str(exc)).strip())
+        result = None
+    except Exception as exc:  # noqa: BLE001
+        logger.error("FFmpeg probe unexpected error: %s", exc)
+        result = None
+    finally:
+        try:
+            Path(tmp_path).unlink(missing_ok=True)
+        except Exception:  # noqa: BLE001
+            logger.warning("Could not delete probe temp file: %s", tmp_path)
 
-            _, stderr = (
-                stream_input
-                .output(tmp.name, acodec="copy")
-                .overwrite_output()
-                .run(capture_stdout=True, capture_stderr=True)
-            )
-
-            if stderr:
-                detail = stderr.decode(errors="ignore").strip()
-                if detail:
-                    logger.debug("FFmpeg probe stderr: %s", detail)
-
-        except ffmpeg.Error as exc:  # type: ignore[attr-defined]
-            detail = ""
-            try:
-                detail = exc.stderr.decode(errors="ignore") if exc.stderr else ""
-            except Exception:  # noqa: BLE001
-                detail = str(exc)
-            logger.error("FFmpeg probe error: %s", (detail or str(exc)).strip())
-            return None
-        except Exception as exc:  # noqa: BLE001
-            logger.error("FFmpeg probe unexpected error: %s", exc)
-            return None
-
-        return analyze_audio(tmp.name, config)
+    return result
 
 
 def probe_and_record():
