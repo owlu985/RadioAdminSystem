@@ -7,6 +7,7 @@ import time
 import ffmpeg
 import numpy as np
 from pydub import AudioSegment
+from pydub.utils import make_chunks
 from flask import current_app
 from datetime import datetime
 
@@ -46,7 +47,7 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
         avg_db = 20 * np.log10(rms) if rms > 0 else -100
 
         chunk_ms = config.get("SILENCE_CHUNK_MS", 500)
-        chunks = audio[::chunk_ms]
+        chunks = make_chunks(audio, chunk_ms)
 
         silence_chunks = 0
         automation_chunks = 0

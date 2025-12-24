@@ -50,27 +50,60 @@ def _read_tags(path: str) -> Dict:
     }
     if not mutagen:
         return data
+
+    def _coerce(val):
+        if isinstance(val, list):
+            return val[0]
+        return val
+
     try:
-        audio = mutagen.File(path, easy=True)
-        if not audio:
-            return data
-        if hasattr(audio, "info") and getattr(audio.info, "bitrate", None):
-            data["bitrate"] = getattr(audio.info, "bitrate")
-        for key, target in [
-            ("title", "title"),
-            ("artist", "artist"),
-            ("album", "album"),
-            ("composer", "composer"),
-            ("isrc", "isrc"),
-            ("date", "year"),
-            ("year", "year"),
-            ("tracknumber", "track"),
-            ("discnumber", "disc"),
-            ("copyright", "copyright"),
-        ]:
-            val = audio.tags.get(key) if audio.tags else None
-            if val:
-                data[target] = val[0] if isinstance(val, list) else val
+        audio_easy = mutagen.File(path, easy=True)
+        if audio_easy:
+            if hasattr(audio_easy, "info") and getattr(audio_easy.info, "bitrate", None):
+                data["bitrate"] = getattr(audio_easy.info, "bitrate")
+            for key, target in [
+                ("title", "title"),
+                ("artist", "artist"),
+                ("album", "album"),
+                ("composer", "composer"),
+                ("isrc", "isrc"),
+                ("date", "year"),
+                ("year", "year"),
+                ("tracknumber", "track"),
+                ("discnumber", "disc"),
+                ("copyright", "copyright"),
+            ]:
+                val = audio_easy.tags.get(key) if audio_easy.tags else None
+                if val:
+                    data[target] = _coerce(val)
+
+        needs_mp4 = path.lower().endswith((".m4a", ".mp4")) and (not data["artist"] or not data["title"])
+        if needs_mp4:
+            try:
+                from mutagen.mp4 import MP4  # type: ignore
+
+                mp4 = MP4(path)
+                mp4_tags = mp4.tags or {}
+                # Map common MP4 atom names to our fields
+                mp4_map = {
+                    "\xa9nam": "title",
+                    "\xa9ART": "artist",
+                    "\xa9alb": "album",
+                    "\xa9wrt": "composer",
+                    "----:com.apple.iTunes:ISRC": "isrc",
+                    "\xa9day": "year",
+                    "trkn": "track",
+                    "disk": "disc",
+                    "cprt": "copyright",
+                }
+                for atom, target in mp4_map.items():
+                    val = mp4_tags.get(atom)
+                    if val:
+                        data[target] = _coerce(val)
+                if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data["bitrate"]:
+                    data["bitrate"] = getattr(mp4.info, "bitrate")
+            except Exception:
+                pass
         return data
     except Exception:
         return data
