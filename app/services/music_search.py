@@ -206,11 +206,13 @@ def _read_tags(path: str) -> Dict:
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
                 pass
-        if not data.get("title"):
+        # Final fallback: if the title is missing or literally the string "None",
+        # use the filename (prevents blank titles on stubborn files).
+        if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
     except Exception:
-        if not data.get("title"):
+        if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
 
