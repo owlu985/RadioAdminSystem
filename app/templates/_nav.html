@@ -1,0 +1,50 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="{{ url_for('main.dashboard') }}">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="RAMS logo" class="me-2" style="max-height:44px; width:auto; object-fit:contain; filter: drop-shadow(0 0 4px rgba(255,255,255,0.35));">
+      <div class="d-flex flex-column lh-1 text-white">
+        <span class="fw-bold text-uppercase">{{ rams_name }}</span>
+        <small class="text-light">{{ station_name }} - {{ station_slogan }}</small>
+      </div>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#ramsNav" aria-controls="ramsNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="ramsNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>
+          </ul>
+        </li>
+        <li class="nav-item dropdown">
+          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
+          <ul class="dropdown-menu">
+            <li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>
+            <li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>
+          </ul>
+        </li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.api_docs_page') }}">API Docs</a></li>
+      </ul>
+      <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.logout') }}">Logout</a>
+    </div>
+  </div>
+  <link rel="preload" as="image" href="{{ url_for('static', filename='logo.png') }}">
+</nav>
