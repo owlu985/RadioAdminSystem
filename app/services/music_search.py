@@ -120,24 +120,44 @@ def _read_tags(path: str) -> Dict:
 
                 mp4 = MP4(path)
                 mp4_tags = mp4.tags or {}
-                mp4_map = {
-                    "\xa9nam": "title",
-                    "\xa9ART": "artist",
-                    "\xa9alb": "album",
-                    "\xa9wrt": "composer",
-                    "----:com.apple.iTunes:ISRC": "isrc",
-                    "\xa9day": "year",
-                    "trkn": "track",
-                    "disk": "disc",
-                    "cprt": "copyright",
+
+                # Support multiple atom spellings (including custom iTunes freeform atoms)
+                atom_map = {
+                    "title": ["\xa9nam", "----:com.apple.iTunes:TITLE"],
+                    "artist": ["\xa9ART", "----:com.apple.iTunes:ARTIST"],
+                    "album": ["\xa9alb", "----:com.apple.iTunes:ALBUM"],
+                    "composer": ["\xa9wrt", "----:com.apple.iTunes:COMPOSER"],
+                    "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
+                    "year": ["\xa9day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "track": ["trkn"],
+                    "disc": ["disk"],
+                    "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
                 }
-                for atom, target in mp4_map.items():
-                    val = mp4_tags.get(atom)
-                    if val:
-                        coerced = _coerce(val)
-                        # Prefer richer MP4 atoms over easy tags when empty
-                        if coerced:
-                            data[target] = coerced
+
+                for target, atoms in atom_map.items():
+                    for atom in atoms:
+                        val = mp4_tags.get(atom)
+                        if val:
+                            coerced = _coerce(val)
+                            if coerced:
+                                data[target] = coerced
+                                break
+
+                # If artist/title still missing, try any MP4FreeForm text-like atoms as a last resort
+                if not data.get("artist") or not data.get("title"):
+                    for key, val in mp4_tags.items():
+                        if not isinstance(key, str):
+                            continue
+                        lowered = key.lower()
+                        if "artist" in lowered and not data.get("artist"):
+                            coerced = _coerce(val)
+                            if coerced:
+                                data["artist"] = coerced
+                        if "title" in lowered and not data.get("title"):
+                            coerced = _coerce(val)
+                            if coerced:
+                                data["title"] = coerced
+
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
