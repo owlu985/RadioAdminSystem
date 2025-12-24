@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{ 'Edit' if dj else 'Add' }} DJ</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h3>{{ 'Edit' if dj else 'Add' }} DJ</h3>
+    <form method="post">
+        <div class="row mb-2">
+            <div class="col-md-6">
+                <label class="form-label">First Name</label>
+                <input type="text" class="form-control" name="first_name" value="{{ dj.first_name if dj else '' }}" required>
+            </div>
+            <div class="col-md-6">
+                <label class="form-label">Last Name</label>
+                <input type="text" class="form-control" name="last_name" value="{{ dj.last_name if dj else '' }}" required>
+            </div>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Photo URL</label>
+            <input type="url" class="form-control" name="photo_url" value="{{ dj.photo_url if dj else '' }}">
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Bio</label>
+            <textarea class="form-control" name="bio" rows="4">{{ dj.bio if dj else '' }}</textarea>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Shows (hold Ctrl/Cmd to multi-select)</label>
+            <select class="form-select" name="show_ids" multiple size="6">
+                {% for show in shows %}
+                    <option value="{{ show.id }}" {% if dj and show in dj.shows %}selected{% endif %}>
+                        {{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }} ({{ show.days_of_week }}, {{ show.start_time.strftime('%H:%M') }})
+                    </option>
+                {% endfor %}
+            </select>
+        </div>
+        <button type="submit" class="btn btn-primary">Save</button>
+        <a class="btn btn-secondary" href="{{ url_for('main.list_djs') }}">Cancel</a>
+    </form>
+</div>
+</body>
+{% include '_footer.html' %}
+</html>
