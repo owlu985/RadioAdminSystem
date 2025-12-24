@@ -3,7 +3,7 @@ import json
 from .scheduler import refresh_schedule, pause_shows_until
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time
-from .models import db, Show
+from .models import db, Show, User
 from sqlalchemy import case
 from functools import wraps
 from .logger import init_logger
@@ -18,6 +18,41 @@ from app.oauth import oauth
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
 logger.info("Routes logger initialized.")
+
+ROLE_CHOICES = [
+        ("admin", "Admin"),
+        ("manager", "Manager"),
+        ("ops", "Ops"),
+        ("viewer", "Viewer"),
+]
+
+
+def _complete_login(user: User):
+        user.last_login_at = datetime.utcnow()
+        db.session.commit()
+        session['authenticated'] = True
+        session['user_email'] = user.email
+        session['auth_provider'] = user.provider
+        session['user_id'] = user.id
+        session['display_name'] = user.display_name or user.email
+        session['role'] = user.role or 'viewer'
+
+
+def _find_user(provider: str, external_id: str | None, email: str | None):
+        if not email:
+                return None
+        query = User.query.filter_by(email=email)
+        if external_id:
+                user = User.query.filter_by(provider=provider, external_id=str(external_id)).first()
+                if user:
+                        return user
+        return query.first()
+
+
+def _redirect_pending(profile):
+        session['pending_oauth'] = profile
+        flash("Almost done! Please confirm your name to request access.", "info")
+        return redirect(url_for('main.oauth_claim'))
 
 
 @main_bp.app_context_processor
@@ -115,8 +150,41 @@ def dj_status_page():
 @main_bp.route("/djs")
 @admin_required
 def list_djs():
-	djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
-	return render_template("djs_list.html", djs=djs)
+        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+        return render_template("djs_list.html", djs=djs)
+
+
+@main_bp.route('/users', methods=['GET', 'POST'])
+@admin_required
+def manage_users():
+        if request.method == 'POST':
+                user_id = request.form.get('user_id', type=int)
+                if not user_id:
+                        flash("Invalid user selection.", "danger")
+                        return redirect(url_for('main.manage_users'))
+
+                user = User.query.get(user_id)
+                if not user:
+                        flash("User not found.", "danger")
+                        return redirect(url_for('main.manage_users'))
+
+                user.display_name = request.form.get('display_name') or user.display_name
+                user.role = request.form.get('role') or None
+                approved_flag = request.form.get('approved') == 'on'
+
+                if approved_flag and not user.approved:
+                        user.approved = True
+                        user.approved_at = datetime.utcnow()
+                elif not approved_flag:
+                        user.approved = False
+                        user.approved_at = None
+
+                db.session.commit()
+                flash("User updated.", "success")
+                return redirect(url_for('main.manage_users'))
+
+        users = User.query.order_by(User.requested_at.desc()).all()
+        return render_template("users_manage.html", users=users, role_choices=ROLE_CHOICES)
 
 
 @main_bp.route("/djs/add", methods=["GET", "POST"])
@@ -243,6 +311,8 @@ def login():
         if (username == current_app.config['ADMIN_USERNAME'] and
                 password == current_app.config['ADMIN_PASSWORD']):
             session['authenticated'] = True
+            session['role'] = 'admin'
+            session['display_name'] = username
             logger.info("Admin logged in successfully.")
             flash("You are now logged in.", "success")
             return redirect(url_for('main.dashboard'))
@@ -307,12 +377,27 @@ def oauth_callback_google():
                 flash("Your account is not permitted to log in with this station.", "danger")
                 return redirect(url_for("main.login"))
 
-        session['authenticated'] = True
-        session['user_email'] = email
-        session['auth_provider'] = "google"
-        logger.info("Admin logged in via Google OAuth.")
-        flash("You are now logged in via Google.", "success")
-        return redirect(url_for('main.dashboard'))
+        external_id = (userinfo or {}).get("sub")
+        suggested_name = (userinfo or {}).get("name") or email.split("@")[0]
+        existing = _find_user("google", external_id, email)
+
+        if existing:
+                if existing.approved:
+                        _complete_login(existing)
+                        logger.info("Admin logged in via Google OAuth.")
+                        flash("You are now logged in via Google.", "success")
+                        return redirect(url_for('main.dashboard'))
+                session['pending_user_id'] = existing.id
+                flash("Your account is pending approval.", "info")
+                return redirect(url_for('main.oauth_pending'))
+
+        profile = {
+                "provider": "google",
+                "email": email,
+                "external_id": external_id,
+                "suggested_name": suggested_name,
+        }
+        return _redirect_pending(profile)
 
 
 @main_bp.route("/login/oauth/discord")
@@ -371,29 +456,97 @@ def oauth_callback_discord():
                         flash("Your Discord account is not authorized for this station.", "danger")
                         return redirect(url_for("main.login"))
 
-        session['authenticated'] = True
-        session['user_email'] = email
-        session['auth_provider'] = "discord"
-        session['user_name'] = userinfo.get("username")
-        logger.info("Admin logged in via Discord OAuth.")
-        flash("You are now logged in via Discord.", "success")
-        return redirect(url_for('main.dashboard'))
+        external_id = (userinfo or {}).get("id")
+        suggested_name = userinfo.get("global_name") or userinfo.get("username") or email.split("@")[0]
+        existing = _find_user("discord", external_id, email)
+
+        if existing:
+                if existing.approved:
+                        _complete_login(existing)
+                        logger.info("Admin logged in via Discord OAuth.")
+                        flash("You are now logged in via Discord.", "success")
+                        return redirect(url_for('main.dashboard'))
+                session['pending_user_id'] = existing.id
+                flash("Your account is pending approval.", "info")
+                return redirect(url_for('main.oauth_pending'))
+
+        profile = {
+                "provider": "discord",
+                "email": email,
+                "external_id": external_id,
+                "suggested_name": suggested_name,
+        }
+        return _redirect_pending(profile)
 
 @main_bp.route('/logout')
 def logout():
-	"""Logout route to clear the session."""
+        """Logout route to clear the session."""
 
-	try:
-		session.pop('authenticated', None)
-		session.pop('user_email', None)
-		session.pop('auth_provider', None)
-		logger.info("Admin logged out successfully.")
-		flash("You have successfully logged out.", "success")
-		return redirect(url_for('main.login'))  #Change to index if index ever exists as other than redirect
-	except Exception as e:
-		logger.error(f"Error logging out: {e}")
-		flash(f"Error logging out: {e}", "danger")
-		return redirect(url_for('main.shows'))
+        try:
+                session.pop('authenticated', None)
+                session.pop('user_email', None)
+                session.pop('auth_provider', None)
+                session.pop('role', None)
+                session.pop('display_name', None)
+                session.pop('pending_user_id', None)
+                session.pop('pending_oauth', None)
+                logger.info("Admin logged out successfully.")
+                flash("You have successfully logged out.", "success")
+                return redirect(url_for('main.login'))  #Change to index if index ever exists as other than redirect
+        except Exception as e:
+                logger.error(f"Error logging out: {e}")
+                flash(f"Error logging out: {e}", "danger")
+                return redirect(url_for('main.shows'))
+
+
+@main_bp.route("/login/claim", methods=["GET", "POST"])
+def oauth_claim():
+        pending = session.get("pending_oauth")
+        if not pending:
+                flash("No pending OAuth request found.", "warning")
+                return redirect(url_for("main.login"))
+
+        if request.method == "POST":
+            display_name = request.form.get("display_name")
+            if not display_name:
+                flash("Please provide your name to continue.", "danger")
+                return redirect(url_for("main.oauth_claim"))
+
+            existing = _find_user(pending.get("provider"), pending.get("external_id"), pending.get("email"))
+            if existing:
+                existing.display_name = display_name
+                existing.approved = False
+                existing.requested_at = datetime.utcnow()
+                db.session.commit()
+                session['pending_user_id'] = existing.id
+            else:
+                new_user = User(
+                    email=pending.get("email"),
+                    provider=pending.get("provider", "oauth"),
+                    external_id=str(pending.get("external_id")) if pending.get("external_id") else None,
+                    display_name=display_name,
+                    approved=False,
+                    role=None,
+                    requested_at=datetime.utcnow(),
+                )
+                db.session.add(new_user)
+                db.session.commit()
+                session['pending_user_id'] = new_user.id
+
+            session.pop("pending_oauth", None)
+            flash("Request submitted. An admin will approve your access soon.", "info")
+            return redirect(url_for("main.oauth_pending"))
+
+        return render_template("oauth_claim.html", pending=pending)
+
+
+@main_bp.route("/login/pending")
+def oauth_pending():
+        pending_id = session.get("pending_user_id")
+        user = None
+        if pending_id:
+                user = User.query.get(pending_id)
+        return render_template("oauth_pending.html", user=user)
 
 @main_bp.route('/show/add', methods=['GET', 'POST'])
 @admin_required

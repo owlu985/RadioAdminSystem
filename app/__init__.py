@@ -95,6 +95,23 @@ def create_app(config_class=Config):
                     conn.execute(text("CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, photo_url VARCHAR(255))"))
                 if "show_dj" not in insp.get_table_names():
                     conn.execute(text("CREATE TABLE IF NOT EXISTS show_dj (show_id INTEGER NOT NULL, dj_id INTEGER NOT NULL, PRIMARY KEY (show_id, dj_id))"))
+                if "user" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS user (
+                            id INTEGER PRIMARY KEY,
+                            email VARCHAR(255) NOT NULL UNIQUE,
+                            provider VARCHAR(50) NOT NULL,
+                            external_id VARCHAR(255),
+                            display_name VARCHAR(255),
+                            role VARCHAR(50),
+                            approved BOOLEAN NOT NULL DEFAULT 0,
+                            requested_at DATETIME NOT NULL,
+                            approved_at DATETIME,
+                            last_login_at DATETIME
+                        )
+                        """
+                    ))
 
             # Ensure news types config exists with defaults
             news_config_path = app.config["NEWS_TYPES_CONFIG"]

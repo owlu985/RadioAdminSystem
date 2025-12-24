@@ -3,6 +3,21 @@ from datetime import datetime
 
 db = SQLAlchemy()
 
+
+class User(db.Model):
+    __tablename__ = "user"
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(255), unique=True, nullable=False)
+    provider = db.Column(db.String(50), nullable=False)
+    external_id = db.Column(db.String(255), nullable=True)
+    display_name = db.Column(db.String(255), nullable=True)
+    role = db.Column(db.String(50), nullable=True)
+    approved = db.Column(db.Boolean, default=False, nullable=False)
+    requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    last_login_at = db.Column(db.DateTime, nullable=True)
+
 show_dj = db.Table(
     "show_dj",
     db.Column("show_id", db.Integer, db.ForeignKey("show.id"), primary_key=True),
