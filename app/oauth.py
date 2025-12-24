@@ -13,6 +13,8 @@ def _clean_optional(value):
 
 def init_oauth(app):
         """Initialize OAuth providers when credentials are configured."""
+        # Clear any previously-registered clients so changes in settings take effect
+        oauth.clients.clear()
         oauth.init_app(app)
 
         client_id = _clean_optional(app.config.get("OAUTH_CLIENT_ID"))

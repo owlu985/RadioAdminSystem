@@ -13,7 +13,7 @@ from app.services.music_search import search_music, get_track
 from app.services.audit import audit_recordings, audit_explicit_music
 from datetime import datetime
 from app.models import DJ
-from app.oauth import oauth
+from app.oauth import oauth, init_oauth
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -339,7 +339,7 @@ def login_oauth_google():
 
         client = oauth.create_client("google")
         if client is None:
-                flash("OAuth is not configured.", "danger")
+                flash("Google OAuth is not configured. Please add a client id/secret in Settings.", "danger")
                 return redirect(url_for("main.login"))
 
         redirect_uri = url_for("main.oauth_callback_google", _external=True)
@@ -363,7 +363,7 @@ def oauth_callback_google():
                         userinfo = resp.json() if resp else {}
         except Exception as exc:  # noqa: BLE001
                 logger.error(f"OAuth login failed: {exc}")
-                flash("OAuth login failed. Please try again or contact an admin.", "danger")
+                flash("OAuth login failed. Please verify the Google client credentials and redirect URI.", "danger")
                 return redirect(url_for("main.login"))
 
         email = (userinfo or {}).get("email")
@@ -371,7 +371,7 @@ def oauth_callback_google():
                 flash("OAuth login failed: missing email.", "danger")
                 return redirect(url_for("main.login"))
 
-        allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
+        allowed_domain = _clean_optional(current_app.config.get("OAUTH_ALLOWED_DOMAIN"))
         if allowed_domain and not email.lower().endswith(f"@{allowed_domain.lower()}"):
                 logger.warning("OAuth login blocked due to domain restriction.")
                 flash("Your account is not permitted to log in with this station.", "danger")
@@ -406,7 +406,7 @@ def login_oauth_discord():
 
         client = oauth.create_client("discord")
         if client is None:
-                flash("Discord OAuth is not configured.", "danger")
+                flash("Discord OAuth is not configured. Please add the Discord client id/secret in Settings.", "danger")
                 return redirect(url_for("main.login"))
 
         redirect_uri = url_for("main.oauth_callback_discord", _external=True)
@@ -441,7 +441,7 @@ def oauth_callback_discord():
                 flash("Discord account is missing an email address; cannot log in.", "danger")
                 return redirect(url_for("main.login"))
 
-        allowed_guild_id = current_app.config.get("DISCORD_ALLOWED_GUILD_ID")
+        allowed_guild_id = _clean_optional(current_app.config.get("DISCORD_ALLOWED_GUILD_ID"))
         if allowed_guild_id:
                 try:
                         guilds_resp = client.get("users/@me/guilds")
@@ -702,6 +702,11 @@ def settings():
             }
 
             update_user_config(updated_settings)
+            # Re-register OAuth providers with new credentials without restart
+            try:
+                init_oauth(current_app)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"Failed to reinitialize OAuth after settings update: {exc}")
 
             flash("Settings updated successfully!", "success")
             return redirect(url_for('main.shows'))
@@ -791,6 +796,10 @@ def import_settings():
 
     try:
         update_user_config(filtered)
+        try:
+            init_oauth(current_app)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Failed to reinitialize OAuth after settings import: {exc}")
         flash('Settings imported successfully.', 'success')
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Failed to import settings: {exc}")
