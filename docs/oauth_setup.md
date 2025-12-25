@@ -2,6 +2,8 @@
 
 These steps explain how to enable Google and Discord OAuth logins for RAMS admins/managers. OAuth is optional; when enabled, the login page shows the corresponding provider buttons. Only OAuth-subject data (email/name/IDs) is stored—no passwords are kept.
 
+For social posting tokens (Facebook/Instagram, X/Twitter, Bluesky, Discord webhook), see `docs/social_tokens.md`.
+
 > **Prerequisites**
 > - Install Authlib locally: `pip install Authlib` (requirements.txt is intentionally unchanged).
 > - Ensure RAMS is reachable at the domain/port you will register with each provider. For local dev, use `http://localhost:5000`.

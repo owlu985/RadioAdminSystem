@@ -13,6 +13,7 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 - **Anomaly detection**: Highlight unusual loudness, missing logs, or probe outliers per show; suggest follow-up actions.
 - **Listener analytics**: Trend Icecast listeners by hour/day, with peaks annotated on the dashboard and exportable to CSV.
 - **Health/ready endpoints**: `/healthz` (process + DB) and `/readyz` (DB + NAS + stream reachability) for uptime monitors.
+- **Incident timelines**: Build a drill-down view showing probes, alerts, listener drops, and recording restarts on a single timeline to speed troubleshooting.
 
 ## Scheduling & Show Ops
 - **Handoff notes**: DJs leave short notes for the next host; show on the DJ Status screen near show end.
@@ -25,6 +26,8 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 - **Cover-art harvesting**: Pull art from MusicBrainz/CoverArt Archive when missing; embed if mutagen is available.
 - **Duplicate resolver**: UI to compare suspected dupes (waveform length, hash) and keep/retire/merge metadata.
 - **Saved searches**: Persist common filters (e.g., "missing cover art", "low bitrate") for one-click access.
+- **Genre/locale clustering**: Build light recommendations to surface related tracks for specialty shows (language, era, genre).
+- **Mobile-friendly library view**: Slimmed-down search/detail pages so phones/tablets can review metadata or cue points on-air.
 
 ## DJ & Logging Experience
 - **In-show reminders**: Time-based prompts for required PSAs/live reads during the slot; log completion with one click.
@@ -35,11 +38,13 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 ## News & PSA Workflow
 - **Version history**: Keep previous news/PSA uploads with quick rollback and diff (timestamp + uploader).
 - **Freshness SLAs**: Alerts when news/PSA content exceeds an age threshold; dashboard badge per type.
+- **Preflight check**: Validate uploads for duration, silence, and loudness against per-type targets before they enter rotation.
 
 ## Compliance & Reporting
 - **Run-to-log alignment**: Auto-link recordings to log segments and jump-to-audio for spot checks.
 - **PSA pacing reports**: Per-show weekly counts with heatmaps showing where PSAs cluster or are missing.
 - **Audit scheduling**: Let audits run on a cadence (e.g., nightly) and deliver summaries via email/Discord.
+- **Regulatory exports**: One-click FCC-style affidavit/summary packs (CSV/PDF) combining PSAs, underwriting, and missed shows.
 
 ## Theming & UX
 - **Dark/light/system theme**: User-selectable with persistence; include high-contrast mode.
@@ -54,3 +59,27 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 ## Data Safety & Backups
 - **Scheduled backups**: Export DB and critical configs to a backup folder/NAS; optional external push.
 - **Restore drills**: One-click dry-run restore to validate backups; report results on the dashboard.
+
+## Listener Experience & Website
+- **Public analytics snapshot**: Opt-in public page showing current listeners, recent songs, and top artists over the last 24h.
+- **Embeddable widgets**: Copy-paste snippets for now-playing, schedule grid, and DJ bios with optional theme parameters.
+- **Song feedback hooks**: Simple thumbs-up/down or “report issue” on now-playing to flag bad metadata or levels.
+
+## Studio & Remote Operations
+- **Studio checklist**: Open/close checklist for board ops (mics, automation, encoders, delays) with timestamps and accountability.
+- **Remote voice-tracking queue**: Allow pre-recorded breaks to be uploaded/scheduled with per-show permissions and expiration.
+- **Equipment logs**: Track gear incidents/maintenance with attachments and reminders for follow-up.
+- **Live encoder monitor**: Track encoder uptime/bitrate for each mount, with quick restart links where supported.
+- **Remote readiness**: Pre-flight test for remote contributors (mic level, latency, network) with a pass/fail badge before going live.
+
+## Revenue & Underwriting
+- **Underwriting log**: Capture underwriter spots separate from PSAs with contract dates and play-count targets.
+- **Makegoods tracker**: Flag missed spots and suggest makegood slots; auto-export to PDF/CSV for sponsors.
+
+## Automation & Ingest
+- **Hotfolder rules**: Drop-based ingest rules (normalize, retag, route to playlist) with validation before import.
+- **Batch retiming**: For long-form content, auto-trim silence and align to target lengths with a preview.
+
+## Intelligence & Insights
+- **Show performance reports**: Combine listener peaks, probe health, and log completeness per show/run.
+- **Predictive maintenance**: Use job health and disk stats to predict when to rotate hardware/encoders.

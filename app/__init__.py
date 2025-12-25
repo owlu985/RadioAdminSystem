@@ -69,6 +69,13 @@ def create_app(config_class=Config):
                     "ICECAST_USERNAME",
                     "ICECAST_PASSWORD",
                     "ICECAST_MOUNT",
+                    "SOCIAL_FACEBOOK_PAGE_TOKEN",
+                    "SOCIAL_INSTAGRAM_TOKEN",
+                    "SOCIAL_TWITTER_BEARER_TOKEN",
+                    "SOCIAL_BLUESKY_HANDLE",
+                    "SOCIAL_BLUESKY_PASSWORD",
+                    "ARCHIVIST_DB_PATH",
+                    "ARCHIVIST_UPLOAD_DIR",
                 }
 
                 for key in optional_keys:
@@ -195,6 +202,49 @@ def create_app(config_class=Config):
                             last_failure_at DATETIME,
                             last_restart_at DATETIME,
                             last_failure_reason VARCHAR(255)
+                        )
+                        """
+                    ))
+                if "live_read_card" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS live_read_card (
+                            id INTEGER PRIMARY KEY,
+                            title VARCHAR(200) NOT NULL,
+                            expires_on DATE,
+                            copy TEXT NOT NULL,
+                            created_at DATETIME NOT NULL,
+                            updated_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "archivist_entry" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS archivist_entry (
+                            id INTEGER PRIMARY KEY,
+                            title VARCHAR(255),
+                            artist VARCHAR(255),
+                            album VARCHAR(255),
+                            catalog_number VARCHAR(128),
+                            notes TEXT,
+                            extra TEXT,
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "social_post" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS social_post (
+                            id INTEGER PRIMARY KEY,
+                            content TEXT NOT NULL,
+                            platforms TEXT,
+                            image_url VARCHAR(500),
+                            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                            result_log TEXT,
+                            created_at DATETIME NOT NULL,
+                            sent_at DATETIME
                         )
                         """
                     ))

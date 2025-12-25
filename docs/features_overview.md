@@ -35,6 +35,11 @@ This document summarizes the major features available in RAMS, with links to key
 - Flexible news types defined in NAS JSON config; supports daily/weekly rotations and dated uploads.
 - News upload page (admin) and scheduler that activates dated files to the correct NAS targets.
 
+## Production & Outreach
+- Live read card generator with printable layout and expiry tracking for on-air copy.
+- Social posting console to draft/queue multi-network posts (simulated by default until enabled in Settings).
+- Archivist catalog import/search from CSV/TSV to speed cross-referencing against external music databases.
+
 ## Music Library and Metadata
 - NAS search UI/API with detail and edit pages (mutagen-enabled writes), cover art preview, audio preview stream, and RadioDJ-style visual CUE editor with waveform markers.
 - Batch/bulk metadata edits; duplicate/quality queues; “recently added,” “needs metadata,” “missing cover art,” and “low bitrate” queues.

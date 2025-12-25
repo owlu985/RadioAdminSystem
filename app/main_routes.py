@@ -3,8 +3,19 @@ import json
 import os
 from .scheduler import refresh_schedule, pause_shows_until
 from .utils import update_user_config, get_current_show, format_show_window
-from datetime import datetime, time, timedelta
-from .models import db, Show, User, DJAbsence, SavedSearch, DJDisciplinary
+from datetime import datetime, time, timedelta, date
+from .models import (
+    db,
+    Show,
+    User,
+    DJAbsence,
+    SavedSearch,
+    DJDisciplinary,
+    DJ,
+    LiveReadCard,
+    ArchivistEntry,
+    SocialPost,
+)
 from sqlalchemy import case
 from functools import wraps
 from .logger import init_logger
@@ -15,9 +26,11 @@ from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.settings_backup import backup_settings
-from datetime import datetime
-from app.models import DJ
+from app.services.live_reads import upsert_cards, card_query, chunk_cards
+from app.services.archivist_db import import_archivist_csv, search_archivist
+from app.services.social_poster import send_social_post
 from app.oauth import oauth, init_oauth, ensure_oauth_initialized
+from werkzeug.utils import secure_filename
 
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
@@ -535,6 +548,122 @@ def audit_page():
         default_limit=current_app.config["AUDIT_MUSIC_MAX_FILES"],
     )
 
+
+@main_bp.route("/production/live-reads", methods=["GET", "POST"])
+@admin_required
+def live_read_cards():
+    """Create and manage live read cards for printing."""
+
+    if request.method == "POST":
+        titles = request.form.getlist("card_title[]")
+        expiries = request.form.getlist("card_expiry[]")
+        copies = request.form.getlist("card_copy[]")
+        created = upsert_cards(titles, expiries, copies)
+        if created:
+            flash(f"Saved {created} card(s).", "success")
+        else:
+            flash("No cards were created. Please add a title or copy.", "warning")
+        return redirect(url_for("main.live_read_cards"))
+
+    include_expired = request.args.get("include_expired") == "1"
+    cards = card_query(include_expired=include_expired).all()
+    return render_template("live_reads.html", cards=cards, include_expired=include_expired, today=date.today())
+
+
+@main_bp.route("/production/live-reads/print")
+@admin_required
+def live_read_cards_print():
+    include_expired = request.args.get("include_expired") == "1"
+    cards = card_query(include_expired=include_expired).all()
+    return render_template(
+        "live_reads_print.html",
+        cards=cards,
+        include_expired=include_expired,
+        today=date.today(),
+        chunks=list(chunk_cards(cards)),
+    )
+
+
+@main_bp.route("/production/live-reads/<int:card_id>/delete", methods=["POST"])
+@admin_required
+def delete_live_read(card_id: int):
+    card = LiveReadCard.query.get_or_404(card_id)
+    db.session.delete(card)
+    db.session.commit()
+    flash("Card deleted.", "info")
+    return redirect(url_for("main.live_read_cards"))
+
+
+@main_bp.route("/archivist", methods=["GET", "POST"])
+@admin_required
+def archivist_page():
+    import_count = None
+    if request.method == "POST":
+        file = request.files.get("archive_file")
+        if not file or file.filename == "":
+            flash("Please choose a CSV/TSV file to import.", "warning")
+        else:
+            try:
+                upload_dir = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
+                if upload_dir:
+                    os.makedirs(upload_dir, exist_ok=True)
+                    dest = os.path.join(upload_dir, secure_filename(file.filename))
+                    file.stream.seek(0)
+                    file.save(dest)
+                    file.stream.seek(0)
+                count = import_archivist_csv(file, current_app.config.get("ARCHIVIST_DB_PATH"))
+                import_count = count
+                flash(f"Imported {count} rows into the archivist database.", "success")
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"Failed to import archivist data: {exc}")
+                flash("Import failed. Please check the file format.", "danger")
+
+    query = (request.args.get("q") or "").strip()
+    show_all = request.args.get("show_all") == "1" or query == "%"
+    results = []
+    if query or show_all:
+        limit = 500 if show_all else 200
+        results = search_archivist(query or "%", limit=limit)
+
+    total = ArchivistEntry.query.count()
+    return render_template(
+        "archivist.html",
+        results=results,
+        query=query,
+        total=total,
+        import_count=import_count,
+        show_all=show_all,
+    )
+
+
+@main_bp.route("/social/post", methods=["GET", "POST"])
+@admin_required
+def social_post_page():
+    if request.method == "POST":
+        content = (request.form.get("content") or "").strip()
+        image_url = (request.form.get("image_url") or "").strip() or None
+        platforms = request.form.getlist("platforms")
+        if not content:
+            flash("Please enter content for the post.", "warning")
+            return redirect(url_for("main.social_post_page"))
+        if not platforms:
+            platforms = ["facebook", "instagram", "twitter", "bluesky"]
+        post = SocialPost(content=content, image_url=image_url, platforms=json.dumps(platforms))
+        db.session.add(post)
+        db.session.commit()
+        statuses = send_social_post(post, current_app.config)
+        pretty = ", ".join(f"{k}:{v}" for k, v in statuses.items())
+        flash(f"Post queued ({pretty}).", "success")
+        return redirect(url_for("main.social_post_page"))
+
+    posts = SocialPost.query.order_by(SocialPost.created_at.desc()).limit(25).all()
+    for p in posts:
+        try:
+            p.status_map = json.loads(p.result_log) if p.result_log else {}
+        except json.JSONDecodeError:
+            p.status_map = {}
+    return render_template("social_post.html", posts=posts, config=current_app.config)
+
 @main_bp.route('/login', methods=['GET', 'POST'])
 def login():
     """Login route for admin authentication."""
@@ -915,7 +1044,9 @@ ALLOWED_SETTINGS_KEYS = [
     'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
     'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'SELF_HEAL_ENABLED',
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
-    'SETTINGS_BACKUP_RETENTION', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED'
+    'SETTINGS_BACKUP_RETENTION', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
+    'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
+    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD'
 ]
 
 
@@ -979,6 +1110,15 @@ def settings():
                 'SETTINGS_BACKUP_RETENTION': int(request.form.get('settings_backup_retention') or current_app.config.get('SETTINGS_BACKUP_RETENTION', 10)),
                 'THEME_DEFAULT': request.form.get('theme_default', current_app.config.get('THEME_DEFAULT', 'system')),
                 'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
+                'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
+                'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
+                'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
+                'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
+                'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
+                'SOCIAL_INSTAGRAM_TOKEN': _clean_optional(request.form.get('social_instagram_token', '').strip()),
+                'SOCIAL_TWITTER_BEARER_TOKEN': _clean_optional(request.form.get('social_twitter_bearer_token', '').strip()),
+                'SOCIAL_BLUESKY_HANDLE': _clean_optional(request.form.get('social_bluesky_handle', '').strip()),
+                'SOCIAL_BLUESKY_PASSWORD': _clean_optional(request.form.get('social_bluesky_password', '').strip()),
             }
 
             update_user_config(updated_settings)
@@ -1042,6 +1182,15 @@ def settings():
         'settings_backup_retention': config.get('SETTINGS_BACKUP_RETENTION', 10),
         'theme_default': config.get('THEME_DEFAULT', 'system'),
         'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
+        'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
+        'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
+        'social_send_enabled': config.get('SOCIAL_SEND_ENABLED', False),
+        'social_dry_run': config.get('SOCIAL_DRY_RUN', True),
+        'social_facebook_page_token': _clean_optional(config.get('SOCIAL_FACEBOOK_PAGE_TOKEN', '')) or '',
+        'social_instagram_token': _clean_optional(config.get('SOCIAL_INSTAGRAM_TOKEN', '')) or '',
+        'social_twitter_bearer_token': _clean_optional(config.get('SOCIAL_TWITTER_BEARER_TOKEN', '')) or '',
+        'social_bluesky_handle': _clean_optional(config.get('SOCIAL_BLUESKY_HANDLE', '')) or '',
+        'social_bluesky_password': _clean_optional(config.get('SOCIAL_BLUESKY_PASSWORD', '')) or '',
     }
 
     logger.info(f'Rendering settings page.')

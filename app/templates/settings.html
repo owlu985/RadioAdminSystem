@@ -280,11 +280,61 @@
             </div>
         </div>
         <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Archivist Database</h5>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="archivist_db_path" class="form-label">Storage Path</label>
+                    <input type="text" name="archivist_db_path" id="archivist_db_path" class="form-control" value="{{ archivist_db_path }}" placeholder="instance/archivist_db.json">
+                    <div class="form-text">Where imported catalog rows are stored (JSON snapshot).</div>
+                </div>
+                <div class="col-md-6">
+                    <label for="archivist_upload_dir" class="form-label">Upload Folder</label>
+                    <input type="text" name="archivist_upload_dir" id="archivist_upload_dir" class="form-control" value="{{ archivist_upload_dir }}" placeholder="instance/archivist_uploads">
+                    <div class="form-text">Optional staging area for uploads; leave blank to use default.</div>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
             <h5 class="mb-3">Metadata Enrichment (MusicBrainz)</h5>
             <div class="mb-0">
                 <label for="musicbrainz_user_agent" class="form-label">User Agent (recommended format: AppName/Version (contact@example.com))</label>
                 <input type="text" name="musicbrainz_user_agent" id="musicbrainz_user_agent" class="form-control" value="{{ musicbrainz_user_agent }}" placeholder="RAMS/1.0 (you@example.com)">
                 <div class="form-text">Used when calling MusicBrainz to populate metadata/ISRC suggestions.</div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Social Posting</h5>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="social_send_enabled" name="social_send_enabled" {% if social_send_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="social_send_enabled">Enable real delivery (otherwise simulate/log only)</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="social_dry_run" name="social_dry_run" {% if social_dry_run %}checked{% endif %}>
+                <label class="form-check-label" for="social_dry_run">Simulate posts (recommended while testing)</label>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="social_facebook_page_token" class="form-label">Facebook Page Token</label>
+                    <input type="text" name="social_facebook_page_token" id="social_facebook_page_token" class="form-control" value="{{ social_facebook_page_token }}" placeholder="Page access token">
+                </div>
+                <div class="col-md-6">
+                    <label for="social_instagram_token" class="form-label">Instagram Token</label>
+                    <input type="text" name="social_instagram_token" id="social_instagram_token" class="form-control" value="{{ social_instagram_token }}" placeholder="Instagram token (Graph)">
+                </div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-6">
+                    <label for="social_twitter_bearer_token" class="form-label">Twitter/X Bearer Token</label>
+                    <input type="text" name="social_twitter_bearer_token" id="social_twitter_bearer_token" class="form-control" value="{{ social_twitter_bearer_token }}" placeholder="Bearer token">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_bluesky_handle" class="form-label">Bluesky Handle</label>
+                    <input type="text" name="social_bluesky_handle" id="social_bluesky_handle" class="form-control" value="{{ social_bluesky_handle }}" placeholder="handle.bsky.social">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_bluesky_password" class="form-label">Bluesky App Password</label>
+                    <input type="password" name="social_bluesky_password" id="social_bluesky_password" class="form-control" value="{{ social_bluesky_password }}" placeholder="App password">
+                </div>
             </div>
         </div>
         <div class="mb-3 border rounded p-3 bg-light">

@@ -249,3 +249,40 @@ class JobHealth(db.Model):
     last_failure_at = db.Column(db.DateTime, nullable=True)
     last_restart_at = db.Column(db.DateTime, nullable=True)
     last_failure_reason = db.Column(db.String(255), nullable=True)
+
+
+class LiveReadCard(db.Model):
+    __tablename__ = "live_read_card"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(200), nullable=False)
+    expires_on = db.Column(db.Date, nullable=True)
+    copy = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ArchivistEntry(db.Model):
+    __tablename__ = "archivist_entry"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=True)
+    artist = db.Column(db.String(255), nullable=True)
+    album = db.Column(db.String(255), nullable=True)
+    catalog_number = db.Column(db.String(128), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    extra = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class SocialPost(db.Model):
+    __tablename__ = "social_post"
+
+    id = db.Column(db.Integer, primary_key=True)
+    content = db.Column(db.Text, nullable=False)
+    platforms = db.Column(db.Text, nullable=True)  # JSON list of targeted platforms
+    image_url = db.Column(db.String(500), nullable=True)
+    status = db.Column(db.String(32), default="pending", nullable=False)
+    result_log = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    sent_at = db.Column(db.DateTime, nullable=True)

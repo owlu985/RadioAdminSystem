@@ -90,6 +90,19 @@ class Config:
     THEME_DEFAULT = "system"
     INLINE_HELP_ENABLED = True
 
+    # Production / archivist
+    ARCHIVIST_DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "archivist_db.json")
+    ARCHIVIST_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "archivist_uploads")
+
+    # Social posting
+    SOCIAL_SEND_ENABLED = False
+    SOCIAL_DRY_RUN = True
+    SOCIAL_FACEBOOK_PAGE_TOKEN = None
+    SOCIAL_INSTAGRAM_TOKEN = None
+    SOCIAL_TWITTER_BEARER_TOKEN = None
+    SOCIAL_BLUESKY_HANDLE = None
+    SOCIAL_BLUESKY_PASSWORD = None
+
     # Metadata enrichment
     MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
 
