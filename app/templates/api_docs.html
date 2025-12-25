@@ -84,6 +84,8 @@ POST /api/radiodj/import/community_calendar</code></pre>
     <p>Searches NAS_MUSIC_ROOT by title/artist/album/composer.</p>
     <pre><code>GET /api/music/detail?path=&lt;absolute_path&gt;</code></pre>
     <p>Returns tags: title, artist, album, composer, isrc, year, track, disc, copyright, path.</p>
+    <pre><code>GET /api/music/musicbrainz?title=&lt;title&gt;&amp;artist=&lt;artist&gt;&amp;limit=5</code></pre>
+    <p>Looks up suggested metadata (title, artist, album, year, ISRC) from MusicBrainz recordings.</p>
 
     <h4>DJs and Shows</h4>
     <pre><code>GET /api/djs</code></pre>

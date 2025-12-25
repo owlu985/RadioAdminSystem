@@ -51,6 +51,7 @@ def update_user_config(updates):
             "ALERTS_SMTP_SERVER",
             "ALERTS_SMTP_USERNAME",
             "ALERTS_SMTP_PASSWORD",
+            "MUSICBRAINZ_USER_AGENT",
         }
 
         for key in optional_keys:

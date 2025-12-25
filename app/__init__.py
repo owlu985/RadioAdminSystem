@@ -198,7 +198,45 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
-
+                if "icecast_stat" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS icecast_stat (
+                            id INTEGER PRIMARY KEY,
+                            listeners INTEGER,
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "saved_search" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS saved_search (
+                            id INTEGER PRIMARY KEY,
+                            name VARCHAR(128) NOT NULL,
+                            query VARCHAR(255) NOT NULL,
+                            filters TEXT,
+                            created_by VARCHAR(255),
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                if "dj_disciplinary" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS dj_disciplinary (
+                            id INTEGER PRIMARY KEY,
+                            dj_id INTEGER NOT NULL,
+                            issued_at DATETIME NOT NULL,
+                            severity VARCHAR(32),
+                            notes TEXT,
+                            action_taken TEXT,
+                            resolved BOOLEAN NOT NULL DEFAULT 0,
+                            created_by VARCHAR(255)
+                        )
+                        """
+                    ))
+            
             # Ensure news types config exists with defaults
             news_config_path = app.config["NEWS_TYPES_CONFIG"]
             if not os.path.exists(news_config_path):

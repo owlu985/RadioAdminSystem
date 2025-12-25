@@ -8,6 +8,8 @@ from .models import db, Show
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
+from app.services.settings_backup import backup_settings
+from app.services.stream_monitor import record_icecast_stat
 from .utils import update_user_config
 from datetime import date as date_cls
 import ffmpeg
@@ -34,6 +36,8 @@ def init_scheduler(app):
             schedule_stream_probe()
             schedule_nas_watch()
             schedule_news_rotation()
+            schedule_icecast_analytics()
+            schedule_settings_backup()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -187,6 +191,23 @@ def schedule_stream_probe():
         logger.error(f"Error scheduling stream probe job: {e}")
 
 
+def schedule_icecast_analytics():
+    if flask_app is None:
+        return
+    interval_minutes = flask_app.config.get("ICECAST_ANALYTICS_INTERVAL_MINUTES", 5)
+    try:
+        scheduler.add_job(
+            run_icecast_analytics_job,
+            "interval",
+            minutes=interval_minutes,
+            id="icecast_analytics_job",
+            replace_existing=True,
+        )
+        logger.info("Icecast analytics job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling icecast analytics job: {e}")
+
+
 def schedule_nas_watch():
     """Monitor NAS news/calendar files and import to RadioDJ folder."""
     if flask_app is None:
@@ -203,6 +224,23 @@ def schedule_nas_watch():
         logger.info("NAS watch job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling NAS watch job: {e}")
+
+
+def schedule_settings_backup():
+    if flask_app is None:
+        return
+    hours = flask_app.config.get("SETTINGS_BACKUP_INTERVAL_HOURS", 12)
+    try:
+        scheduler.add_job(
+            run_settings_backup_job,
+            "interval",
+            hours=hours,
+            id="settings_backup_job",
+            replace_existing=True,
+        )
+        logger.info("Settings backup job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling settings backup: {e}")
 
 
 def schedule_news_rotation():
@@ -260,3 +298,23 @@ def run_stream_probe_job():
                     record_failure("stream_probe", reason="job_retry_success", restarted=True)
                 except Exception as exc2:  # noqa: BLE001
                     logger.error("Probe retry failed: %s", exc2)
+
+
+def run_icecast_analytics_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        try:
+            record_icecast_stat()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Icecast analytics sample failed: %s", exc)
+
+
+def run_settings_backup_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        try:
+            backup_settings()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Settings backup failed: %s", exc)

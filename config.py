@@ -57,9 +57,15 @@ class Config:
     ICECAST_USERNAME = None
     ICECAST_PASSWORD = None
     ICECAST_MOUNT = None
+    ICECAST_ANALYTICS_INTERVAL_MINUTES = 5
 
     # Self-heal / health reporting defaults
     SELF_HEAL_ENABLED = True
+
+    # Settings backup
+    SETTINGS_BACKUP_INTERVAL_HOURS = 12
+    SETTINGS_BACKUP_RETENTION = 10
+    SETTINGS_BACKUP_DIRNAME = "settings_backups"
 
     # NAS / RadioDJ integration
     NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")
@@ -81,6 +87,11 @@ class Config:
     STATION_SLOGAN = "The Voice of Landmark College"
     STATION_BACKGROUND = "first-bkg-variant.jpg"  # filename in static/ or a full URL
     SCHEDULE_TIMEZONE = "America/New_York"
+    THEME_DEFAULT = "system"
+    INLINE_HELP_ENABLED = True
+
+    # Metadata enrichment
+    MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
 
     # OAuth
     OAUTH_CLIENT_ID = None

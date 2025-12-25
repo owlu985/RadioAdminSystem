@@ -17,11 +17,19 @@
         </div>
     </div>
     <form class="row g-2 mb-3" id="searchForm">
-        <div class="col-md-8">
-            <input type="text" class="form-control" id="query" placeholder="Search title, artist, album, composer" required>
+        <div class="col-md-6">
+            <input type="text" class="form-control" id="query" placeholder="Search title, artist, album, composer (use % to list all)" required>
+            <small class="text-muted">Tip: enter % to show the entire library.</small>
         </div>
-        <div class="col-md-4">
-            <button type="submit" class="btn btn-primary">Search</button>
+        <div class="col-md-3">
+            <button type="submit" class="btn btn-primary w-100">Search</button>
+        </div>
+        <div class="col-md-3 d-flex gap-2">
+            <button type="button" class="btn btn-outline-success flex-fill" id="saveSearchBtn">Save search</button>
+            <div class="dropdown flex-fill">
+                <button class="btn btn-outline-secondary dropdown-toggle w-100" type="button" data-bs-toggle="dropdown">Saved</button>
+                <ul class="dropdown-menu" id="savedList"></ul>
+            </div>
         </div>
     </form>
 
@@ -80,6 +88,21 @@
     const tbody = document.querySelector('#resultsTable tbody');
     const selectAll = document.getElementById('selectAll');
     const queuesBox = document.getElementById('queues');
+    let savedSearches = {{ saved_searches|default([])|tojson }};
+
+    function renderSaved() {
+        const list = document.getElementById('savedList');
+        if (!list) return;
+        if (!savedSearches.length) {
+            list.innerHTML = '<li><span class="dropdown-item text-muted">No saved searches</span></li>';
+            return;
+        }
+        list.innerHTML = savedSearches.map(s => `
+            <li class="d-flex align-items-center">
+              <a class="dropdown-item flex-grow-1" href="#" data-query="${s.query}">${s.name}</a>
+              <button class="btn btn-link text-danger px-2 py-1" data-delete="${s.id}">×</button>
+            </li>`).join('');
+    }
 
     function renderResults(data) {
         tbody.innerHTML = data.map(item => `
@@ -92,6 +115,41 @@
             </tr>
         `).join('');
     }
+
+    renderSaved();
+
+    document.getElementById('savedList').addEventListener('click', async (e) => {
+        const load = e.target.getAttribute('data-query');
+        const delId = e.target.getAttribute('data-delete');
+        if (load) {
+            e.preventDefault();
+            document.getElementById('query').value = load;
+            form.requestSubmit();
+        }
+        if (delId) {
+            e.preventDefault();
+            await fetch(`/api/music/saved-searches?id=${delId}`, {method: 'DELETE'});
+            savedSearches = savedSearches.filter(s => s.id != delId);
+            renderSaved();
+        }
+    });
+
+    document.getElementById('saveSearchBtn').addEventListener('click', async () => {
+        const q = document.getElementById('query').value.trim();
+        if (!q) return;
+        const name = prompt('Name this search?', q.slice(0, 30) || 'Saved search');
+        if (!name) return;
+        const res = await fetch('/api/music/saved-searches', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, query: q})
+        });
+        const data = await res.json();
+        if (data.status === 'ok') {
+            savedSearches.unshift({id: data.id, name, query: q});
+            renderSaved();
+        }
+    });
 
     form.addEventListener('submit', async (e) => {
         e.preventDefault();

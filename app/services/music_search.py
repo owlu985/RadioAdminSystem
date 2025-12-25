@@ -4,6 +4,7 @@ import hashlib
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from flask import current_app
+import requests
 
 try:
     import mutagen  # type: ignore
@@ -323,6 +324,7 @@ def _augment_with_analysis(tags: Dict) -> Dict:
     if not analysis:
         analysis = _ensure_analysis(tags["path"], tags)
     payload = tags.copy()
+    cover_path = os.path.splitext(tags["path"])[0] + ".jpg"
     payload.update({
         "duration_seconds": analysis.duration_seconds,
         "peak_db": analysis.peak_db,
@@ -331,8 +333,76 @@ def _augment_with_analysis(tags: Dict) -> Dict:
         "bitrate": payload.get("bitrate") or analysis.bitrate,
         "hash": analysis.hash,
         "missing_tags": analysis.missing_tags,
+        "cover_path": cover_path if os.path.exists(cover_path) else None,
     })
     return payload
+
+
+def lookup_musicbrainz(title: Optional[str], artist: Optional[str], limit: int = 5) -> List[Dict]:
+    """Query the MusicBrainz recordings API to suggest metadata including ISRC."""
+    if not title and not artist:
+        return []
+
+    limit = max(1, min(limit or 5, 15))
+    query_parts = []
+    if artist:
+        query_parts.append(f'artist:"{artist}"')
+    if title:
+        query_parts.append(f'recording:"{title}"')
+    query = " AND ".join(query_parts) if query_parts else title or artist
+
+    params = {
+        "query": query,
+        "fmt": "json",
+        "limit": limit,
+        "inc": "isrcs+releases",
+    }
+
+    ua = current_app.config.get("MUSICBRAINZ_USER_AGENT") or f"RAMS/1.0 ({current_app.config.get('STATION_NAME', 'RAMS')})"
+    headers = {"User-Agent": ua}
+
+    try:
+        resp = requests.get("https://musicbrainz.org/ws/2/recording", params=params, headers=headers, timeout=8)
+        resp.raise_for_status()
+        payload = resp.json() or {}
+    except Exception:
+        return []
+
+    results: List[Dict] = []
+    for rec in payload.get("recordings", [])[:limit]:
+        artist_credit = rec.get("artist-credit") or rec.get("artist_credit") or []
+        artist_name = None
+        if isinstance(artist_credit, list) and artist_credit:
+            first = artist_credit[0]
+            if isinstance(first, dict):
+                artist_name = first.get("name") or first.get("artist", {}).get("name")
+
+        release_title = None
+        release_date = None
+        releases = rec.get("releases") or []
+        if releases:
+            release_title = releases[0].get("title")
+            release_date = releases[0].get("date") or releases[0].get("first-release-date")
+
+        year = None
+        if release_date:
+            year = str(release_date).split("-")[0]
+
+        isrcs = rec.get("isrcs") or []
+        isrc = isrcs[0] if isrcs else None
+
+        results.append(
+            {
+                "title": rec.get("title"),
+                "artist": artist_name,
+                "album": release_title,
+                "year": year,
+                "isrc": isrc,
+                "musicbrainz_id": rec.get("id"),
+            }
+        )
+
+    return results
 
 
 def search_music(query: str) -> List[Dict]:
@@ -442,6 +512,54 @@ def bulk_update_metadata(paths: List[str], updates: Dict, cover_art_bytes: Optio
         results.append(outcome)
     db.session.commit()
     return {"status": "ok", "results": results}
+
+
+def harvest_cover_art(path: str, tags: Optional[Dict] = None) -> Dict:
+    tags = tags or _read_tags(path)
+    title = tags.get("title") or os.path.splitext(os.path.basename(path))[0]
+    artist = tags.get("artist") or ""
+    query = f"{title} {artist}".strip()
+    if not query:
+        return {"status": "error", "message": "no_query"}
+
+    try:
+        resp = requests.get(
+            "https://itunes.apple.com/search",
+            params={"term": query, "media": "music", "limit": 1},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        results = payload.get("results") or []
+        if not results:
+            return {"status": "error", "message": "no_match"}
+        art_url = results[0].get("artworkUrl100") or results[0].get("artworkUrl60")
+        if not art_url:
+            return {"status": "error", "message": "no_art"}
+        # prefer higher res
+        art_url = art_url.replace("100x100", "600x600")
+        img = requests.get(art_url, timeout=8)
+        img.raise_for_status()
+        art_bytes = img.content
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "message": str(exc)}
+
+    dest = os.path.splitext(path)[0] + ".jpg"
+    try:
+        with open(dest, "wb") as f:
+            f.write(art_bytes)
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "message": str(exc)}
+
+    if mutagen and APIC and path.lower().endswith(".mp3"):
+        try:
+            id3 = ID3(path)
+            id3.add(APIC(encoding=3, mime="image/jpeg", type=3, desc=u"Cover", data=art_bytes))
+            id3.save()
+        except Exception:
+            pass
+
+    return {"status": "ok", "art_path": dest}
 
 
 def queues_snapshot():

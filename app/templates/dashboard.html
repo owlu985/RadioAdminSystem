@@ -55,6 +55,7 @@
             <p class="mb-1"><strong>Listeners:</strong> <span id="listeners">n/a</span></p>
             <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
             <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
+            <div class="small text-muted mt-2" id="listenerHistory"></div>
         </div>
     </div>
 
@@ -140,8 +141,22 @@
             document.getElementById('probeDetails').textContent = '';
         }
     }
+    async function refreshListeners() {
+        try {
+            const res = await fetch('/api/icecast/analytics?hours=3');
+            const data = await res.json();
+            if (Array.isArray(data) && data.length) {
+                const last = data.slice(-5).map(d => `${new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}: ${d.listeners}`);
+                document.getElementById('listenerHistory').textContent = 'Recent: ' + last.join(' • ');
+            }
+        } catch (e) {
+            document.getElementById('listenerHistory').textContent = '';
+        }
+    }
     refreshStatus();
+    refreshListeners();
     setInterval(refreshStatus, 5000);
+    setInterval(refreshListeners, 60000);
 </script>
 </body>
 </html>

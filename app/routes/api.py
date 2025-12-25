@@ -1,13 +1,13 @@
 from datetime import datetime
 import time
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app, request
-from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show
+from flask import Blueprint, jsonify, current_app, request, session
+from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show, SavedSearch, db
 from app.utils import get_current_show, format_show_window
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
-from app.services.stream_monitor import fetch_icecast_listeners
+from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.music_search import (
     search_music,
     get_track,
@@ -17,6 +17,8 @@ from app.services.music_search import (
     save_cue,
     scan_library,
     find_duplicates_and_quality,
+    lookup_musicbrainz,
+    harvest_cover_art,
 )
 from sqlalchemy import func
 from app.logger import init_logger
@@ -171,8 +173,60 @@ def music_search():
     q = request.args.get("q", "").strip()
     if not q:
         return jsonify([])
-    results = search_music(q)[:200]
+    if q in {"%", "*"}:
+        results = scan_library()
+    else:
+        results = search_music(q)
+    results = results[:200]
     return jsonify(results)
+
+
+@api_bp.route("/music/saved-searches", methods=["GET", "POST", "DELETE"])
+def music_saved_searches():
+    user_email = session.get("user_email") or "anonymous"
+    if request.method == "GET":
+        searches = (
+            SavedSearch.query.filter(
+                (SavedSearch.created_by == user_email) | (SavedSearch.created_by.is_(None))
+            )
+            .order_by(SavedSearch.created_at.desc())
+            .limit(25)
+            .all()
+        )
+        return jsonify([
+            {
+                "id": s.id,
+                "name": s.name,
+                "query": s.query,
+                "filters": s.filters,
+                "created_at": s.created_at.isoformat(),
+            }
+            for s in searches
+        ])
+
+    if request.method == "DELETE":
+        sid = request.args.get("id", type=int)
+        if not sid:
+            return jsonify({"status": "error", "message": "id required"}), 400
+        s = SavedSearch.query.get(sid)
+        if not s:
+            return jsonify({"status": "error", "message": "not found"}), 404
+        if s.created_by and s.created_by != user_email:
+            return jsonify({"status": "error", "message": "forbidden"}), 403
+        db.session.delete(s)
+        db.session.commit()
+        return jsonify({"status": "ok"})
+
+    payload = request.get_json(force=True, silent=True) or {}
+    name = (payload.get("name") or "").strip()
+    query = (payload.get("query") or "").strip()
+    filters = payload.get("filters")
+    if not name or not query:
+        return jsonify({"status": "error", "message": "name_and_query_required"}), 400
+    s = SavedSearch(name=name[:128], query=query[:255], filters=filters, created_by=user_email)
+    db.session.add(s)
+    db.session.commit()
+    return jsonify({"status": "ok", "id": s.id})
 
 
 @api_bp.route("/music/detail")
@@ -184,6 +238,28 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/music/cover-art", methods=["POST"])
+def music_cover_art():
+    payload = request.get_json(force=True, silent=True) or {}
+    path = payload.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    result = harvest_cover_art(path, get_track(path))
+    code = 200 if result.get("status") == "ok" else 400
+    return jsonify(result), code
+
+
+@api_bp.route("/music/musicbrainz")
+def music_musicbrainz():
+    title = (request.args.get("title") or "").strip()
+    artist = (request.args.get("artist") or "").strip()
+    limit = request.args.get("limit", type=int, default=5)
+    if not title and not artist:
+        return jsonify({"status": "error", "message": "title_or_artist_required"}), 400
+    results = lookup_musicbrainz(title=title or None, artist=artist or None, limit=limit)
+    return jsonify({"status": "ok", "results": results})
 
 
 @api_bp.route("/music/bulk-update", methods=["POST"])
@@ -441,6 +517,16 @@ def stream_status():
     if listeners is not None:
         status["listeners"] = listeners
     return jsonify(status)
+
+
+@api_bp.route("/icecast/analytics")
+def icecast_analytics():
+    hours = request.args.get("hours", default=24, type=int)
+    stats = recent_icecast_stats(hours=hours)
+    return jsonify([
+        {"ts": s.created_at.isoformat(), "listeners": s.listeners}
+        for s in stats
+    ])
 
 
 @api_bp.route("/audit/start", methods=["POST"])

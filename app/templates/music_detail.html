@@ -14,6 +14,15 @@
         <div class="mb-3">
             <audio controls preload="none" style="width:100%;" src="/music/stream?path={{ track.path|urlencode }}"></audio>
         </div>
+        <div class="mb-3 d-flex align-items-center gap-3">
+            {% if track.cover_path %}
+                <img src="/music/stream?path={{ track.cover_path|urlencode }}" alt="cover" style="height:120px; width:auto; object-fit:cover; border-radius:6px;">
+            {% else %}
+                <span class="text-muted">No cover art</span>
+            {% endif %}
+            <button class="btn btn-outline-info" id="harvestBtn" data-path="{{ track.path }}">Harvest cover art</button>
+            <div id="harvestStatus" class="text-muted small"></div>
+        </div>
         <dl class="row">
             <dt class="col-sm-3">Title</dt><dd class="col-sm-9">{{ track.title }}</dd>
             <dt class="col-sm-3">Artist</dt><dd class="col-sm-9">{{ track.artist }}</dd>
@@ -45,6 +54,26 @@
         <p>Track not found.</p>
     {% endif %}
 </div>
+<script>
+  const harvestBtn = document.getElementById('harvestBtn');
+  if (harvestBtn) {
+    harvestBtn.addEventListener('click', async () => {
+      const status = document.getElementById('harvestStatus');
+      status.textContent = 'Looking up cover art...';
+      const res = await fetch('/api/music/cover-art', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({path: harvestBtn.dataset.path})
+      });
+      const data = await res.json();
+      if (data.status === 'ok') {
+        status.textContent = 'Saved cover art. Refresh to view.';
+      } else {
+        status.textContent = 'No art found: ' + (data.message || 'unknown');
+      }
+    });
+  }
+</script>
 </body>
 {% include '_footer.html' %}
 </html>

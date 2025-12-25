@@ -65,6 +65,11 @@
                     <i class="bi bi-download"></i> Export JSON
                 </button>
             </form>
+            <form action="{{ url_for('main.backup_settings_now') }}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-success" aria-label="Backup settings to disk">
+                    <i class="bi bi-hdd"></i> Backup now
+                </button>
+            </form>
             <form action="{{ url_for('main.import_settings') }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center m-0">
                 <input type="file" name="settings_file" accept="application/json" class="form-control form-control-sm" aria-label="Choose settings JSON">
                 <button type="submit" class="btn btn-outline-secondary btn-sm" aria-label="Import settings JSON">
@@ -122,6 +127,29 @@
                 <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="The folder where recordings will be saved. This is the server path. DO NOT change this if you dont know what you are doing."></i>
             </label>
             <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label for="settings_backup_interval_hours" class="form-label">Settings Backup Interval (hours)</label>
+                <input type="number" min="1" name="settings_backup_interval_hours" id="settings_backup_interval_hours" class="form-control" value="{{ settings_backup_interval_hours }}">
+            </div>
+            <div class="col-md-4">
+                <label for="settings_backup_retention" class="form-label">Backup Retention (files)</label>
+                <input type="number" min="1" name="settings_backup_retention" id="settings_backup_retention" class="form-control" value="{{ settings_backup_retention }}">
+            </div>
+            <div class="col-md-4">
+                <label for="theme_default" class="form-label">Default Theme</label>
+                <select name="theme_default" id="theme_default" class="form-select">
+                    <option value="system" {% if theme_default=='system' %}selected{% endif %}>System</option>
+                    <option value="light" {% if theme_default=='light' %}selected{% endif %}>Light</option>
+                    <option value="dark" {% if theme_default=='dark' %}selected{% endif %}>Dark</option>
+                </select>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="inline_help_enabled" name="inline_help_enabled" {% if inline_help_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="inline_help_enabled">Show inline help tips</label>
+                </div>
+            </div>
         </div>
 
         <div class="mb-3">
@@ -243,6 +271,20 @@
             <div class="mb-0">
                 <label for="icecast_mount" class="form-label">Mount Name (e.g., /stream)</label>
                 <input type="text" name="icecast_mount" id="icecast_mount" class="form-control" value="{{ icecast_mount }}">
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <label for="icecast_analytics_interval_minutes" class="form-label">Listener Sample Interval (minutes)</label>
+                        <input type="number" min="1" class="form-control" name="icecast_analytics_interval_minutes" id="icecast_analytics_interval_minutes" value="{{ icecast_analytics_interval_minutes }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Metadata Enrichment (MusicBrainz)</h5>
+            <div class="mb-0">
+                <label for="musicbrainz_user_agent" class="form-label">User Agent (recommended format: AppName/Version (contact@example.com))</label>
+                <input type="text" name="musicbrainz_user_agent" id="musicbrainz_user_agent" class="form-control" value="{{ musicbrainz_user_agent }}" placeholder="RAMS/1.0 (you@example.com)">
+                <div class="form-text">Used when calling MusicBrainz to populate metadata/ISRC suggestions.</div>
             </div>
         </div>
         <div class="mb-3 border rounded p-3 bg-light">

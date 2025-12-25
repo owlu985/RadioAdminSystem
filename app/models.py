@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy.types import Text
 
 db = SQLAlchemy()
 
@@ -39,6 +40,21 @@ class DJ(db.Model):
     photo_url = db.Column(db.String(255), nullable=True)
 
     shows = db.relationship("Show", secondary=show_dj, back_populates="djs")
+
+
+class DJDisciplinary(db.Model):
+    __tablename__ = "dj_disciplinary"
+
+    id = db.Column(db.Integer, primary_key=True)
+    dj_id = db.Column(db.Integer, db.ForeignKey("dj.id"), nullable=False)
+    issued_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    severity = db.Column(db.String(32), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    action_taken = db.Column(db.Text, nullable=True)
+    resolved = db.Column(db.Boolean, default=False, nullable=False)
+    created_by = db.Column(db.String(255), nullable=True)
+
+    dj = db.relationship("DJ", backref="disciplinary_records")
 
 
 class LogSheet(db.Model):
@@ -154,6 +170,14 @@ class StreamProbe(db.Model):
     show_run = db.relationship("ShowRun", backref="probes")
 
 
+class IcecastStat(db.Model):
+    __tablename__ = "icecast_stat"
+
+    id = db.Column(db.Integer, primary_key=True)
+    listeners = db.Column(db.Integer, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class DJAbsence(db.Model):
     __tablename__ = "dj_absence"
 
@@ -202,6 +226,17 @@ class MusicCue(db.Model):
     fade_in = db.Column(db.Float, nullable=True)
     fade_out = db.Column(db.Float, nullable=True)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class SavedSearch(db.Model):
+    __tablename__ = "saved_search"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    query = db.Column(db.String(255), nullable=False)
+    filters = db.Column(Text, nullable=True)
+    created_by = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
 class JobHealth(db.Model):

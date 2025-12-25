@@ -4,7 +4,7 @@ import os
 from .scheduler import refresh_schedule, pause_shows_until
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time, timedelta
-from .models import db, Show, User, DJAbsence
+from .models import db, Show, User, DJAbsence, SavedSearch, DJDisciplinary
 from sqlalchemy import case
 from functools import wraps
 from .logger import init_logger
@@ -13,7 +13,8 @@ from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track, load_cue, save_cue
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
-from app.services.stream_monitor import fetch_icecast_listeners
+from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
+from app.services.settings_backup import backup_settings
 from datetime import datetime
 from app.models import DJ
 from app.oauth import oauth, init_oauth, ensure_oauth_initialized
@@ -87,6 +88,7 @@ def inject_branding():
         "station_slogan": current_app.config.get("STATION_SLOGAN", ""),
         "station_background": _resolve_station_background(),
         "current_year": datetime.utcnow().year,
+        "theme_default": current_app.config.get("THEME_DEFAULT", "system"),
     }
 
 @main_bp.route('/')
@@ -213,6 +215,34 @@ def dj_status_page():
 def list_djs():
         djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
         return render_template("djs_list.html", djs=djs)
+
+
+@main_bp.route("/djs/discipline", methods=["GET", "POST"])
+@admin_required
+def manage_dj_discipline():
+        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+        if request.method == "POST":
+                dj_id = request.form.get("dj_id", type=int)
+                severity = request.form.get("severity") or None
+                notes = request.form.get("notes") or None
+                action_taken = request.form.get("action_taken") or None
+                resolved = bool(request.form.get("resolved"))
+                if dj_id:
+                        rec = DJDisciplinary(
+                                dj_id=dj_id,
+                                severity=severity,
+                                notes=notes,
+                                action_taken=action_taken,
+                                resolved=resolved,
+                                created_by=session.get("user_email"),
+                        )
+                        db.session.add(rec)
+                        db.session.commit()
+                        flash("Disciplinary record saved.", "success")
+                return redirect(url_for("main.manage_dj_discipline"))
+
+        records = DJDisciplinary.query.order_by(DJDisciplinary.issued_at.desc()).all()
+        return render_template("dj_discipline.html", djs=djs, records=records)
 
 
 @main_bp.route('/users', methods=['GET', 'POST'])
@@ -375,7 +405,18 @@ def manage_absences():
 @main_bp.route("/music/search")
 @admin_required
 def music_search_page():
-    return render_template("music_search.html")
+    email = session.get("user_email") or None
+    saved = []
+    if email:
+        saved = (
+            SavedSearch.query.filter(
+                (SavedSearch.created_by == email) | (SavedSearch.created_by.is_(None))
+            )
+            .order_by(SavedSearch.created_at.desc())
+            .limit(25)
+            .all()
+        )
+    return render_template("music_search.html", saved_searches=saved)
 
 
 def _safe_music_path(path: str) -> str:
@@ -871,7 +912,9 @@ ALLOWED_SETTINGS_KEYS = [
     'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
     'ALERT_REPEAT_MINUTES', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
     'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
-    'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'SELF_HEAL_ENABLED'
+    'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'SELF_HEAL_ENABLED',
+    'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
+    'SETTINGS_BACKUP_RETENTION', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED'
 ]
 
 
@@ -920,7 +963,9 @@ def settings():
                 'ICECAST_USERNAME': _clean_optional(request.form.get('icecast_username', '').strip()),
                 'ICECAST_PASSWORD': _clean_optional(request.form.get('icecast_password', '').strip()),
                 'ICECAST_MOUNT': _clean_optional(request.form.get('icecast_mount', '').strip()),
+                'ICECAST_ANALYTICS_INTERVAL_MINUTES': int(request.form.get('icecast_analytics_interval_minutes') or current_app.config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5)),
                 'SELF_HEAL_ENABLED': 'self_heal_enabled' in request.form,
+                'MUSICBRAINZ_USER_AGENT': _clean_optional(request.form.get('musicbrainz_user_agent', '').strip()),
                 'OAUTH_CLIENT_ID': _clean_optional(request.form.get('oauth_client_id', '').strip()),
                 'OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('oauth_client_secret', '').strip()),
                 'OAUTH_ALLOWED_DOMAIN': _clean_optional(request.form.get('oauth_allowed_domain', '').strip()),
@@ -929,6 +974,10 @@ def settings():
                 'DISCORD_ALLOWED_GUILD_ID': _clean_optional(request.form.get('discord_allowed_guild_id', '').strip()),
                 'OAUTH_ONLY': 'oauth_only' in request.form,
                 'CUSTOM_ROLES': [r.strip() for r in request.form.get('custom_roles', '').split(',') if r.strip()],
+                'SETTINGS_BACKUP_INTERVAL_HOURS': int(request.form.get('settings_backup_interval_hours') or current_app.config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12)),
+                'SETTINGS_BACKUP_RETENTION': int(request.form.get('settings_backup_retention') or current_app.config.get('SETTINGS_BACKUP_RETENTION', 10)),
+                'THEME_DEFAULT': request.form.get('theme_default', current_app.config.get('THEME_DEFAULT', 'system')),
+                'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
             }
 
             update_user_config(updated_settings)
@@ -977,7 +1026,9 @@ def settings():
         'icecast_username': _clean_optional(config.get('ICECAST_USERNAME', '')) or '',
         'icecast_password': _clean_optional(config.get('ICECAST_PASSWORD', '')) or '',
         'icecast_mount': _clean_optional(config.get('ICECAST_MOUNT', '')) or '',
+        'icecast_analytics_interval_minutes': config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5),
         'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
+        'musicbrainz_user_agent': _clean_optional(config.get('MUSICBRAINZ_USER_AGENT', '')) or '',
         'oauth_client_id': _clean_optional(config.get('OAUTH_CLIENT_ID', '')) or '',
         'oauth_client_secret': _clean_optional(config.get('OAUTH_CLIENT_SECRET', '')) or '',
         'oauth_allowed_domain': _clean_optional(config.get('OAUTH_ALLOWED_DOMAIN', '')) or '',
@@ -986,6 +1037,10 @@ def settings():
         'discord_allowed_guild_id': _clean_optional(config.get('DISCORD_ALLOWED_GUILD_ID', '')) or '',
         'oauth_only': config.get('OAUTH_ONLY', False),
         'custom_roles': ", ".join(config.get('CUSTOM_ROLES', [])),
+        'settings_backup_interval_hours': config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12),
+        'settings_backup_retention': config.get('SETTINGS_BACKUP_RETENTION', 10),
+        'theme_default': config.get('THEME_DEFAULT', 'system'),
+        'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
     }
 
     logger.info(f'Rendering settings page.')
@@ -1025,7 +1080,7 @@ def import_settings():
         'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
         'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
         'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
-        'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT'
+        'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT'
     } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
     if not filtered:
@@ -1043,6 +1098,17 @@ def import_settings():
         logger.error(f"Failed to import settings: {exc}")
         flash('Import failed. Please try again with a valid settings file.', 'danger')
 
+    return redirect(url_for('main.settings'))
+
+
+@main_bp.route('/settings/backup-now', methods=['POST'])
+@admin_required
+def backup_settings_now():
+    dest = backup_settings()
+    if dest:
+        flash(f"Settings backed up to {dest}", "success")
+    else:
+        flash("No user_config.json found to back up.", "warning")
     return redirect(url_for('main.settings'))
 
 @main_bp.route('/update_schedule', methods=['POST'])

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import xml.etree.ElementTree as ET
-from typing import Optional
+from datetime import datetime, timedelta
+from typing import List, Optional
 
 import requests
 from flask import current_app
 
 from app.logger import init_logger
+from app.models import IcecastStat, db
 
 logger = init_logger()
 
@@ -42,3 +44,22 @@ def fetch_icecast_listeners() -> Optional[int]:
             listeners = int(val)
             break
     return listeners
+
+
+def record_icecast_stat() -> Optional[IcecastStat]:
+    listeners = fetch_icecast_listeners()
+    if listeners is None:
+        return None
+    stat = IcecastStat(listeners=listeners, created_at=datetime.utcnow())
+    db.session.add(stat)
+    db.session.commit()
+    return stat
+
+
+def recent_icecast_stats(hours: int = 24) -> List[IcecastStat]:
+    cutoff = datetime.utcnow() - timedelta(hours=hours)
+    return (
+        IcecastStat.query.filter(IcecastStat.created_at >= cutoff)
+        .order_by(IcecastStat.created_at.asc())
+        .all()
+    )
