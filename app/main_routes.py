@@ -409,7 +409,8 @@ def music_search_page():
     saved = []
     if email:
         saved = (
-            SavedSearch.query.filter(
+            db.session.query(SavedSearch)
+            .filter(
                 (SavedSearch.created_by == email) | (SavedSearch.created_by.is_(None))
             )
             .order_by(SavedSearch.created_at.desc())

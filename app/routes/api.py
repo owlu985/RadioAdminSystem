@@ -186,7 +186,8 @@ def music_saved_searches():
     user_email = session.get("user_email") or "anonymous"
     if request.method == "GET":
         searches = (
-            SavedSearch.query.filter(
+            db.session.query(SavedSearch)
+            .filter(
                 (SavedSearch.created_by == user_email) | (SavedSearch.created_by.is_(None))
             )
             .order_by(SavedSearch.created_at.desc())
@@ -208,7 +209,7 @@ def music_saved_searches():
         sid = request.args.get("id", type=int)
         if not sid:
             return jsonify({"status": "error", "message": "id required"}), 400
-        s = SavedSearch.query.get(sid)
+        s = db.session.get(SavedSearch, sid)
         if not s:
             return jsonify({"status": "error", "message": "not found"}), 404
         if s.created_by and s.created_by != user_email:
