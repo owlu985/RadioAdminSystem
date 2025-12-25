@@ -70,6 +70,11 @@
                     <i class="bi bi-hdd"></i> Backup now
                 </button>
             </form>
+            <form action="{{ url_for('main.backup_data_now') }}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-success" aria-label="Backup data to disk">
+                    <i class="bi bi-archive"></i> Backup data
+                </button>
+            </form>
             <form action="{{ url_for('main.import_settings') }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center m-0">
                 <input type="file" name="settings_file" accept="application/json" class="form-control form-control-sm" aria-label="Choose settings JSON">
                 <button type="submit" class="btn btn-outline-secondary btn-sm" aria-label="Import settings JSON">
@@ -135,8 +140,12 @@
                 <input type="number" min="1" name="settings_backup_interval_hours" id="settings_backup_interval_hours" class="form-control" value="{{ settings_backup_interval_hours }}">
             </div>
             <div class="col-md-4">
-                <label for="settings_backup_retention" class="form-label">Backup Retention (files)</label>
+                <label for="settings_backup_retention" class="form-label">Settings Backup Retention (files)</label>
                 <input type="number" min="1" name="settings_backup_retention" id="settings_backup_retention" class="form-control" value="{{ settings_backup_retention }}">
+            </div>
+            <div class="col-md-4">
+                <label for="data_backup_retention_days" class="form-label">Data Backup Retention (days)</label>
+                <input type="number" min="1" name="data_backup_retention_days" id="data_backup_retention_days" class="form-control" value="{{ data_backup_retention_days }}">
             </div>
             <div class="col-md-4">
                 <label for="theme_default" class="form-label">Default Theme</label>
@@ -149,6 +158,14 @@
                     <input class="form-check-input" type="checkbox" id="inline_help_enabled" name="inline_help_enabled" {% if inline_help_enabled %}checked{% endif %}>
                     <label class="form-check-label" for="inline_help_enabled">Show inline help tips</label>
                 </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label for="data_backup_dirname" class="form-label">Data Backup Folder Name</label>
+                <input type="text" name="data_backup_dirname" id="data_backup_dirname" class="form-control" value="{{ data_backup_dirname }}">
+                <small class="text-muted">Created under the instance folder; contains schedule/DJ/disciplinary snapshots.</small>
             </div>
         </div>
 

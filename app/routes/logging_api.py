@@ -3,7 +3,7 @@ import csv
 import io
 import zipfile
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
-from app.models import db, LogEntry, LogSheet
+from app.models import db, LogEntry, LogSheet, DJ, Show
 from app.utils import get_current_show
 from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.logger import init_logger
@@ -26,13 +26,25 @@ def submit_log():
     Public log submission form (no auth required).
     """
     if request.method == "POST":
+        dj_id = request.form.get("dj_id", type=int)
+        show_id = request.form.get("show_id", type=int)
+        show_name = request.form.get("show_name", "").strip()
         dj_first = request.form.get("dj_first_name", "").strip()
         dj_last = request.form.get("dj_last_name", "").strip()
-        show_name = request.form.get("show_name", "").strip()
         show_date_raw = request.form.get("show_date") or date.today().isoformat()
 
+        dj_obj = DJ.query.get(dj_id) if dj_id else None
+        if dj_obj:
+            dj_first = dj_obj.first_name
+            dj_last = dj_obj.last_name
+
+        if show_id:
+            show_obj = Show.query.get(show_id)
+            if show_obj:
+                show_name = show_obj.show_name or f"{show_obj.host_first_name} {show_obj.host_last_name}"
+
         if not all([dj_first, dj_last, show_name]):
-            flash("DJ first name, last name, and show name are required.", "danger")
+            flash("DJ and show selection are required.", "danger")
             return redirect(url_for("logs.submit_log"))
 
         try:
@@ -92,7 +104,27 @@ def submit_log():
         logger.info("Log sheet %s saved with %s entries", sheet.id, len(rows))
         return redirect(url_for("logs.submit_log"))
 
-    return render_template("logs_submit.html", now=datetime.utcnow())
+    djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+    shows = Show.query.order_by(Show.show_name).all()
+    dj_payload = [
+        {"id": d.id, "first_name": d.first_name, "last_name": d.last_name}
+        for d in djs
+    ]
+    show_payload = [
+        {
+            "id": s.id,
+            "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
+            "schedule": f"{s.days_of_week} {s.start_time}-{s.end_time}",
+            "hosts": [d.id for d in s.djs],
+        }
+        for s in shows
+    ]
+    return render_template(
+        "logs_submit.html",
+        now=datetime.utcnow(),
+        djs=dj_payload,
+        shows=show_payload,
+    )
 
 
 @logs_bp.route("/manage")

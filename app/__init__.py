@@ -128,6 +128,8 @@ def create_app(config_class=Config):
                     conn.execute(text("ALTER TABLE user ADD COLUMN custom_role VARCHAR(50)"))
                 if "permissions" not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN permissions TEXT"))
+                if "identities" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN identities TEXT"))
                 if "approval_status" not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN approval_status VARCHAR(32) DEFAULT 'pending'"))
                 if "rejected" not in user_cols:

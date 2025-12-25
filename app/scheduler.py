@@ -8,7 +8,7 @@ from .models import db, Show
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
-from app.services.settings_backup import backup_settings
+from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from .utils import update_user_config
 from datetime import date as date_cls
@@ -316,5 +316,6 @@ def run_settings_backup_job():
     with flask_app.app_context():
         try:
             backup_settings()
+            backup_data_snapshot()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Settings backup failed: %s", exc)

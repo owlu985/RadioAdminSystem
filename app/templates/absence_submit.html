@@ -12,21 +12,19 @@
     <h2>Submit DJ Absence</h2>
     <form method="post" class="row g-3">
         <div class="col-md-6">
-            <label class="form-label">DJ Name</label>
-            <input type="text" name="dj_name" class="form-control" required>
-        </div>
-        <div class="col-md-6">
-            <label class="form-label">Show Name</label>
-            <input type="text" name="show_name" class="form-control" required>
-        </div>
-        <div class="col-md-6">
-            <label class="form-label">Select Show (optional)</label>
-            <select name="show_id" class="form-select">
-                <option value="">-- none --</option>
-                {% for show in shows %}
-                <option value="{{ show.id }}">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }} ({{ show.days_of_week }} {{ show.start_time }}-{{ show.end_time }})</option>
+            <label class="form-label">DJ</label>
+            <select name="dj_id" id="dj_id" class="form-select" required>
+                <option value="">-- Select DJ --</option>
+                {% for dj in djs %}
+                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
                 {% endfor %}
             </select>
+            <input type="hidden" name="dj_name" id="dj_name">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label">Show</label>
+            <select name="show_id" id="show_id" class="form-select" required></select>
+            <input type="hidden" name="show_name" id="show_name">
         </div>
         <div class="col-md-3">
             <label class="form-label">Start Date</label>
@@ -57,6 +55,59 @@
         </div>
     </form>
 </div>
+<script>
+    const djs = {{ djs|tojson }};
+    const shows = {{ shows|tojson }};
+    const djSelect = document.getElementById('dj_id');
+    const showSelect = document.getElementById('show_id');
+    const djName = document.getElementById('dj_name');
+    const showName = document.getElementById('show_name');
+
+    function populateDJName(id) {
+        const dj = djs.find(d => d.id === Number(id));
+        djName.value = dj ? `${dj.first_name} ${dj.last_name}` : '';
+    }
+
+    function buildShowOptions(selectedDjId) {
+        const hostGroup = document.createElement('optgroup');
+        hostGroup.label = 'Shows I Host';
+        const otherGroup = document.createElement('optgroup');
+        otherGroup.label = 'Other Shows';
+
+        const sorted = [...shows].sort((a, b) => a.name.localeCompare(b.name));
+        sorted.forEach(show => {
+            const opt = document.createElement('option');
+            opt.value = show.id;
+            opt.dataset.name = show.name;
+            opt.textContent = `${show.name} (${show.schedule})`;
+            const isHost = selectedDjId && show.hosts.includes(Number(selectedDjId));
+            (isHost ? hostGroup : otherGroup).appendChild(opt);
+        });
+
+        showSelect.innerHTML = '';
+        if (hostGroup.children.length) showSelect.appendChild(hostGroup);
+        if (otherGroup.children.length) showSelect.appendChild(otherGroup);
+
+        const first = showSelect.querySelector('option');
+        if (first) {
+            first.selected = true;
+            showName.value = first.dataset.name || '';
+        }
+    }
+
+    djSelect.addEventListener('change', (e) => {
+        populateDJName(e.target.value);
+        buildShowOptions(e.target.value);
+    });
+
+    showSelect.addEventListener('change', (e) => {
+        const opt = e.target.selectedOptions[0];
+        showName.value = opt ? opt.dataset.name || '' : '';
+    });
+
+    buildShowOptions(djSelect.value || null);
+    populateDJName(djSelect.value || null);
+</script>
 {% include '_footer.html' %}
 </body>
 </html>

@@ -23,6 +23,7 @@
             <th>Date</th>
             <th>Entries</th>
             <th>Downloads</th>
+            <th>View</th>
         </tr>
         </thead>
         <tbody>
@@ -38,6 +39,10 @@
                        href="{{ url_for('logs.download_csv', sheet_id=sheet.id) }}">CSV</a>
                     <a class="btn btn-sm btn-outline-primary"
                        href="{{ url_for('logs.download_docx', sheet_id=sheet.id) }}">DOCX</a>
+                </td>
+                <td>
+                    <a class="btn btn-sm btn-outline-secondary"
+                       href="{{ url_for('logs.view_logs', sheet_id=sheet.id) }}">View</a>
                 </td>
             </tr>
         {% endfor %}

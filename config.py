@@ -66,6 +66,8 @@ class Config:
     SETTINGS_BACKUP_INTERVAL_HOURS = 12
     SETTINGS_BACKUP_RETENTION = 10
     SETTINGS_BACKUP_DIRNAME = "settings_backups"
+    DATA_BACKUP_DIRNAME = "data_backups"
+    DATA_BACKUP_RETENTION_DAYS = 60
 
     # NAS / RadioDJ integration
     NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")

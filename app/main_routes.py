@@ -16,7 +16,7 @@ from .models import (
     ArchivistEntry,
     SocialPost,
 )
-from sqlalchemy import case
+from sqlalchemy import case, func
 from functools import wraps
 from .logger import init_logger
 from app.auth_utils import admin_required
@@ -25,7 +25,7 @@ from app.services.music_search import search_music, get_track, load_cue, save_cu
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
-from app.services.settings_backup import backup_settings
+from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
 from app.services.archivist_db import import_archivist_csv, search_archivist
 from app.services.social_poster import send_social_post
@@ -68,15 +68,54 @@ def _complete_login(user: User):
     session['permissions'] = perms
 
 
-def _find_user(provider: str, external_id: str | None, email: str | None):
-    if not email:
-        return None
-    query = User.query.filter_by(email=email)
+def _parse_identities(user: User) -> list[dict]:
+    try:
+        return json.loads(user.identities) if user.identities else []
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _add_identity(user: User, provider: str, external_id: str | None, email: str | None) -> None:
+    identities = _parse_identities(user)
+    exists = any(
+        (i.get('provider') == provider and i.get('external_id') == str(external_id))
+        or (email and i.get('email') and i.get('email').lower() == email.lower())
+        for i in identities
+    )
+    if not exists:
+        identities.append({
+            'provider': provider,
+            'external_id': str(external_id) if external_id else None,
+            'email': email,
+        })
+        user.identities = json.dumps(identities)
+
+
+def _find_user(provider: str, external_id: str | None, email: str | None, display_name: str | None = None):
+    external_id = str(external_id) if external_id else None
+    email_norm = email.lower() if email else None
+
     if external_id:
-        user = User.query.filter_by(provider=provider, external_id=str(external_id)).first()
+        user = User.query.filter_by(provider=provider, external_id=external_id).first()
         if user:
             return user
-    return query.first()
+        user = User.query.filter(User.identities.ilike(f"%{provider}%"), User.identities.ilike(f"%{external_id}%")).first()
+        if user:
+            return user
+
+    if email_norm:
+        user = User.query.filter(db.func.lower(User.email) == email_norm).first()
+        if user:
+            return user
+        user = User.query.filter(User.identities.ilike(f"%{email_norm}%")).first()
+        if user:
+            return user
+
+    if display_name:
+        user = User.query.filter(User.display_name.ilike(display_name)).first()
+        if user:
+            return user
+    return None
 
 
 def _redirect_pending(profile):
@@ -247,7 +286,7 @@ def manage_dj_discipline():
                                 notes=notes,
                                 action_taken=action_taken,
                                 resolved=resolved,
-                                created_by=session.get("user_email"),
+                                created_by=session.get("display_name") or session.get("user_email"),
                         )
                         db.session.add(rec)
                         db.session.commit()
@@ -355,16 +394,26 @@ def edit_dj(dj_id):
 @main_bp.route("/dj/absence", methods=["GET", "POST"])
 def dj_absence_submit():
         shows = Show.query.order_by(Show.show_name).all()
+        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
         if request.method == "POST":
-                dj_name = request.form.get("dj_name")
-                show_name = request.form.get("show_name")
+                dj_id = request.form.get("dj_id", type=int)
                 show_id = request.form.get("show_id") or None
+                show_name = request.form.get("show_name")
+                dj_name = request.form.get("dj_name")
                 start_date = request.form.get("start_date")
                 start_time = request.form.get("start_time")
                 end_date = request.form.get("end_date") or start_date
                 end_time = request.form.get("end_time")
                 replacement = request.form.get("replacement") or None
                 notes = request.form.get("notes") or None
+
+                dj_obj = DJ.query.get(dj_id) if dj_id else None
+                if dj_obj:
+                        dj_name = f"{dj_obj.first_name} {dj_obj.last_name}"
+
+                show_obj = Show.query.get(show_id) if show_id else None
+                if show_obj:
+                        show_name = show_obj.show_name or f"{show_obj.host_first_name} {show_obj.host_last_name}"
 
                 if not all([dj_name, show_name, start_date, start_time, end_time]):
                         flash("All fields except replacement/notes are required.", "danger")
@@ -391,7 +440,20 @@ def dj_absence_submit():
                 flash("Absence submitted for approval.", "success")
                 return redirect(url_for("main.dj_absence_submit"))
 
-        return render_template("absence_submit.html", shows=shows)
+        show_payload = [
+                {
+                        "id": s.id,
+                        "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
+                        "schedule": f"{s.days_of_week} {s.start_time}-{s.end_time}",
+                        "hosts": [d.id for d in s.djs],
+                }
+                for s in shows
+        ]
+        dj_payload = [
+                {"id": d.id, "first_name": d.first_name, "last_name": d.last_name}
+                for d in djs
+        ]
+        return render_template("absence_submit.html", shows=show_payload, djs=dj_payload)
 
 
 @main_bp.route("/absences", methods=["GET", "POST"])
@@ -757,9 +819,11 @@ def oauth_callback_google():
 
         external_id = (userinfo or {}).get("sub")
         suggested_name = (userinfo or {}).get("name") or email.split("@")[0]
-        existing = _find_user("google", external_id, email)
+        existing = _find_user("google", external_id, email, None)
 
         if existing:
+                _add_identity(existing, "google", external_id, email)
+                db.session.commit()
                 if existing.rejected or existing.approval_status == 'rejected':
                         flash("Your account request was rejected. Please contact an administrator.", "danger")
                         return redirect(url_for('main.login'))
@@ -772,12 +836,18 @@ def oauth_callback_google():
                 flash("Your account is pending approval.", "info")
                 return redirect(url_for('main.oauth_pending'))
 
+        merge_candidate = None
+        if suggested_name:
+                merge_candidate = User.query.filter(User.display_name.ilike(suggested_name)).first()
+
         profile = {
                 "provider": "google",
                 "email": email,
                 "external_id": external_id,
                 "suggested_name": suggested_name,
         }
+        if merge_candidate:
+                profile["merge_candidate_id"] = merge_candidate.id
         return _redirect_pending(profile)
 
 
@@ -840,9 +910,11 @@ def oauth_callback_discord():
 
         external_id = (userinfo or {}).get("id")
         suggested_name = userinfo.get("global_name") or userinfo.get("username") or email.split("@")[0]
-        existing = _find_user("discord", external_id, email)
+        existing = _find_user("discord", external_id, email, None)
 
         if existing:
+                _add_identity(existing, "discord", external_id, email)
+                db.session.commit()
                 if existing.rejected or existing.approval_status == 'rejected':
                         flash("Your account request was rejected. Please contact an administrator.", "danger")
                         return redirect(url_for('main.login'))
@@ -858,12 +930,18 @@ def oauth_callback_discord():
         if allowed_guild_id and not guild_member:
                 flash("Please submit your name to request access; you aren't in the authorized Discord guild yet.", "info")
 
+        merge_candidate = None
+        if suggested_name:
+                merge_candidate = User.query.filter(User.display_name.ilike(suggested_name)).first()
+
         profile = {
                 "provider": "discord",
                 "email": email,
                 "external_id": external_id,
                 "suggested_name": suggested_name,
         }
+        if merge_candidate:
+                profile["merge_candidate_id"] = merge_candidate.id
         return _redirect_pending(profile)
 
 @main_bp.route('/logout')
@@ -901,15 +979,32 @@ def oauth_claim():
                 flash("Please provide your name to continue.", "danger")
                 return redirect(url_for("main.oauth_claim"))
 
-            existing = _find_user(pending.get("provider"), pending.get("external_id"), pending.get("email"))
-            if existing:
-                existing.display_name = display_name
-                existing.approved = False
-                existing.rejected = False
-                existing.approval_status = 'pending'
-                existing.requested_at = datetime.utcnow()
+            merge_candidate_id = pending.get("merge_candidate_id")
+            target = None
+            if merge_candidate_id:
+                target = User.query.get(merge_candidate_id)
+            if not target:
+                target = _find_user(pending.get("provider"), pending.get("external_id"), pending.get("email"), None)
+
+            if target:
+                target.display_name = display_name or target.display_name
+                if pending.get("email") and not target.email:
+                    target.email = pending.get("email")
+                if pending.get("provider") and not target.provider:
+                    target.provider = pending.get("provider")
+                if pending.get("external_id") and not target.external_id:
+                    target.external_id = str(pending.get("external_id"))
+                target.rejected = False
+                target.approval_status = target.approval_status or 'pending'
+                target.requested_at = datetime.utcnow()
+                _add_identity(target, pending.get("provider", "oauth"), pending.get("external_id"), pending.get("email"))
                 db.session.commit()
-                session['pending_user_id'] = existing.id
+                if target.approved or target.approval_status == 'approved':
+                    session.pop("pending_oauth", None)
+                    _complete_login(target)
+                    flash("Profile linked and logged in.", "success")
+                    return redirect(url_for('main.dashboard'))
+                session['pending_user_id'] = target.id
             else:
                 new_user = User(
                     email=pending.get("email"),
@@ -922,6 +1017,7 @@ def oauth_claim():
                     role=None,
                     requested_at=datetime.utcnow(),
                 )
+                _add_identity(new_user, pending.get("provider", "oauth"), pending.get("external_id"), pending.get("email"))
                 db.session.add(new_user)
                 db.session.commit()
                 session['pending_user_id'] = new_user.id
@@ -1044,7 +1140,7 @@ ALLOWED_SETTINGS_KEYS = [
     'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
     'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'SELF_HEAL_ENABLED',
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
-    'SETTINGS_BACKUP_RETENTION', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
+    'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
     'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD'
 ]
@@ -1108,6 +1204,8 @@ def settings():
                 'CUSTOM_ROLES': [r.strip() for r in request.form.get('custom_roles', '').split(',') if r.strip()],
                 'SETTINGS_BACKUP_INTERVAL_HOURS': int(request.form.get('settings_backup_interval_hours') or current_app.config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12)),
                 'SETTINGS_BACKUP_RETENTION': int(request.form.get('settings_backup_retention') or current_app.config.get('SETTINGS_BACKUP_RETENTION', 10)),
+                'DATA_BACKUP_DIRNAME': request.form.get('data_backup_dirname', current_app.config.get('DATA_BACKUP_DIRNAME', 'data_backups')).strip(),
+                'DATA_BACKUP_RETENTION_DAYS': int(request.form.get('data_backup_retention_days') or current_app.config.get('DATA_BACKUP_RETENTION_DAYS', 60)),
                 'THEME_DEFAULT': request.form.get('theme_default', current_app.config.get('THEME_DEFAULT', 'system')),
                 'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
                 'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
@@ -1180,6 +1278,8 @@ def settings():
         'custom_roles': ", ".join(config.get('CUSTOM_ROLES', [])),
         'settings_backup_interval_hours': config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12),
         'settings_backup_retention': config.get('SETTINGS_BACKUP_RETENTION', 10),
+        'data_backup_dirname': config.get('DATA_BACKUP_DIRNAME', 'data_backups'),
+        'data_backup_retention_days': config.get('DATA_BACKUP_RETENTION_DAYS', 60),
         'theme_default': config.get('THEME_DEFAULT', 'system'),
         'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
         'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
@@ -1259,6 +1359,17 @@ def backup_settings_now():
         flash(f"Settings backed up to {dest}", "success")
     else:
         flash("No user_config.json found to back up.", "warning")
+    return redirect(url_for('main.settings'))
+
+
+@main_bp.route('/settings/backup-data', methods=['POST'])
+@admin_required
+def backup_data_now():
+    dest = backup_data_snapshot()
+    if dest:
+        flash(f"Data backup written to {dest}", "success")
+    else:
+        flash("Data backup did not run; check logs for details.", "warning")
     return redirect(url_for('main.settings'))
 
 @main_bp.route('/update_schedule', methods=['POST'])
