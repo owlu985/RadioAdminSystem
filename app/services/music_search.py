@@ -50,6 +50,7 @@ def _read_tags(path: str) -> Dict:
         "bitrate": None,
     }
     if not mutagen:
+        data["title"] = base_title
         return data
 
     def _coerce(val):
@@ -64,7 +65,6 @@ def _read_tags(path: str) -> Dict:
             except Exception:
                 pass
 
-        # Handle MP4FreeForm, tuples (track/disc), and bytes gracefully
         try:
             from mutagen.mp4 import MP4FreeForm  # type: ignore
         except Exception:  # noqa: BLE001
@@ -93,6 +93,15 @@ def _read_tags(path: str) -> Dict:
         except Exception:
             return val
 
+    def _first_text(val):
+        coerced = _coerce(val)
+        if isinstance(coerced, list):
+            for item in coerced:
+                if isinstance(item, str) and item.strip():
+                    return item
+            return coerced[0] if coerced else None
+        return coerced
+
     try:
         audio_easy = mutagen.File(path, easy=True)
         if audio_easy:
@@ -112,33 +121,36 @@ def _read_tags(path: str) -> Dict:
             ]:
                 val = audio_easy.tags.get(key) if audio_easy.tags else None
                 if val:
-                    data[target] = _coerce(val)
+                    data[target] = _first_text(val)
 
-        # Always attempt MP4 atom parsing for M4A/MP4 to capture richer tags
         if path.lower().endswith((".m4a", ".mp4")):
-            # First try the friendly EasyMP4 mapper; fall back to raw atoms if needed
             try:
                 from mutagen.mp4 import EasyMP4  # type: ignore
 
                 easy_mp4 = EasyMP4(path)
-                if easy_mp4 and easy_mp4.tags:
-                    for key, target in [
-                        ("title", "title"),
-                        ("artist", "artist"),
-                        ("album", "album"),
-                        ("composer", "composer"),
-                        ("isrc", "isrc"),
-                        ("date", "year"),
-                        ("year", "year"),
-                        ("tracknumber", "track"),
-                        ("discnumber", "disc"),
-                        ("copyright", "copyright"),
-                    ]:
-                        val = easy_mp4.tags.get(key)
-                        if val and not data.get(target):
-                            coerced = _coerce(val)
-                            if coerced:
-                                data[target] = coerced
+                if hasattr(easy_mp4, "info") and getattr(easy_mp4.info, "bitrate", None) and not data.get("bitrate"):
+                    data["bitrate"] = getattr(easy_mp4.info, "bitrate")
+                for key, target in [
+                    ("title", "title"),
+                    ("artist", "artist"),
+                    ("album", "album"),
+                    ("composer", "composer"),
+                    ("isrc", "isrc"),
+                    ("date", "year"),
+                    ("year", "year"),
+                    ("tracknumber", "track"),
+                    ("discnumber", "disc"),
+                    ("copyright", "copyright"),
+                ]:
+                    if data.get(target):
+                        continue
+                    if not getattr(easy_mp4, "tags", None):
+                        continue
+                    val = easy_mp4.tags.get(key)
+                    if val and not data.get(target):
+                        coerced = _first_text(val)
+                        if coerced:
+                            data[target] = coerced
             except Exception:
                 pass
 
@@ -148,14 +160,13 @@ def _read_tags(path: str) -> Dict:
                 mp4 = MP4(path)
                 mp4_tags = mp4.tags or {}
 
-                # Support multiple atom spellings (including custom iTunes freeform atoms)
                 atom_map = {
-                    "title": ["\xa9nam", "----:com.apple.iTunes:TITLE"],
-                    "artist": ["\xa9ART", "----:com.apple.iTunes:ARTIST"],
-                    "album": ["\xa9alb", "----:com.apple.iTunes:ALBUM"],
-                    "composer": ["\xa9wrt", "----:com.apple.iTunes:COMPOSER"],
+                    "title": ["©nam", "----:com.apple.iTunes:TITLE"],
+                    "artist": ["©ART", "----:com.apple.iTunes:ARTIST"],
+                    "album": ["©alb", "----:com.apple.iTunes:ALBUM"],
+                    "composer": ["©wrt", "----:com.apple.iTunes:COMPOSER"],
                     "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
-                    "year": ["\xa9day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "year": ["©day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
                     "track": ["trkn"],
                     "disc": ["disk"],
                     "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
@@ -167,30 +178,28 @@ def _read_tags(path: str) -> Dict:
                     for atom in atoms:
                         val = mp4_tags.get(atom)
                         if val:
-                            coerced = _coerce(val)
+                            coerced = _first_text(val)
                             if coerced:
                                 data[target] = coerced
                                 break
 
-                # If artist/title still missing, try any MP4FreeForm text-like atoms as a last resort
                 if not data.get("artist") or not data.get("title"):
                     for key, val in mp4_tags.items():
                         if not isinstance(key, str):
                             continue
                         lowered = key.lower()
                         if "artist" in lowered and not data.get("artist"):
-                            coerced = _coerce(val)
+                            coerced = _first_text(val)
                             if coerced:
                                 data["artist"] = coerced
                         if "title" in lowered and not data.get("title"):
-                            coerced = _coerce(val)
+                            coerced = _first_text(val)
                             if coerced:
                                 data["title"] = coerced
 
-                # As an ultimate fallback, scan all remaining tag values for string-like content
                 if not data.get("artist") or not data.get("title") or not data.get("album"):
                     for key, val in mp4_tags.items():
-                        coerced = _coerce(val)
+                        coerced = _first_text(val)
                         if not coerced:
                             continue
                         if isinstance(coerced, str):
@@ -206,8 +215,33 @@ def _read_tags(path: str) -> Dict:
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
                 pass
-        # Final fallback: if the title is missing or literally the string "None",
-        # use the filename (prevents blank titles on stubborn files).
+
+        if not all([data.get("title"), data.get("artist"), data.get("album")]):
+            try:
+                raw_audio = mutagen.File(path, easy=False)
+                if raw_audio and getattr(raw_audio, "tags", None):
+                    for key, val in raw_audio.tags.items():
+                        text_val = _first_text(val)
+                        if not text_val:
+                            continue
+                        lkey = str(key).lower()
+                        if not data.get("title") and any(hint in lkey for hint in ["©nam", "title", "name"]):
+                            data["title"] = text_val
+                        if not data.get("artist") and any(hint in lkey for hint in ["©art", "artist", "aart"]):
+                            data["artist"] = text_val
+                        if not data.get("album") and any(hint in lkey for hint in ["©alb", "album"]):
+                            data["album"] = text_val
+                        if not data.get("isrc") and "isrc" in lkey:
+                            data["isrc"] = text_val
+                        if not data.get("composer") and any(hint in lkey for hint in ["wrt", "composer"]):
+                            data["composer"] = text_val
+                        if not data.get("copyright") and "cprt" in lkey:
+                            data["copyright"] = text_val
+                        if not data.get("year") and any(hint in lkey for hint in ["day", "year", "date"]):
+                            data["year"] = text_val
+            except Exception:
+                pass
+
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
@@ -258,6 +292,11 @@ def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
     existing = MusicAnalysis.query.filter_by(path=path).first()
     if existing:
         existing.updated_at = datetime.utcnow()
+        base_title = os.path.splitext(os.path.basename(path))[0]
+        existing.missing_tags = not (tags.get("artist") and tags.get("title") and tags.get("title") != base_title)
+        if tags.get("bitrate"):
+            existing.bitrate = tags["bitrate"]
+        db.session.commit()
         return existing
     duration_seconds, peak_db, rms_db, peaks = _audio_stats(path)
     bitrate = tags.get("bitrate")
