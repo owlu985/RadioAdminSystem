@@ -127,7 +127,8 @@ def create_app(config_class=Config):
                             approved BOOLEAN NOT NULL DEFAULT 0,
                             requested_at DATETIME NOT NULL,
                             approved_at DATETIME,
-                            last_login_at DATETIME
+                            last_login_at DATETIME,
+                            created_at DATETIME NOT NULL
                         )
                         """
                     ))
@@ -142,6 +143,9 @@ def create_app(config_class=Config):
                     conn.execute(text("ALTER TABLE user ADD COLUMN approval_status VARCHAR(32) DEFAULT 'pending'"))
                 if "rejected" not in user_cols:
                     conn.execute(text("ALTER TABLE user ADD COLUMN rejected BOOLEAN DEFAULT 0"))
+                if "created_at" not in user_cols:
+                    conn.execute(text("ALTER TABLE user ADD COLUMN created_at DATETIME"))
+                    conn.execute(text("UPDATE user SET created_at = COALESCE(requested_at, datetime('now'))"))
                 if "dj_absence" not in insp.get_table_names():
                     conn.execute(text(
                         """

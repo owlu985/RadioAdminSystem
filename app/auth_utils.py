@@ -50,6 +50,18 @@ def admin_required(f):
     return decorated_function
 
 
+def login_required(f):
+    """Require an authenticated session without enforcing role."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("authenticated"):
+            abort(403, description="Requires login")
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
 def role_required(roles):
     """Decorator for explicit role checks."""
 

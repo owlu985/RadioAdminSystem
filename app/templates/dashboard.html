@@ -10,7 +10,10 @@
 {% include '_nav.html' %}
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Dashboard</h2>
+        <div>
+            <div class="text-muted small">{{ greeting }}, {{ session.get('display_name') or 'there' }}!</div>
+            <h2 class="mb-0">Dashboard</h2>
+        </div>
         <div>
             <a href="{{ url_for('main.shows') }}" class="btn btn-sm btn-outline-primary">Show Schedule</a>
             <a href="{{ url_for('logs.manage_logs') }}" class="btn btn-sm btn-outline-primary">Log Manager</a>
@@ -158,5 +161,6 @@
     setInterval(refreshStatus, 5000);
     setInterval(refreshListeners, 60000);
 </script>
+{% include '_footer.html' %}
 </body>
 </html>

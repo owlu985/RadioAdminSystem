@@ -62,7 +62,17 @@
           <option value="dark">Dark</option>
         </select>
         {% if is_auth %}
-          <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.logout') }}">Logout</a>
+          <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ session.get('display_name') or 'Account' }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><span class="dropdown-header">{{ session.get('user_email') }}</span></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">Profile</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}">Logout</a></li>
+            </ul>
+          </div>
         {% else %}
           <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.login') }}">Login</a>
         {% endif %}
@@ -94,3 +104,4 @@
     }
   })();
 </script>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

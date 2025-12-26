@@ -2,6 +2,7 @@ from flask import Blueprint, render_template, request, redirect, url_for, flash,
 import json
 import os
 import secrets
+import random
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time, timedelta, date
@@ -20,7 +21,7 @@ from .models import (
 from sqlalchemy import case, func
 from functools import wraps
 from .logger import init_logger
-from app.auth_utils import admin_required
+from app.auth_utils import admin_required, login_required, ROLE_PERMISSIONS
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track, load_cue, save_cue
 from app.services.audit import audit_recordings, audit_explicit_music
@@ -240,6 +241,8 @@ def dashboard():
         health = get_health_snapshot()
         listeners = fetch_icecast_listeners()
 
+        greeting = random.choice(["Hello", "Bonjour", "Hola", "Howdy", "Greetings", "Salutations", "Welcome"])
+
         return render_template(
                 'dashboard.html',
                 current_show=current_show,
@@ -248,6 +251,7 @@ def dashboard():
                 absences=absences,
                 health=health,
                 listeners=listeners,
+                greeting=greeting,
         )
 
 
@@ -347,6 +351,29 @@ def manage_users():
 
         users = User.query.order_by(User.requested_at.desc()).all()
         return render_template("users_manage.html", users=users, role_choices=_role_choices())
+
+
+@main_bp.route('/profile')
+@login_required
+def profile():
+        user_id = session.get("user_id")
+        user = User.query.get(user_id) if user_id else None
+        if not user:
+                abort(403, description="Requires login")
+
+        role = user.custom_role or user.role or "viewer"
+        perms = set()
+        if user.permissions:
+                perms.update(p.strip() for p in (user.permissions or "").split(',') if p.strip())
+        perms.update(ROLE_PERMISSIONS.get(role, set()))
+        perms_display = sorted(perms) if perms else []
+
+        return render_template(
+                "profile.html",
+                user=user,
+                role=role,
+                perms=perms_display,
+        )
 
 
 @main_bp.route("/djs/add", methods=["GET", "POST"])
