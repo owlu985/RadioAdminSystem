@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Read Cards</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <h2 class="mb-0">Live Read Cards</h2>
+    <div class="d-flex gap-2 flex-wrap">
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.live_read_cards_print', include_expired=1 if include_expired else None) }}" target="_blank">Print Layout</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('main.live_read_cards', include_expired=1 if not include_expired else None) }}">
+        {% if include_expired %}Hide expired{% else %}Show expired{% endif %}
+      </a>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">Add Cards</div>
+    <div class="card-body">
+      <form method="post" id="cardsForm">
+        <div id="cardsContainer" class="d-flex flex-column gap-3">
+          <div class="border rounded p-3 card-row">
+            <div class="row g-3 align-items-start">
+              <div class="col-md-4">
+                <label class="form-label">Title</label>
+                <input type="text" class="form-control" name="card_title[]" placeholder="Sponsor read, event, etc." required>
+              </div>
+              <div class="col-md-3">
+                <label class="form-label">Expires (optional)</label>
+                <input type="date" class="form-control" name="card_expiry[]">
+                <div class="form-text">Leave blank for no expiry.</div>
+              </div>
+              <div class="col-md-5">
+                <label class="form-label">Copy</label>
+                <textarea class="form-control" rows="3" name="card_copy[]" placeholder="Paste or type radio copy" required></textarea>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="d-flex gap-2 mt-3">
+          <button type="button" class="btn btn-outline-secondary" id="addCardBtn">Add another card</button>
+          <button type="submit" class="btn btn-primary">Save Cards</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <span>Existing Cards ({{ cards|length }})</span>
+      <small class="text-muted">Showing {% if include_expired %}all{% else %}active{% endif %} cards{% if not include_expired %} (expires on or after {{ today }}){% endif %}</small>
+    </div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table mb-0 align-middle">
+          <thead>
+            <tr>
+              <th>Title</th>
+              <th>Expires</th>
+              <th>Copy</th>
+              <th style="width:120px">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for card in cards %}
+              <tr>
+                <td class="fw-semibold">{{ card.title }}</td>
+                <td>{% if card.expires_on %}{{ card.expires_on }}{% else %}<span class="text-muted">None</span>{% endif %}</td>
+                <td style="max-width:420px; white-space:pre-wrap">{{ card.copy }}</td>
+                <td>
+                  <form method="post" action="{{ url_for('main.delete_live_read', card_id=card.id) }}" onsubmit="return confirm('Delete this card?');">
+                    <button type="submit" class="btn btn-sm btn-outline-danger">Delete</button>
+                  </form>
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-4">No cards yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+  document.getElementById('addCardBtn').addEventListener('click', function(){
+    const container = document.getElementById('cardsContainer');
+    const clone = container.querySelector('.card-row').cloneNode(true);
+    clone.querySelectorAll('input, textarea').forEach(el => { el.value = ''; });
+    container.appendChild(clone);
+  });
+</script>
+</body>
+</html>

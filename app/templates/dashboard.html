@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Dashboard</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <div class="text-muted small">{{ greeting }}, {{ session.get('display_name') or 'there' }}!</div>
+            <h2 class="mb-0">Dashboard</h2>
+        </div>
+        <div>
+            <a href="{{ url_for('main.shows') }}" class="btn btn-sm btn-outline-primary">Show Schedule</a>
+            <a href="{{ url_for('logs.manage_logs') }}" class="btn btn-sm btn-outline-primary">Log Manager</a>
+            <a href="{{ url_for('logs.submit_log') }}" class="btn btn-sm btn-outline-secondary" target="_blank">Public Logger</a>
+            <a href="{{ url_for('news.upload_news') }}" class="btn btn-sm btn-outline-primary">Upload News</a>
+            <a href="{{ url_for('main.list_djs') }}" class="btn btn-sm btn-outline-primary">DJs</a>
+            <a href="{{ url_for('main.music_search_page') }}" class="btn btn-sm btn-outline-primary">Music Search</a>
+            <a href="{{ url_for('main.api_docs_page') }}" class="btn btn-sm btn-outline-primary">API Docs</a>
+            <a href="{{ url_for('main.audit_page') }}" class="btn btn-sm btn-outline-primary">Audit</a>
+            <a href="{{ url_for('main.logout') }}" class="btn btn-sm btn-outline-danger">Logout</a>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">On Air Status</div>
+        <div class="card-body">
+            {% if current_show %}
+                <h5 class="card-title">{{ current_show.show_name or current_show.host_first_name ~ ' ' ~ current_show.host_last_name }}</h5>
+                <p class="card-text mb-1"><strong>Host:</strong> {{ current_show.host_first_name }} {{ current_show.host_last_name }}</p>
+                <p class="card-text mb-1"><strong>Genre:</strong> {{ current_show.genre or 'N/A' }}</p>
+                <p class="card-text mb-1"><strong>Description:</strong> {{ current_show.description or 'N/A' }}</p>
+                <p class="card-text mb-1"><strong>Window:</strong> {{ window.start_time }} - {{ window.end_time }}</p>
+                {% if current_run %}
+                    <p class="card-text mb-0"><strong>Run started:</strong> {{ current_run.start_time }}</p>
+                    {% if current_run.flagged_missed %}
+                        <span class="badge bg-warning text-dark">Flagged (automation/dead-air)</span>
+                    {% endif %}
+                {% endif %}
+            {% else %}
+                <p class="mb-0">Off air (no active show). See <code>/api/now</code> for API status.</p>
+            {% endif %}
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Stream / Silence Status</span>
+            <small class="text-muted">Auto-refresh every 5s</small>
+        </div>
+        <div class="card-body" id="streamStatus">
+            <p class="mb-1"><strong>Stream:</strong> <span id="streamUp">...</span></p>
+            <p class="mb-1"><strong>Listeners:</strong> <span id="listeners">n/a</span></p>
+            <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
+            <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
+            <div class="small text-muted mt-2" id="listenerHistory"></div>
+        </div>
+    </div>
+
+    {% if health %}
+    <div class="card mb-3">
+        <div class="card-header">Self-heal / Job Health</div>
+        <div class="card-body">
+            <div class="row">
+                {% for name, h in health.items() %}
+                <div class="col-md-6 mb-2">
+                    <div class="border rounded p-2 h-100">
+                        <div class="fw-bold text-uppercase small">{{ name.replace('_', ' ') }}</div>
+                        <div class="d-flex justify-content-between">
+                            <span>Failures</span><span class="fw-semibold">{{ h['failures'] }}</span>
+                        </div>
+                        <div class="d-flex justify-content-between">
+                            <span>Restarts</span><span class="fw-semibold">{{ h['restarts'] }}</span>
+                        </div>
+                        {% if h['reason'] %}
+                        <div class="text-muted small">Last reason: {{ h['reason'] }}</div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="card mb-3">
+        <div class="card-header">Quick Links</div>
+        <div class="card-body">
+            <ul class="mb-0">
+                <li><a href="{{ url_for('main.shows') }}">Manage show recorder schedule</a></li>
+                <li><a href="{{ url_for('logs.manage_logs') }}">View/Export station logs</a></li>
+                <li><a href="{{ url_for('logs.submit_log') }}" target="_blank">Public logger form</a></li>
+                <li><a href="{{ url_for('main.dj_absence_submit') }}" target="_blank">Submit DJ absence</a> | <a href="{{ url_for('main.manage_absences') }}">Review absences</a></li>
+                <li><a href="{{ url_for('news.upload_news') }}">Upload daily newscast</a></li>
+                <li>REST: <code>/api/now</code> (current show), <code>/api/probes/latest</code> (silence/automation), <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code></li>
+                <li>NAS watcher + RadioDJ import runs periodically (news/calendar)</li>
+            </ul>
+        </div>
+    </div>
+
+    <div class="card mb-3">
+        <div class="card-header">Upcoming/Pending Absences</div>
+        <div class="card-body">
+            {% if absences %}
+            <ul class="mb-0">
+                {% for a in absences %}
+                <li><strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time }} to {{ a.end_time }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}</li>
+                {% endfor %}
+            </ul>
+            {% else %}
+            <p class="mb-0 text-muted">No pending absences.</p>
+            {% endif %}
+        </div>
+    </div>
+{% include '_footer.html' %}
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    async function refreshStatus() {
+        try {
+            const res = await fetch('/api/stream/status');
+            const data = await res.json();
+            document.getElementById('streamUp').textContent = data.stream_up ? 'Up' : 'Down';
+            if (data.listeners !== undefined) {
+                document.getElementById('listeners').textContent = data.listeners;
+            } else {
+                document.getElementById('listeners').textContent = 'n/a';
+            }
+            if (data.probe) {
+                document.getElementById('probeClass').textContent = data.probe.classification;
+                document.getElementById('probeDetails').textContent =
+                    `reason=${data.probe.reason}, avg_db=${data.probe.avg_db}, silence=${data.probe.silence_ratio}, automation=${data.probe.automation_ratio}`;
+            } else {
+                document.getElementById('probeClass').textContent = 'No data';
+                document.getElementById('probeDetails').textContent = '';
+            }
+        } catch (e) {
+            document.getElementById('streamUp').textContent = 'Error';
+            document.getElementById('probeClass').textContent = '';
+            document.getElementById('probeDetails').textContent = '';
+        }
+    }
+    async function refreshListeners() {
+        try {
+            const res = await fetch('/api/icecast/analytics?hours=3');
+            const data = await res.json();
+            if (Array.isArray(data) && data.length) {
+                const last = data.slice(-5).map(d => `${new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}: ${d.listeners}`);
+                document.getElementById('listenerHistory').textContent = 'Recent: ' + last.join(' • ');
+            }
+        } catch (e) {
+            document.getElementById('listenerHistory').textContent = '';
+        }
+    }
+    refreshStatus();
+    refreshListeners();
+    setInterval(refreshStatus, 5000);
+    setInterval(refreshListeners, 60000);
+</script>
+{% include '_footer.html' %}
+</body>
+</html>
