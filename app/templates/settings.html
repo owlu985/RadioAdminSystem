@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body>
+{% include '_nav.html' %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -58,7 +59,28 @@
 <div class="container mt-5">
     <div class="d-flex justify-content-between align-items-center mb-4">
         <h2>Settings</h2>
-        <div>
+        <div class="d-flex gap-2 flex-wrap justify-content-end">
+            <form action="{{ url_for('main.export_settings') }}" method="get" class="m-0">
+                <button type="submit" class="btn btn-outline-primary" aria-label="Export settings JSON">
+                    <i class="bi bi-download"></i> Export JSON
+                </button>
+            </form>
+            <form action="{{ url_for('main.backup_settings_now') }}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-success" aria-label="Backup settings to disk">
+                    <i class="bi bi-hdd"></i> Backup now
+                </button>
+            </form>
+            <form action="{{ url_for('main.backup_data_now') }}" method="post" class="m-0">
+                <button type="submit" class="btn btn-outline-success" aria-label="Backup data to disk">
+                    <i class="bi bi-archive"></i> Backup data
+                </button>
+            </form>
+            <form action="{{ url_for('main.import_settings') }}" method="post" enctype="multipart/form-data" class="d-flex gap-2 align-items-center m-0">
+                <input type="file" name="settings_file" accept="application/json" class="form-control form-control-sm" aria-label="Choose settings JSON">
+                <button type="submit" class="btn btn-outline-secondary btn-sm" aria-label="Import settings JSON">
+                    <i class="bi bi-upload"></i> Import JSON
+                </button>
+            </form>
             {% if config.PAUSE_SHOWS_RECORDING == True %}
                 <form action="{{ url_for('main.resume') }}" method="POST" style="display:inline;">
                     <button type="submit" class="btn btn-secondary" aria-label="Resume Recordings">
@@ -112,6 +134,294 @@
             <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
         </div>
 
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label for="settings_backup_interval_hours" class="form-label">Settings Backup Interval (hours)</label>
+                <input type="number" min="1" name="settings_backup_interval_hours" id="settings_backup_interval_hours" class="form-control" value="{{ settings_backup_interval_hours }}">
+            </div>
+            <div class="col-md-4">
+                <label for="settings_backup_retention" class="form-label">Settings Backup Retention (files)</label>
+                <input type="number" min="1" name="settings_backup_retention" id="settings_backup_retention" class="form-control" value="{{ settings_backup_retention }}">
+            </div>
+            <div class="col-md-4">
+                <label for="data_backup_retention_days" class="form-label">Data Backup Retention (days)</label>
+                <input type="number" min="1" name="data_backup_retention_days" id="data_backup_retention_days" class="form-control" value="{{ data_backup_retention_days }}">
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="rate_limit_enabled" name="rate_limit_enabled" {% if rate_limit_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="rate_limit_enabled">Enable Rate Limiting</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_requests" class="form-label">Requests per Window</label>
+                <input type="number" min="1" name="rate_limit_requests" id="rate_limit_requests" class="form-control" value="{{ rate_limit_requests }}">
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_window_seconds" class="form-label">Window (seconds)</label>
+                <input type="number" min="1" name="rate_limit_window_seconds" id="rate_limit_window_seconds" class="form-control" value="{{ rate_limit_window_seconds }}">
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_trusted_ips" class="form-label">Trusted IPs (comma-separated)</label>
+                <input type="text" name="rate_limit_trusted_ips" id="rate_limit_trusted_ips" class="form-control" value="{{ rate_limit_trusted_ips }}" placeholder="127.0.0.1, ::1">
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-4">
+                <label for="theme_default" class="form-label">Default Theme</label>
+                <select name="theme_default" id="theme_default" class="form-select">
+                    <option value="system" {% if theme_default=='system' %}selected{% endif %}>System</option>
+                    <option value="light" {% if theme_default=='light' %}selected{% endif %}>Light</option>
+                    <option value="dark" {% if theme_default=='dark' %}selected{% endif %}>Dark</option>
+                </select>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="inline_help_enabled" name="inline_help_enabled" {% if inline_help_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="inline_help_enabled">Show inline help tips</label>
+                </div>
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label for="data_backup_dirname" class="form-label">Data Backup Folder Name</label>
+                <input type="text" name="data_backup_dirname" id="data_backup_dirname" class="form-control" value="{{ data_backup_dirname }}">
+                <small class="text-muted">Created under the instance folder; contains schedule/DJ/disciplinary snapshots.</small>
+            </div>
+        </div>
+
+        <div class="mb-3">
+            <label for="station_name" class="form-label">
+                Station Name
+            </label>
+            <input type="text" name="station_name" id="station_name" class="form-control" value="{{ station_name }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_slogan" class="form-label">
+                Station Slogan
+            </label>
+            <input type="text" name="station_slogan" id="station_slogan" class="form-control" value="{{ station_slogan }}" required>
+        </div>
+        <div class="mb-3">
+            <label for="station_background" class="form-label">
+                Station Background (filename in static/ or full URL)
+            </label>
+            <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Weather (Tempest)</h5>
+            <div class="mb-3">
+                <label for="tempest_api_key" class="form-label">Tempest API Key</label>
+                <input type="text" name="tempest_api_key" id="tempest_api_key" class="form-control" value="{{ tempest_api_key }}" placeholder="Enter Tempest API token">
+                <div class="form-text">Required for DJ status weather cards.</div>
+            </div>
+            <div class="mb-0">
+                <label for="tempest_station_id" class="form-label">Station ID</label>
+                <input type="number" name="tempest_station_id" id="tempest_station_id" class="form-control" value="{{ tempest_station_id }}" min="1">
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Alerts (Stream / Dead Air)</h5>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_enabled" name="alerts_enabled" {% if alerts_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_enabled">Enable alerts</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_dry_run" name="alerts_dry_run" {% if alerts_dry_run %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_dry_run">Simulate only (log instead of sending)</label>
+            </div>
+            <div class="mb-3">
+                <label for="alerts_discord_webhook" class="form-label">Discord Webhook URL</label>
+                <input type="text" name="alerts_discord_webhook" id="alerts_discord_webhook" class="form-control" value="{{ alerts_discord_webhook }}" placeholder="https://discord.com/api/webhooks/...">
+                <div class="form-text">If set, alerts post to this webhook.</div>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="alerts_email_enabled" name="alerts_email_enabled" {% if alerts_email_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="alerts_email_enabled">Send email alerts</label>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_email_to" class="form-label">Email To</label>
+                    <input type="email" name="alerts_email_to" id="alerts_email_to" class="form-control" value="{{ alerts_email_to }}" placeholder="alerts@example.com">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_email_from" class="form-label">Email From</label>
+                    <input type="email" name="alerts_email_from" id="alerts_email_from" class="form-control" value="{{ alerts_email_from }}" placeholder="rams@example.com">
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_smtp_server" class="form-label">SMTP Server</label>
+                    <input type="text" name="alerts_smtp_server" id="alerts_smtp_server" class="form-control" value="{{ alerts_smtp_server }}" placeholder="smtp.example.com">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_smtp_port" class="form-label">SMTP Port</label>
+                    <input type="number" name="alerts_smtp_port" id="alerts_smtp_port" class="form-control" value="{{ alerts_smtp_port }}" min="1">
+                </div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="alerts_smtp_username" class="form-label">SMTP Username</label>
+                    <input type="text" name="alerts_smtp_username" id="alerts_smtp_username" class="form-control" value="{{ alerts_smtp_username }}">
+                </div>
+                <div class="col-md-6">
+                    <label for="alerts_smtp_password" class="form-label">SMTP Password</label>
+                    <input type="password" name="alerts_smtp_password" id="alerts_smtp_password" class="form-control" value="{{ alerts_smtp_password }}">
+                </div>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-4">
+                    <label for="alert_dead_air_threshold_minutes" class="form-label">Dead Air Threshold (minutes)</label>
+                    <input type="number" name="alert_dead_air_threshold_minutes" id="alert_dead_air_threshold_minutes" class="form-control" value="{{ alert_dead_air_threshold_minutes }}" min="1">
+                </div>
+                <div class="col-md-4">
+                    <label for="alert_stream_down_threshold_minutes" class="form-label">Stream Down Threshold (minutes)</label>
+                    <input type="number" name="alert_stream_down_threshold_minutes" id="alert_stream_down_threshold_minutes" class="form-control" value="{{ alert_stream_down_threshold_minutes }}" min="1">
+                </div>
+                <div class="col-md-4">
+                    <label for="alert_repeat_minutes" class="form-label">Repeat Cooldown (minutes)</label>
+                    <input type="number" name="alert_repeat_minutes" id="alert_repeat_minutes" class="form-control" value="{{ alert_repeat_minutes }}" min="1">
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Stream Monitoring (Icecast)</h5>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="self_heal_enabled" name="self_heal_enabled" {% if self_heal_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="self_heal_enabled">Enable self-heal/restarts for probes & recordings</label>
+            </div>
+            <div class="mb-3">
+                <label for="icecast_status_url" class="form-label">Icecast Status URL</label>
+                <input type="text" name="icecast_status_url" id="icecast_status_url" class="form-control" value="{{ icecast_status_url }}" placeholder="https://host:port/admin/stats">
+                <div class="form-text">Used to show listener counts on the dashboard.</div>
+            </div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-6">
+                    <label for="icecast_username" class="form-label">Icecast Admin Username</label>
+                    <input type="text" name="icecast_username" id="icecast_username" class="form-control" value="{{ icecast_username }}" placeholder="admin">
+                </div>
+                <div class="col-md-6">
+                    <label for="icecast_password" class="form-label">Icecast Admin Password</label>
+                    <input type="password" name="icecast_password" id="icecast_password" class="form-control" value="{{ icecast_password }}">
+                </div>
+            </div>
+            <div class="mb-0">
+                <label for="icecast_mount" class="form-label">Mount Name (e.g., /stream)</label>
+                <input type="text" name="icecast_mount" id="icecast_mount" class="form-control" value="{{ icecast_mount }}">
+                <div class="row g-3 mt-2">
+                    <div class="col-md-6">
+                        <label for="icecast_analytics_interval_minutes" class="form-label">Listener Sample Interval (minutes)</label>
+                        <input type="number" min="1" class="form-control" name="icecast_analytics_interval_minutes" id="icecast_analytics_interval_minutes" value="{{ icecast_analytics_interval_minutes }}">
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Archivist Database</h5>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="archivist_db_path" class="form-label">Storage Path</label>
+                    <input type="text" name="archivist_db_path" id="archivist_db_path" class="form-control" value="{{ archivist_db_path }}" placeholder="instance/archivist_db.json">
+                    <div class="form-text">Where imported catalog rows are stored (JSON snapshot).</div>
+                </div>
+                <div class="col-md-6">
+                    <label for="archivist_upload_dir" class="form-label">Upload Folder</label>
+                    <input type="text" name="archivist_upload_dir" id="archivist_upload_dir" class="form-control" value="{{ archivist_upload_dir }}" placeholder="instance/archivist_uploads">
+                    <div class="form-text">Optional staging area for uploads; leave blank to use default.</div>
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Metadata Enrichment (MusicBrainz)</h5>
+            <div class="mb-0">
+                <label for="musicbrainz_user_agent" class="form-label">User Agent (recommended format: AppName/Version (contact@example.com))</label>
+                <input type="text" name="musicbrainz_user_agent" id="musicbrainz_user_agent" class="form-control" value="{{ musicbrainz_user_agent }}" placeholder="RAMS/1.0 (you@example.com)">
+                <div class="form-text">Used when calling MusicBrainz to populate metadata/ISRC suggestions.</div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Social Posting</h5>
+            <div class="form-check form-switch mb-2">
+                <input class="form-check-input" type="checkbox" role="switch" id="social_send_enabled" name="social_send_enabled" {% if social_send_enabled %}checked{% endif %}>
+                <label class="form-check-label" for="social_send_enabled">Enable real delivery (otherwise simulate/log only)</label>
+            </div>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="social_dry_run" name="social_dry_run" {% if social_dry_run %}checked{% endif %}>
+                <label class="form-check-label" for="social_dry_run">Simulate posts (recommended while testing)</label>
+            </div>
+            <div class="row g-3">
+                <div class="col-md-6">
+                    <label for="social_facebook_page_token" class="form-label">Facebook Page Token</label>
+                    <input type="text" name="social_facebook_page_token" id="social_facebook_page_token" class="form-control" value="{{ social_facebook_page_token }}" placeholder="Page access token">
+                </div>
+                <div class="col-md-6">
+                    <label for="social_instagram_token" class="form-label">Instagram Token</label>
+                    <input type="text" name="social_instagram_token" id="social_instagram_token" class="form-control" value="{{ social_instagram_token }}" placeholder="Instagram token (Graph)">
+                </div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-6">
+                    <label for="social_twitter_bearer_token" class="form-label">Twitter/X Bearer Token</label>
+                    <input type="text" name="social_twitter_bearer_token" id="social_twitter_bearer_token" class="form-control" value="{{ social_twitter_bearer_token }}" placeholder="Bearer token">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_bluesky_handle" class="form-label">Bluesky Handle</label>
+                    <input type="text" name="social_bluesky_handle" id="social_bluesky_handle" class="form-control" value="{{ social_bluesky_handle }}" placeholder="handle.bsky.social">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_bluesky_password" class="form-label">Bluesky App Password</label>
+                    <input type="password" name="social_bluesky_password" id="social_bluesky_password" class="form-control" value="{{ social_bluesky_password }}" placeholder="App password">
+                </div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">OAuth (Google)</h5>
+            <div class="mb-3">
+                <label for="oauth_client_id" class="form-label">Client ID</label>
+                <input type="text" name="oauth_client_id" id="oauth_client_id" class="form-control" value="{{ oauth_client_id }}" placeholder="Google OAuth client ID">
+            </div>
+            <div class="mb-3">
+                <label for="oauth_client_secret" class="form-label">Client Secret</label>
+                <input type="text" name="oauth_client_secret" id="oauth_client_secret" class="form-control" value="{{ oauth_client_secret }}" placeholder="Google OAuth client secret">
+            </div>
+            <div class="mb-0">
+                <label for="oauth_allowed_domain" class="form-label">Allowed Email Domain (optional)</label>
+                <input type="text" name="oauth_allowed_domain" id="oauth_allowed_domain" class="form-control" value="{{ oauth_allowed_domain }}" placeholder="example.edu">
+                <div class="form-text">Only emails from this domain may log in via OAuth.</div>
+            </div>
+        </div>
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">OAuth (Discord)</h5>
+            <div class="mb-3">
+                <label for="discord_oauth_client_id" class="form-label">Client ID</label>
+                <input type="text" name="discord_oauth_client_id" id="discord_oauth_client_id" class="form-control" value="{{ discord_oauth_client_id }}" placeholder="Discord application client ID">
+            </div>
+            <div class="mb-3">
+                <label for="discord_oauth_client_secret" class="form-label">Client Secret</label>
+                <input type="text" name="discord_oauth_client_secret" id="discord_oauth_client_secret" class="form-control" value="{{ discord_oauth_client_secret }}" placeholder="Discord application client secret">
+            </div>
+            <div class="mb-0">
+                <label for="discord_allowed_guild_id" class="form-label">Allowed Guild ID (optional)</label>
+                <input type="text" name="discord_allowed_guild_id" id="discord_allowed_guild_id" class="form-control" value="{{ discord_allowed_guild_id }}" placeholder="e.g. 123456789012345678">
+                <div class="form-text">If set, only Discord users in this guild may log in.</div>
+            </div>
+        </div>
+
+        <div class="mb-3 border rounded p-3 bg-light">
+            <h5 class="mb-3">Roles & Access</h5>
+            <div class="form-check form-switch mb-3">
+                <input class="form-check-input" type="checkbox" role="switch" id="oauth_only" name="oauth_only" {% if oauth_only %}checked{% endif %}>
+                <label class="form-check-label" for="oauth_only">OAuth-only admin login (disable password form)</label>
+            </div>
+            <label class="form-label">Custom Roles (comma-separated)</label>
+            <input type="text" name="custom_roles" class="form-control" value="{{ custom_roles }}" placeholder="producer,engineering">
+            <div class="form-text">Custom roles appear in the user management dropdown. Use permissions field per user to grant scopes.</div>
+        </div>
+
         <!-- Default Dates Fields -->
         <div class="mb-3">
             <label for="default_start_date" class="form-label">
@@ -144,7 +454,7 @@
             <i class="bi bi-x-circle"></i> Cancel
         </a>
     </form>
-</div>
+{% include '_footer.html' %}
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 
