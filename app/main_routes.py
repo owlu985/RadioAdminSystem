@@ -1184,7 +1184,7 @@ def edit_show(id):
         return redirect(url_for('main.shows'))
 
 ALLOWED_SETTINGS_KEYS = [
-    'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',
+    'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'BIND_HOST', 'BIND_PORT', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',
     'AUTO_CREATE_SHOW_FOLDERS', 'STATION_NAME', 'STATION_SLOGAN', 'STATION_BACKGROUND', 'TEMPEST_API_KEY',
     'TEMPEST_STATION_ID', 'ALERTS_ENABLED', 'ALERTS_DRY_RUN', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_ENABLED',
     'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM', 'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_PORT', 'ALERTS_SMTP_USERNAME',
@@ -1218,6 +1218,8 @@ def settings():
             updated_settings = {
                 'ADMIN_USERNAME': request.form['admin_username'],
                 'ADMIN_PASSWORD': request.form['admin_password'],
+                'BIND_HOST': request.form.get('bind_host', current_app.config.get('BIND_HOST', '127.0.0.1')).strip(),
+                'BIND_PORT': int(request.form.get('bind_port') or current_app.config.get('BIND_PORT', 5000)),
                 'STREAM_URL': request.form['stream_url'],
                 'OUTPUT_FOLDER': request.form['output_folder'],
                 'DEFAULT_START_DATE': request.form['default_start_date'],
@@ -1298,6 +1300,8 @@ def settings():
     settings_data = {
         'admin_username': config['ADMIN_USERNAME'],
         'admin_password': config['ADMIN_PASSWORD'],
+        'bind_host': config.get('BIND_HOST', '127.0.0.1'),
+        'bind_port': config.get('BIND_PORT', 5000),
         'stream_url': config['STREAM_URL'],
         'output_folder': config['OUTPUT_FOLDER'],
         'default_start_date': config['DEFAULT_START_DATE'],

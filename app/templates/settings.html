@@ -115,7 +115,24 @@
                 <button type="button" class="btn btn-outline-secondary" onclick="togglePassword()">Show/Hide</button>
             </div>
         </div>
-        
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-6">
+                <label for="bind_host" class="form-label">
+                    Server Bind Host
+                    <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="127.0.0.1 for local-only access, 0.0.0.0 to listen on all network interfaces."></i>
+                </label>
+                <input type="text" name="bind_host" id="bind_host" class="form-control" value="{{ bind_host }}" required>
+            </div>
+            <div class="col-md-6">
+                <label for="bind_port" class="form-label">
+                    Server Port
+                    <i class="bi bi-info-circle-fill ms-1" data-bs-toggle="tooltip" title="TCP port the RAMS web app listens on when launched via run.py."></i>
+                </label>
+                <input type="number" min="1" max="65535" name="bind_port" id="bind_port" class="form-control" value="{{ bind_port }}" required>
+            </div>
+        </div>
+
         <!-- Stream URL Field -->
         <div class="mb-3">
             <label for="stream_url" class="form-label">

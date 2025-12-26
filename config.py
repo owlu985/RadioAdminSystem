@@ -15,6 +15,10 @@ class Config:
     PAUSE_SHOW_END_DATE = None
     TEST_MODE = False
 
+    # Server binding
+    BIND_HOST = "127.0.0.1"
+    BIND_PORT = 5000
+
     # Silence / automation detection
     DEAD_AIR_DB = -72
     DEAD_AIR_SOFT_DB = -60
