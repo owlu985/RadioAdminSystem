@@ -16,102 +16,115 @@
 
     <p class="text-muted">Base URL: <code>http://&lt;host&gt;:&lt;port&gt;</code></p>
 
-    <h4>Now Playing</h4>
-    <pre><code>GET /api/now</code></pre>
-    <p>Returns current on-air show or off-air message.</p>
-    <pre><code>{
-  "status": "on_air",
-  "show": {
-    "name": "Afternoon Mix",
-    "host": "Jane Doe",
-    "genre": "Pop",
-    "description": "Feel-good hits",
-    "regular_host": true,
-    "window": {"start_time": "14:00", "end_time": "16:00", "start_date": "2025-01-01", "end_date": "2025-12-31", "days_of_week": "mon"}
-  },
-  "run": { "id": 12, "start_time": "2025-12-22T19:00:00", "classification": "live_show", ... }
-}</code></pre>
-
-    <h4>Probe Stream</h4>
-    <pre><code>POST /api/probe</code></pre>
-    <p>Triggers a stream probe; returns classification, avg dB, silence/automation ratios.</p>
-
-    <h4>Tempest Weather</h4>
-    <pre><code>GET /api/weather/tempest</code></pre>
-    <p>Returns current conditions plus snapshots for the next 1, 2, 4, and 8 hours, and the next 3 days. Requires Tempest API key and station ID in Settings.</p>
-    <pre><code>{
-  "status": "ok",
-  "current": {"temp": 72.4, "condition": "partly_cloudy", "icon": "partly_cloudy"},
-  "next_hours": [
-    {"time": "02:00 PM", "temp": 73.1, "condition": "sunny", "icon": "clear-day"},
-    {"time": "03:00 PM", "temp": 74.0, "condition": "sunny"},
-    {"time": "05:00 PM", "temp": 72.5, "condition": "partly cloudy"},
-    {"time": "09:00 PM", "temp": 68.0, "condition": "clear"}
-  ],
-  "next_days": [
-    {"day": "Mon", "high": 75.0, "low": 62.0, "condition": "rain", "icon": "rain"},
-    ... (3 items)
-  ]
-}</code></pre>
-
-    <h4>Latest Probe</h4>
-    <pre><code>GET /api/probes/latest</code></pre>
-
-    <h4>Show Runs and Logs</h4>
-    <pre><code>GET /api/runs/&lt;run_id&gt;</code></pre>
-    <pre><code>GET /api/runs/&lt;run_id&gt;/logs</code></pre>
-
-    <h4>PSA Compliance</h4>
-    <pre><code>GET /api/psa/compliance/&lt;run_id&gt;</code></pre>
-    <p>Checks if PSA+live_read count ≥ 2.</p>
-
-    <h4>Artist Frequency Report</h4>
-    <pre><code>GET /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=YYYY-MM-DDTHH:MM&amp;end=...</code></pre>
-
-    <h4>RadioDJ PSA Management</h4>
-    <pre><code>GET  /api/radiodj/psas
-POST /api/radiodj/psas/&lt;psa_id&gt;/enable
-POST /api/radiodj/psas/&lt;psa_id&gt;/disable
-DELETE /api/radiodj/psas/&lt;psa_id&gt;
-PATCH /api/radiodj/psas/&lt;psa_id&gt;/metadata   (JSON body with fields to change)</code></pre>
-
-    <h4>RadioDJ Imports (News/Calendar)</h4>
-    <pre><code>POST /api/radiodj/import/news
-POST /api/radiodj/import/community_calendar</code></pre>
-
-    <h4>Music Search & Detail</h4>
-    <pre><code>GET /api/music/search?q=&lt;query&gt;</code></pre>
-    <p>Searches NAS_MUSIC_ROOT by title/artist/album/composer.</p>
-    <pre><code>GET /api/music/detail?path=&lt;absolute_path&gt;</code></pre>
-    <p>Returns tags: title, artist, album, composer, isrc, year, track, disc, copyright, path.</p>
-    <pre><code>GET /api/music/musicbrainz?title=&lt;title&gt;&amp;artist=&lt;artist&gt;&amp;limit=5</code></pre>
-    <p>Looks up suggested metadata (title, artist, album, year, ISRC) from MusicBrainz recordings.</p>
-
-    <h4>DJs and Shows</h4>
-    <pre><code>GET /api/djs</code></pre>
-    <p>Returns DJ name, bio, photo_url, and assigned shows with windows/genre/description.</p>
-
-    <h4>Public Logger (HTML)</h4>
-    <pre><code>GET  /logs/submit   (no auth, form)
-POST /logs/submit   (form fields: dj_first_name, dj_last_name, show_name, show_date, rows with time_X, type_X, title_X, artist_X)</code></pre>
-
-    <h4>Log Viewing/Exports</h4>
-    <pre><code>GET /logs/view?sheet_id=&lt;id&gt;   (HTML)
+    <h4 class="mt-4">Public & Website-Facing APIs</h4>
+    <ul>
+        <li><strong>Now Playing (widget-friendly):</strong>
+            <pre><code>GET /api/now
+GET /api/now/widget</code></pre>
+            Returns current scheduled show or automation/off-air with run metadata. The widget variant is compact for website embeds.</li>
+        <li><strong>Station Status (stream + probe):</strong>
+            <pre><code>GET /api/stream/status</code></pre>
+            Stream reachability, listener counts (Icecast), latest probe classification (live/auto/dead air), and dB ratios.</li>
+        <li><strong>Schedule grid + calendar:</strong>
+            <pre><code>GET /api/schedule</code></pre>
+            <pre><code>GET /schedule/grid   (public HTML)
+GET /schedule/ical   (iCal feed)</code></pre>
+            Returns the weekly schedule for the website’s interactive grid and calendar exports.</li>
+        <li><strong>DJs:</strong>
+            <pre><code>GET /api/djs</code></pre>
+            DJ bios with photo URLs and the shows they host.</li>
+        <li><strong>Tempest Weather:</strong>
+            <pre><code>GET /api/weather/tempest</code></pre>
+            Current conditions plus 1/2/4/8-hour snapshots and 3-day outlook (Tempest API key + station required).</li>
+        <li><strong>Logs (public form):</strong>
+            <pre><code>GET  /logs/submit
+POST /logs/submit</code></pre>
+            Public DJ log submission form; uses dropdown DJs/shows and required fields.</li>
+        <li><strong>Log view/exports:</strong>
+            <pre><code>GET /logs/view?sheet_id=&lt;id&gt;
 GET /logs/download/csv?sheet_id=&lt;id&gt;
 GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
-
-    <h4>News Upload (HTML)</h4>
-    <pre><code>GET/POST /news/upload (auth required)</code></pre>
-    <p>Form fields: date (YYYY-MM-DD), news_type (from NEWS_TYPES_CONFIG), file (mp3).</p>
-
-    <h4>Admin Pages</h4>
-    <ul>
-        <li>Dashboard: <code>/dashboard</code></li>
-        <li>Show schedule: <code>/shows</code></li>
-        <li>DJs: <code>/djs</code>, add/edit via <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code></li>
-        <li>Log manager: <code>/logs/manage</code></li>
-        <li>Music search: <code>/music/search</code> (HTML, admin)</li>
+        </li>
+        <li><strong>DJ Status screen:</strong>
+            <pre><code>GET /dj/status</code></pre>
+            Full-screen clock + weather + station status for studio displays.</li>
     </ul>
+
+    <h4 class="mt-4">Stream Monitoring & Probes</h4>
+    <pre><code>POST /api/probe                 (trigger probe)
+GET  /api/probes/latest        (latest probe)
+GET  /api/runs/&lt;run_id&gt;
+GET  /api/runs/&lt;run_id&gt;/logs
+GET  /api/psa/compliance/&lt;run_id&gt;
+GET  /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=...&amp;end=...
+POST /api/audit/start          (recording + explicitness audits)
+GET  /api/audit/status/&lt;job_id&gt;</code></pre>
+    <p>Probes classify live/automation/dead-air and log dB ratios. Audit jobs run in the background with progress polling.</p>
+
+    <h4 class="mt-4">Music Library</h4>
+    <pre><code>GET    /api/music/search?q=&lt;query&gt;            (use q=% to list all)
+GET    /api/music/detail?path=&lt;abs_path&gt;
+POST   /api/music/cover-art                   (harvest/embed cover art)
+GET    /api/music/musicbrainz?title=&lt;t&gt;&amp;artist=&lt;a&gt;&amp;limit=5
+POST   /api/music/bulk-update                 (batch tag edits)
+POST   /api/music/scan/library                (re-scan library & queues)
+GET/POST /api/music/cue                       (get/set cue points)
+GET/POST/DELETE /api/music/saved-searches     (save/load/delete searches)
+POST   /api/archivist/album-rip               (analyze album rip for breaks)
+GET    /api/archivist/album-info              (lookup album metadata)
+POST   /api/music/musicbrainz                 (same as GET; lookup helper)</code></pre>
+    <p>Detail responses include title/artist/album/composer/ISRC/year/track/disc/copyright/path, loudness/peaks, and cue data where available.</p>
+
+    <h4 class="mt-4">RadioDJ Integration</h4>
+    <pre><code>GET    /api/now/widget            (uses RadioDJ now-playing when off-schedule)
+GET    /api/radiodj/psas
+POST   /api/radiodj/psas/&lt;psa_id&gt;/enable
+POST   /api/radiodj/psas/&lt;psa_id&gt;/disable
+DELETE /api/radiodj/psas/&lt;psa_id&gt;
+PATCH  /api/radiodj/psas/&lt;psa_id&gt;/metadata   (JSON body)
+POST   /api/radiodj/import/news
+POST   /api/radiodj/import/community_calendar</code></pre>
+    <p>Requires <code>RADIODJ_API_BASE_URL</code> and <code>RADIODJ_API_KEY</code> plus the RadioDJ REST plugin configured.</p>
+
+    <h4 class="mt-4">Schedule & Marathon Recording</h4>
+    <pre><code>GET  /api/schedule                (JSON grid)
+GET  /schedule/grid              (HTML)
+GET  /schedule/ical              (iCal feed)
+POST /marathon                   (admin form to schedule 24–48h marathon chunks)</code></pre>
+
+    <h4 class="mt-4">Icecast Analytics</h4>
+    <pre><code>GET /api/icecast/analytics</code></pre>
+    <p>Returns listener counts with optional per-IP filtering using <code>ICECAST_IGNORED_IPS</code> and <code>ICECAST_LISTCLIENTS_URL</code>.</p>
+
+    <h4 class="mt-4">News & Uploads</h4>
+    <pre><code>GET/POST /news/upload            (auth form, supports multiple news types)
+POST    /api/radiodj/import/news
+POST    /api/radiodj/import/community_calendar</code></pre>
+
+    <h4 class="mt-4">Logs, Absences, Discipline</h4>
+    <pre><code>GET/POST /logs/submit            (public log form)
+GET     /logs/manage            (admin)
+GET     /logs/view?sheet_id=&lt;id&gt;
+GET     /logs/download/csv?sheet_id=&lt;id&gt;
+GET     /logs/download/docx?sheet_id=&lt;id&gt;
+GET/POST /dj/absence            (DJ self-report)
+GET/POST /absences              (admin manage/filter)
+GET/POST /djs/discipline        (management only)
+GET      /djs/&lt;id&gt;              (DJ profile)</code></pre>
+
+    <h4 class="mt-4">Social & Live Reads</h4>
+    <pre><code>GET/POST /production/live-reads          (card creation + print)
+GET/POST /social/post                   (multi-network posting console)</code></pre>
+
+    <h4 class="mt-4">Settings, Backup, Auth</h4>
+    <pre><code>GET/POST /settings                       (branding, OAuth, alerts, stream, etc.)
+GET      /settings/export               (JSON)
+POST     /settings/import               (JSON)
+POST     /settings/backup-now           (settings backup)
+POST     /settings/backup-data          (JSON backups of DJs/shows/discipline)
+GET      /login                         (OAuth-first)
+GET/POST /login/master                  (master password)
+GET      /logout</code></pre>
 
     <hr>
     <h5>Example: Now Playing (on-air)</h5>
