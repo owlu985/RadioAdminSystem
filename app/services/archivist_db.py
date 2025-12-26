@@ -13,17 +13,41 @@ from app.models import ArchivistEntry, db
 
 def _normalize_row(row: Dict[str, str]):
     lower = {k.lower(): (v or "").strip() for k, v in row.items()}
+
+    # Preferred headers for the paid archivist database
+    artist = lower.get("artist") or lower.get("akaoracronym") or lower.get("aka")
+    title = lower.get("title") or lower.get("song") or lower.get("track")
+    catalog_number = lower.get("catno") or lower.get("catalog") or lower.get("catalog_number")
+    label = lower.get("label")
+    fmt = lower.get("format")
+    price = lower.get("pricerange")
+    year = lower.get("year")
+    notes = lower.get("notes") or lower.get("comment")
+
+    note_parts = []
+    for prefix, value in (
+        ("Format", fmt),
+        ("Price", price),
+        ("Year", year),
+        ("Notes", notes),
+    ):
+        if value:
+            note_parts.append(f"{prefix}: {value}")
+
+    combined_notes = " | ".join(note_parts) if note_parts else None
+
     return {
-        "title": lower.get("title") or lower.get("song") or lower.get("track") or None,
-        "artist": lower.get("artist") or lower.get("performer") or None,
-        "album": lower.get("album") or lower.get("release") or None,
-        "catalog_number": lower.get("catalog") or lower.get("catalog_number") or lower.get("catno") or None,
-        "notes": lower.get("notes") or lower.get("comment") or None,
+        "title": title or None,
+        "artist": artist or None,
+        # Store label in album so it is searchable in the existing UI
+        "album": label or lower.get("album") or None,
+        "catalog_number": catalog_number or None,
+        "notes": combined_notes,
         "extra": json.dumps(row, ensure_ascii=False),
     }
 
 
-def import_archivist_csv(file_storage, storage_path: str | None = None) -> int:
+def import_archivist_csv(file_storage, storage_path: str | None = None, upload_dir: str | None = None) -> int:
     """Import a CSV/TSV file into the ArchivistEntry table, replacing existing rows."""
 
     raw = file_storage.read()
@@ -49,6 +73,12 @@ def import_archivist_csv(file_storage, storage_path: str | None = None) -> int:
         os.makedirs(os.path.dirname(storage_path), exist_ok=True)
         with open(storage_path, "w", encoding="utf-8") as f:
             json.dump([json.loads(e.extra) for e in entries], f, ensure_ascii=False, indent=2)
+
+    if upload_dir:
+        os.makedirs(upload_dir, exist_ok=True)
+        dest_path = os.path.join(upload_dir, "archivist_upload.csv")
+        with open(dest_path, "wb") as fh:
+            fh.write(raw)
 
     return len(entries)
 

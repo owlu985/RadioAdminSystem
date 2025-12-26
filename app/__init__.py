@@ -10,6 +10,7 @@ from .logger import init_logger
 from flask_migrate import Migrate
 from datetime import datetime, timedelta
 from .scheduler import init_scheduler, pause_shows_until
+from .rate_limit import rate_limit_check
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -26,6 +27,12 @@ def create_app(config_class=Config):
 
     initial_logger = init_logger(log_file_path)
     initial_logger.info("Init logger initialized.")
+
+    @app.before_request
+    def _apply_rate_limit():
+        response = rate_limit_check(app)
+        if response:
+            return response
 
 #Load/Generate secret key and user config
     if not os.path.exists(user_config_path):

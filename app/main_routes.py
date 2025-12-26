@@ -667,13 +667,11 @@ def archivist_page():
         else:
             try:
                 upload_dir = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
-                if upload_dir:
-                    os.makedirs(upload_dir, exist_ok=True)
-                    dest = os.path.join(upload_dir, secure_filename(file.filename))
-                    file.stream.seek(0)
-                    file.save(dest)
-                    file.stream.seek(0)
-                count = import_archivist_csv(file, current_app.config.get("ARCHIVIST_DB_PATH"))
+                count = import_archivist_csv(
+                    file,
+                    current_app.config.get("ARCHIVIST_DB_PATH"),
+                    upload_dir,
+                )
                 import_count = count
                 flash(f"Imported {count} rows into the archivist database.", "success")
             except Exception as exc:  # noqa: BLE001
@@ -726,38 +724,16 @@ def social_post_page():
             p.status_map = {}
     return render_template("social_post.html", posts=posts, config=current_app.config)
 
-@main_bp.route('/login', methods=['GET', 'POST'])
+@main_bp.route('/login', methods=['GET'])
 def login():
-    """Login route for admin authentication."""
+    """OAuth-first login landing page with master admin link."""
 
     ensure_oauth_initialized(current_app)
 
     google_client = oauth.create_client("google")
     discord_client = oauth.create_client("discord")
     oauth_enabled = google_client is not None or discord_client is not None
-    oauth_only = current_app.config.get("OAUTH_ONLY", False)
-
-    if request.method == 'POST':
-        if oauth_only:
-            flash("Password login is disabled; please use an OAuth provider.", "danger")
-            return redirect(url_for('main.login'))
-        username = request.form['username']
-        password = request.form['password']
-        if (username == current_app.config['ADMIN_USERNAME'] and
-                password == current_app.config['ADMIN_PASSWORD']):
-            session['authenticated'] = True
-            session['role'] = 'admin'
-            session['display_name'] = username
-            logger.info("Admin logged in successfully.")
-            flash("You are now logged in.", "success")
-            return redirect(url_for('main.dashboard'))
-        else:
-            logger.warning("Invalid login attempt.")
-            flash("Invalid credentials. Please try again.", "danger")
-
-    allowed_domain = current_app.config.get("OAUTH_ALLOWED_DOMAIN")
-    if isinstance(allowed_domain, str) and allowed_domain.strip().lower() in {"", "none", "null"}:
-        allowed_domain = None
+    allowed_domain = _clean_optional(current_app.config.get("OAUTH_ALLOWED_DOMAIN"))
 
     return render_template(
         'login.html',
@@ -765,8 +741,26 @@ def login():
         oauth_google_enabled=google_client is not None,
         oauth_discord_enabled=discord_client is not None,
         oauth_allowed_domain=allowed_domain,
-        oauth_only=oauth_only,
     )
+
+
+@main_bp.route('/login/master', methods=['GET', 'POST'])
+def master_login():
+    """Password-only master admin login for emergency/owner access."""
+
+    if request.method == 'POST':
+        password = request.form.get('password')
+        if password and password == current_app.config['ADMIN_PASSWORD']:
+            session['authenticated'] = True
+            session['role'] = 'admin'
+            session['display_name'] = current_app.config.get('ADMIN_USERNAME', 'Master Admin')
+            session['auth_provider'] = 'master'
+            logger.info("Master admin logged in via password.")
+            flash("You are now logged in as master admin.", "success")
+            return redirect(url_for('main.dashboard'))
+        flash("Invalid master admin password.", "danger")
+
+    return render_template('master_login.html')
 
 
 @main_bp.route("/login/oauth/google")
@@ -1142,7 +1136,8 @@ ALLOWED_SETTINGS_KEYS = [
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
-    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD'
+    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD',
+    'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS'
 ]
 
 
@@ -1194,6 +1189,10 @@ def settings():
                 'ICECAST_ANALYTICS_INTERVAL_MINUTES': int(request.form.get('icecast_analytics_interval_minutes') or current_app.config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5)),
                 'SELF_HEAL_ENABLED': 'self_heal_enabled' in request.form,
                 'MUSICBRAINZ_USER_AGENT': _clean_optional(request.form.get('musicbrainz_user_agent', '').strip()),
+                'RATE_LIMIT_ENABLED': 'rate_limit_enabled' in request.form,
+                'RATE_LIMIT_REQUESTS': int(request.form.get('rate_limit_requests') or current_app.config.get('RATE_LIMIT_REQUESTS', 120)),
+                'RATE_LIMIT_WINDOW_SECONDS': int(request.form.get('rate_limit_window_seconds') or current_app.config.get('RATE_LIMIT_WINDOW_SECONDS', 60)),
+                'RATE_LIMIT_TRUSTED_IPS': [ip.strip() for ip in (request.form.get('rate_limit_trusted_ips', '') or '').split(',') if ip.strip()],
                 'OAUTH_CLIENT_ID': _clean_optional(request.form.get('oauth_client_id', '').strip()),
                 'OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('oauth_client_secret', '').strip()),
                 'OAUTH_ALLOWED_DOMAIN': _clean_optional(request.form.get('oauth_allowed_domain', '').strip()),
@@ -1268,6 +1267,10 @@ def settings():
         'icecast_analytics_interval_minutes': config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5),
         'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
         'musicbrainz_user_agent': _clean_optional(config.get('MUSICBRAINZ_USER_AGENT', '')) or '',
+        'rate_limit_enabled': config.get('RATE_LIMIT_ENABLED', True),
+        'rate_limit_requests': config.get('RATE_LIMIT_REQUESTS', 120),
+        'rate_limit_window_seconds': config.get('RATE_LIMIT_WINDOW_SECONDS', 60),
+        'rate_limit_trusted_ips': ", ".join(config.get('RATE_LIMIT_TRUSTED_IPS', [])),
         'oauth_client_id': _clean_optional(config.get('OAUTH_CLIENT_ID', '')) or '',
         'oauth_client_secret': _clean_optional(config.get('OAUTH_CLIENT_SECRET', '')) or '',
         'oauth_allowed_domain': _clean_optional(config.get('OAUTH_ALLOWED_DOMAIN', '')) or '',

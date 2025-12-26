@@ -108,6 +108,12 @@ class Config:
     # Metadata enrichment
     MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
 
+    # Rate limiting
+    RATE_LIMIT_ENABLED = True
+    RATE_LIMIT_REQUESTS = 120
+    RATE_LIMIT_WINDOW_SECONDS = 60
+    RATE_LIMIT_TRUSTED_IPS = ["127.0.0.1", "::1"]
+
     # OAuth
     OAUTH_CLIENT_ID = None
     OAUTH_CLIENT_SECRET = None

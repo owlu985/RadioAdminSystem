@@ -147,6 +147,30 @@
                 <label for="data_backup_retention_days" class="form-label">Data Backup Retention (days)</label>
                 <input type="number" min="1" name="data_backup_retention_days" id="data_backup_retention_days" class="form-control" value="{{ data_backup_retention_days }}">
             </div>
+        </div>
+
+        <div class="row g-3 mb-3">
+            <div class="col-md-3">
+                <div class="form-check">
+                    <input class="form-check-input" type="checkbox" id="rate_limit_enabled" name="rate_limit_enabled" {% if rate_limit_enabled %}checked{% endif %}>
+                    <label class="form-check-label" for="rate_limit_enabled">Enable Rate Limiting</label>
+                </div>
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_requests" class="form-label">Requests per Window</label>
+                <input type="number" min="1" name="rate_limit_requests" id="rate_limit_requests" class="form-control" value="{{ rate_limit_requests }}">
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_window_seconds" class="form-label">Window (seconds)</label>
+                <input type="number" min="1" name="rate_limit_window_seconds" id="rate_limit_window_seconds" class="form-control" value="{{ rate_limit_window_seconds }}">
+            </div>
+            <div class="col-md-3">
+                <label for="rate_limit_trusted_ips" class="form-label">Trusted IPs (comma-separated)</label>
+                <input type="text" name="rate_limit_trusted_ips" id="rate_limit_trusted_ips" class="form-control" value="{{ rate_limit_trusted_ips }}" placeholder="127.0.0.1, ::1">
+            </div>
+        </div>
+
+        <div class="row g-3 mb-3">
             <div class="col-md-4">
                 <label for="theme_default" class="form-label">Default Theme</label>
                 <select name="theme_default" id="theme_default" class="form-select">
