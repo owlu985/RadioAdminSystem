@@ -3,14 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Admin Login</title>
+    <title>Master Admin Login</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
 </head>
-<body>
-
-<div class="container mt-5">
-
+<body class="bg-light">
+<div class="container mt-5" style="max-width: 520px;">
     {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
         <div class="position-fixed top-0 start-50 translate-middle-x mt-3 d-inline-block" style="z-index: 1050; max-width: 90%;">
@@ -30,33 +28,25 @@
             }, 2500);
         </script>
     {% endif %}
-{% endwith %}
+    {% endwith %}
 
-    <h2>Admin Login</h2>
-    <p class="text-muted">Sign in with an approved OAuth provider or use the master admin link below.</p>
-    {% if oauth_enabled %}
-        <div class="d-flex flex-column gap-2 mb-3">
-            {% if oauth_google_enabled %}
-                <a class="btn btn-outline-primary" href="{{ url_for('main.login_oauth_google') }}">
-                    <i class="bi bi-google"></i> Continue with Google
-                </a>
-            {% endif %}
-            {% if oauth_discord_enabled %}
-                <a class="btn btn-outline-secondary" href="{{ url_for('main.login_oauth_discord') }}">
-                    <i class="bi bi-discord"></i> Continue with Discord
-                </a>
-            {% endif %}
-            {% if oauth_allowed_domain %}
-                <div class="text-muted small">Only Google accounts from {{ oauth_allowed_domain }} can sign in.</div>
-            {% endif %}
+    <div class="card shadow-sm">
+        <div class="card-body">
+            <h4 class="card-title mb-3">Master Admin Login</h4>
+            <p class="text-muted">Use the master password to access the station as an owner/administrator.</p>
+            <form method="post">
+                <div class="mb-3">
+                    <label for="password" class="form-label">Master Password</label>
+                    <input type="password" name="password" id="password" class="form-control" required>
+                </div>
+                <div class="d-flex justify-content-between align-items-center">
+                    <a href="{{ url_for('main.login') }}" class="text-decoration-none">Back to OAuth login</a>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="bi bi-shield-lock"></i> Login
+                    </button>
+                </div>
+            </form>
         </div>
-    {% else %}
-        <div class="alert alert-warning">No OAuth providers are configured yet. Please contact an admin.</div>
-    {% endif %}
-    <div class="mt-3">
-        <a href="{{ url_for('main.master_login') }}" class="btn btn-link text-decoration-none">
-            <i class="bi bi-shield-lock"></i> Master Admin Login
-        </a>
     </div>
 </div>
 
