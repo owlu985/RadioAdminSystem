@@ -11,42 +11,49 @@
       <span class="navbar-toggler-icon"></span>
     </button>
     <div class="collapse navbar-collapse" id="ramsNav">
+      {% set is_auth = session.get('authenticated') %}
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
-        <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
+        {% if is_auth %}
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
+              <ul class="dropdown-menu">
+                <li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>
+            </ul>
+          </li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
             <ul class="dropdown-menu">
-              <li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>
-          </ul>
-        </li>
-        <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
-          <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.archivist_page') }}">Archivist DB</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.manage_dj_discipline') }}">Disciplinary</a></li>
-          </ul>
-        </li>
-        <li class="nav-item dropdown">
-          <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
-          <ul class="dropdown-menu">
-            <li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.social_post_page') }}">Social Posting</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>
-            <li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>
-          </ul>
-        </li>
-        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.api_docs_page') }}">API Docs</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.archivist_page') }}">Archivist DB</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.manage_dj_discipline') }}">Disciplinary</a></li>
+            </ul>
+          </li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.social_post_page') }}">Social Posting</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>
+            </ul>
+          </li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.api_docs_page') }}">API Docs</a></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.schedule_grid') }}">Schedule</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('logs.submit_log') }}">Public Logger</a></li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dj_status_page') }}">DJ Status</a></li>
+        {% endif %}
       </ul>
       <div class="d-flex align-items-center gap-2">
         <select id="themeToggle" class="form-select form-select-sm bg-dark text-white" style="width:auto;">
@@ -54,7 +61,11 @@
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
-        <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.logout') }}">Logout</a>
+        {% if is_auth %}
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.logout') }}">Logout</a>
+        {% else %}
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.login') }}">Login</a>
+        {% endif %}
       </div>
     </div>
   </div>

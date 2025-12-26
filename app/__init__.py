@@ -1,7 +1,8 @@
 import os
 import json
 import secrets
-from flask import Flask
+import traceback
+from flask import Flask, render_template
 from config import Config
 from .models import db, Show
 from .utils import init_utils
@@ -373,8 +374,33 @@ def create_app(config_class=Config):
     app.register_blueprint(logs_bp)
     app.register_blueprint(news_bp)
     app.oauth_client = oauth
-    
-    
+
+    @app.errorhandler(403)
+    def forbidden(error):
+        return (
+            render_template(
+                "error_403.html",
+                error_description=getattr(error, "description", None),
+            ),
+            403,
+        )
+
+    @app.errorhandler(404)
+    def not_found(error):
+        return render_template("error_404.html"), 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        message = getattr(error, "description", None) or str(error)
+        details = traceback.format_exc()
+        return (
+            render_template(
+                "error_500.html", error_message=message, error_details=details
+            ),
+            500,
+        )
+
+
     initial_logger.info("Application startup complete.")
 
     return app

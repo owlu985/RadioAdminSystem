@@ -1,5 +1,5 @@
 from functools import wraps
-from flask import session, flash, redirect, url_for
+from flask import session, abort
 
 
 ALLOWED_ADMIN_ROLES = {"admin", "manager", "ops"}
@@ -40,9 +40,11 @@ def admin_required(f):
 
     @wraps(f)
     def decorated_function(*args, **kwargs):
+        if not session.get("authenticated"):
+            abort(403, description="Requires login")
         if not (_has_role(ALLOWED_ADMIN_ROLES) or _has_permission({"admin"})):
-            flash("Please log in to access this page.", "danger")
-            return redirect(url_for('main.login'))
+            required_roles = ", ".join(sorted(ALLOWED_ADMIN_ROLES))
+            abort(403, description=f"Access required: role in [{required_roles}] or permission: admin")
         return f(*args, **kwargs)
 
     return decorated_function
@@ -54,9 +56,11 @@ def role_required(roles):
     def decorator(f):
         @wraps(f)
         def wrapped(*args, **kwargs):
+            if not session.get("authenticated"):
+                abort(403, description="Requires login")
             if not _has_role(set(roles)):
-                flash("You do not have permission to access this page.", "danger")
-                return redirect(url_for('main.login'))
+                role_list = ", ".join(sorted(set(roles)))
+                abort(403, description=f"Access required: role in [{role_list}]")
             return f(*args, **kwargs)
 
         return wrapped
@@ -69,11 +73,10 @@ def permission_required(perms):
         @wraps(f)
         def wrapped(*args, **kwargs):
             if not session.get("authenticated"):
-                flash("Please log in to access this page.", "danger")
-                return redirect(url_for('main.login'))
+                abort(403, description="Requires login")
             if not _has_permission(perms):
-                flash("You do not have permission to access this page.", "danger")
-                return redirect(url_for('main.dashboard'))
+                perm_list = ", ".join(sorted(perms))
+                abort(403, description=f"Access required: permission(s) [{perm_list}]")
             return f(*args, **kwargs)
 
         return wrapped
