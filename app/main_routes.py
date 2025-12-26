@@ -1,6 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort
 import json
 import os
+import secrets
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time, timedelta, date
@@ -798,7 +799,9 @@ def login_oauth_google():
                 return redirect(url_for("main.login"))
 
         redirect_uri = url_for("main.oauth_callback_google", _external=True)
-        return client.authorize_redirect(redirect_uri)
+        nonce = secrets.token_urlsafe(16)
+        session["oauth_google_nonce"] = nonce
+        return client.authorize_redirect(redirect_uri, nonce=nonce)
 
 
 @main_bp.route("/login/oauth/google/callback")
@@ -814,7 +817,13 @@ def oauth_callback_google():
 
         try:
                 token = client.authorize_access_token()
-                userinfo = client.parse_id_token(token)
+                nonce = session.pop("oauth_google_nonce", None)
+                userinfo = None
+                try:
+                        userinfo = client.parse_id_token(token, nonce=nonce)
+                except Exception as parse_exc:  # noqa: BLE001
+                        logger.warning(f"ID token parse failed ({parse_exc}); falling back to userinfo endpoint.")
+                        userinfo = None
                 if not userinfo:
                         resp = client.get("userinfo")
                         userinfo = resp.json() if resp else {}
