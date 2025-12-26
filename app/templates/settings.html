@@ -317,6 +317,11 @@
                         <label for="icecast_analytics_interval_minutes" class="form-label">Listener Sample Interval (minutes)</label>
                         <input type="number" min="1" class="form-control" name="icecast_analytics_interval_minutes" id="icecast_analytics_interval_minutes" value="{{ icecast_analytics_interval_minutes }}">
                     </div>
+                    <div class="col-md-6">
+                        <label for="icecast_ignored_ips" class="form-label">Ignore Listener IPs (comma-separated)</label>
+                        <input type="text" name="icecast_ignored_ips" id="icecast_ignored_ips" class="form-control" value="{{ icecast_ignored_ips }}" placeholder="192.0.2.10, 198.51.100.5">
+                        <div class="form-text">If listener IPs are available in the Icecast XML, these are excluded from counts.</div>
+                    </div>
                 </div>
             </div>
         </div>

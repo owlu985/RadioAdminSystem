@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import xml.etree.ElementTree as ET
 from datetime import datetime, timedelta
-from typing import List, Optional
+from typing import List, Optional, Set
 
 import requests
 from flask import current_app
@@ -11,6 +11,13 @@ from app.logger import init_logger
 from app.models import IcecastStat, db
 
 logger = init_logger()
+
+
+def _ignored_ip_set() -> Set[str]:
+    ignored = current_app.config.get("ICECAST_IGNORED_IPS", [])
+    if not ignored:
+        return set()
+    return {ip.strip() for ip in ignored if ip and isinstance(ip, str)}
 
 
 def fetch_icecast_listeners() -> Optional[int]:
@@ -35,10 +42,22 @@ def fetch_icecast_listeners() -> Optional[int]:
         return None
 
     listeners = None
+    ignored_ips = _ignored_ip_set()
     for source in root.findall(".//source"):
         mount_name = source.findtext("mount") or source.findtext("mountname") or source.attrib.get("mount")
         if mount and mount_name and mount_name != mount:
             continue
+        detailed = source.findall("listener")
+        if detailed:
+            filtered = []
+            for listener in detailed:
+                ip = listener.findtext("IP") or listener.findtext("ip")
+                ip = ip.strip() if ip else None
+                if ip and ignored_ips and ip in ignored_ips:
+                    continue
+                filtered.append(listener)
+            listeners = len(filtered)
+            break
         val = source.findtext("listeners") or source.findtext("listener_total") or source.findtext("listeners_peak")
         if val and val.isdigit():
             listeners = int(val)

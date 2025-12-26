@@ -17,8 +17,13 @@ class Config:
 
     # Silence / automation detection
     DEAD_AIR_DB = -72
-    AUTOMATION_MIN_DB = -6
-    AUTOMATION_MAX_DB = -3
+    DEAD_AIR_SOFT_DB = -60
+    SILENCE_RATIO_DEAD_AIR = 0.5
+    AUTOMATION_MIN_DB = -12
+    AUTOMATION_MAX_DB = -2
+    AUTOMATION_AVG_MIN_DB = -18
+    AUTOMATION_AVG_MAX_DB = -2
+    AUTOMATION_DYNAMIC_RANGE_MAX = 5.0
     AUTOMATION_RATIO_THRESHOLD = 0.65
     SILENCE_CHUNK_MS = 500
     STREAM_PROBE_SECONDS = 8
@@ -58,6 +63,7 @@ class Config:
     ICECAST_PASSWORD = None
     ICECAST_MOUNT = None
     ICECAST_ANALYTICS_INTERVAL_MINUTES = 5
+    ICECAST_IGNORED_IPS = []
 
     # Self-heal / health reporting defaults
     SELF_HEAL_ENABLED = True

@@ -49,26 +49,37 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
         chunk_ms = config.get("SILENCE_CHUNK_MS", 500)
         chunks = make_chunks(audio, chunk_ms)
 
-        silence_chunks = 0
-        automation_chunks = 0
-
-        for chunk in chunks:
-            if chunk.dBFS <= config["DEAD_AIR_DB"]:
-                silence_chunks += 1
-            elif config["AUTOMATION_MIN_DB"] <= chunk.dBFS <= config["AUTOMATION_MAX_DB"]:
-                automation_chunks += 1
+        chunk_dbs = [chunk.dBFS for chunk in chunks]
+        silence_chunks = sum(1 for level in chunk_dbs if level <= config.get("DEAD_AIR_DB", -72))
+        automation_chunks = sum(
+            1
+            for level in chunk_dbs
+            if config.get("AUTOMATION_MIN_DB", -12) <= level <= config.get("AUTOMATION_MAX_DB", -2)
+        )
 
         total_chunks = max(len(chunks), 1)
 
         silence_ratio = silence_chunks / total_chunks
         automation_ratio = automation_chunks / total_chunks
+        dynamic_range = 0.0
+        if chunk_dbs:
+            dynamic_range = float(np.percentile(chunk_dbs, 95) - np.percentile(chunk_dbs, 5))
 
-        if silence_ratio > 0.6:
+        silence_ratio_threshold = config.get("SILENCE_RATIO_DEAD_AIR", 0.5)
+        soft_dead_air_db = config.get("DEAD_AIR_SOFT_DB", -60)
+        automation_ratio_threshold = config.get("AUTOMATION_RATIO_THRESHOLD", 0.65)
+        automation_dynamic_cap = config.get("AUTOMATION_DYNAMIC_RANGE_MAX", 5.0)
+        automation_avg_min = config.get("AUTOMATION_AVG_MIN_DB", -18)
+        automation_avg_max = config.get("AUTOMATION_AVG_MAX_DB", -2)
+
+        if avg_db <= soft_dead_air_db or silence_ratio >= silence_ratio_threshold:
             classification = "dead_air"
-            reason = "majority_silence"
-        elif automation_ratio >= config["AUTOMATION_RATIO_THRESHOLD"]:
+            reason = "low_or_silent"
+        elif automation_ratio >= automation_ratio_threshold or (
+            automation_avg_min <= avg_db <= automation_avg_max and dynamic_range <= automation_dynamic_cap
+        ):
             classification = "automation"
-            reason = "consistent_compression"
+            reason = "compressed_levels"
         else:
             classification = "live_show"
             reason = "dynamic_levels"
