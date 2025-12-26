@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Live Read Cards - Print</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    body { background: #f8f9fa; }
+    .card-tile { border: 1px dashed #ccc; padding: 14px; border-radius: 8px; height: 100%; background: #fff; }
+    .card-title { font-weight: 700; font-size: 1.1rem; }
+    .expires { font-size: 0.9rem; }
+    @media print {
+      .no-print { display: none !important; }
+      body { background: #fff; }
+    }
+  </style>
+</head>
+<body>
+<div class="container-fluid py-3">
+  <div class="no-print d-flex justify-content-between align-items-center mb-3">
+    <h4 class="mb-0">Print layout</h4>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('main.live_read_cards') }}">Back to editor</a>
+      <button class="btn btn-success" onclick="window.print()">Print</button>
+    </div>
+  </div>
+  <div class="row g-3">
+    {% for row in chunks %}
+      {% for card in row %}
+        <div class="col-md-6">
+          <div class="card-tile">
+            <div class="d-flex justify-content-between align-items-start mb-2">
+              <div class="card-title">{{ card.title }}</div>
+              <div class="text-end expires text-muted">{% if card.expires_on %}Expires {{ card.expires_on }}{% else %}No expiry{% endif %}</div>
+            </div>
+            <div style="white-space:pre-wrap; line-height:1.4">{{ card.copy }}</div>
+          </div>
+        </div>
+      {% endfor %}
+    {% else %}
+      <div class="col-12 text-center text-muted">No cards to print.</div>
+    {% endfor %}
+  </div>
+</div>
+</body>
+</html>

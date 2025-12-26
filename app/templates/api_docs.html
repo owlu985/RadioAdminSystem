@@ -1,0 +1,147 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>API Documentation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>API Documentation</h2>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('main.dashboard') }}">Back to Dashboard</a>
+    </div>
+
+    <p class="text-muted">Base URL: <code>http://&lt;host&gt;:&lt;port&gt;</code></p>
+
+    <h4>Now Playing</h4>
+    <pre><code>GET /api/now</code></pre>
+    <p>Returns current on-air show or off-air message.</p>
+    <pre><code>{
+  "status": "on_air",
+  "show": {
+    "name": "Afternoon Mix",
+    "host": "Jane Doe",
+    "genre": "Pop",
+    "description": "Feel-good hits",
+    "regular_host": true,
+    "window": {"start_time": "14:00", "end_time": "16:00", "start_date": "2025-01-01", "end_date": "2025-12-31", "days_of_week": "mon"}
+  },
+  "run": { "id": 12, "start_time": "2025-12-22T19:00:00", "classification": "live_show", ... }
+}</code></pre>
+
+    <h4>Probe Stream</h4>
+    <pre><code>POST /api/probe</code></pre>
+    <p>Triggers a stream probe; returns classification, avg dB, silence/automation ratios.</p>
+
+    <h4>Tempest Weather</h4>
+    <pre><code>GET /api/weather/tempest</code></pre>
+    <p>Returns current conditions plus snapshots for the next 1, 2, 4, and 8 hours, and the next 3 days. Requires Tempest API key and station ID in Settings.</p>
+    <pre><code>{
+  "status": "ok",
+  "current": {"temp": 72.4, "condition": "partly_cloudy", "icon": "partly_cloudy"},
+  "next_hours": [
+    {"time": "02:00 PM", "temp": 73.1, "condition": "sunny", "icon": "clear-day"},
+    {"time": "03:00 PM", "temp": 74.0, "condition": "sunny"},
+    {"time": "05:00 PM", "temp": 72.5, "condition": "partly cloudy"},
+    {"time": "09:00 PM", "temp": 68.0, "condition": "clear"}
+  ],
+  "next_days": [
+    {"day": "Mon", "high": 75.0, "low": 62.0, "condition": "rain", "icon": "rain"},
+    ... (3 items)
+  ]
+}</code></pre>
+
+    <h4>Latest Probe</h4>
+    <pre><code>GET /api/probes/latest</code></pre>
+
+    <h4>Show Runs and Logs</h4>
+    <pre><code>GET /api/runs/&lt;run_id&gt;</code></pre>
+    <pre><code>GET /api/runs/&lt;run_id&gt;/logs</code></pre>
+
+    <h4>PSA Compliance</h4>
+    <pre><code>GET /api/psa/compliance/&lt;run_id&gt;</code></pre>
+    <p>Checks if PSA+live_read count ≥ 2.</p>
+
+    <h4>Artist Frequency Report</h4>
+    <pre><code>GET /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=YYYY-MM-DDTHH:MM&amp;end=...</code></pre>
+
+    <h4>RadioDJ PSA Management</h4>
+    <pre><code>GET  /api/radiodj/psas
+POST /api/radiodj/psas/&lt;psa_id&gt;/enable
+POST /api/radiodj/psas/&lt;psa_id&gt;/disable
+DELETE /api/radiodj/psas/&lt;psa_id&gt;
+PATCH /api/radiodj/psas/&lt;psa_id&gt;/metadata   (JSON body with fields to change)</code></pre>
+
+    <h4>RadioDJ Imports (News/Calendar)</h4>
+    <pre><code>POST /api/radiodj/import/news
+POST /api/radiodj/import/community_calendar</code></pre>
+
+    <h4>Music Search & Detail</h4>
+    <pre><code>GET /api/music/search?q=&lt;query&gt;</code></pre>
+    <p>Searches NAS_MUSIC_ROOT by title/artist/album/composer.</p>
+    <pre><code>GET /api/music/detail?path=&lt;absolute_path&gt;</code></pre>
+    <p>Returns tags: title, artist, album, composer, isrc, year, track, disc, copyright, path.</p>
+    <pre><code>GET /api/music/musicbrainz?title=&lt;title&gt;&amp;artist=&lt;artist&gt;&amp;limit=5</code></pre>
+    <p>Looks up suggested metadata (title, artist, album, year, ISRC) from MusicBrainz recordings.</p>
+
+    <h4>DJs and Shows</h4>
+    <pre><code>GET /api/djs</code></pre>
+    <p>Returns DJ name, bio, photo_url, and assigned shows with windows/genre/description.</p>
+
+    <h4>Public Logger (HTML)</h4>
+    <pre><code>GET  /logs/submit   (no auth, form)
+POST /logs/submit   (form fields: dj_first_name, dj_last_name, show_name, show_date, rows with time_X, type_X, title_X, artist_X)</code></pre>
+
+    <h4>Log Viewing/Exports</h4>
+    <pre><code>GET /logs/view?sheet_id=&lt;id&gt;   (HTML)
+GET /logs/download/csv?sheet_id=&lt;id&gt;
+GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
+
+    <h4>News Upload (HTML)</h4>
+    <pre><code>GET/POST /news/upload (auth required)</code></pre>
+    <p>Form fields: date (YYYY-MM-DD), news_type (from NEWS_TYPES_CONFIG), file (mp3).</p>
+
+    <h4>Admin Pages</h4>
+    <ul>
+        <li>Dashboard: <code>/dashboard</code></li>
+        <li>Show schedule: <code>/shows</code></li>
+        <li>DJs: <code>/djs</code>, add/edit via <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code></li>
+        <li>Log manager: <code>/logs/manage</code></li>
+        <li>Music search: <code>/music/search</code> (HTML, admin)</li>
+    </ul>
+
+    <hr>
+    <h5>Example: Now Playing (on-air)</h5>
+    <pre><code>{
+  "status": "on_air",
+  "show": {"name": "Morning Buzz", "host": "Alex Smith", "genre": "Talk", "description": "Campus headlines", "regular_host": true, "window": {"start_time": "08:00","end_time": "10:00","start_date": "2025-01-01","end_date": "2025-12-31","days_of_week": "mon"}},
+  "run": {"id": 42, "show_name": "Morning Buzz", "dj": "Alex Smith", "start_time": "2025-12-22T13:00:00", "end_time": null, "classification": "live_show", "classification_reason": "dynamic_levels", "avg_db": -12.3, "silence_ratio": 0.02, "automation_ratio": 0.1, "flagged_missed": false}
+}</code></pre>
+
+    <h5>Example: Music Search</h5>
+    <pre><code>GET /api/music/search?q=dua
+[
+  {"title": "Houdini", "artist": "Dua Lipa", "album": "Radical Optimism", "path": "/nas/music/Dua Lipa/Houdini.mp3", ...}
+]</code></pre>
+
+    <h5>Example: DJs</h5>
+    <pre><code>GET /api/djs
+[
+  {
+    "id": 5,
+    "first_name": "Chris",
+    "last_name": "Rivera",
+    "bio": "Loves vinyl and campus news.",
+    "photo_url": "https://example.com/djs/chris.jpg",
+    "shows": [
+      {"id": 7, "name": "Evening Drive", "start_time": "17:00", "end_time": "19:00", "days_of_week": "mon", "genre": "Rock", "description": "Alt/indie drive-time"}
+    ]
+  }
+]</code></pre>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
