@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Archivist Catalog</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Archivist Catalog</h2>
+      <small class="text-muted">{{ total }} row(s) stored</small>
+    </div>
+    <a class="btn btn-outline-secondary" href="{{ url_for('main.archivist_page', show_all=1) }}">Show all</a>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">Import catalog (CSV/TSV)</div>
+    <div class="card-body">
+      <form method="post" enctype="multipart/form-data" class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+        <input type="file" name="archive_file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control" required>
+        <button type="submit" class="btn btn-primary">Upload</button>
+      </form>
+      <div class="form-text mt-2">Expecting headers like Artist, Title, Album, Catalog. Other columns are stored in the extra payload.</div>
+      {% if import_count is not none %}
+        <div class="alert alert-success mt-2 mb-0">Imported {{ import_count }} rows.</div>
+      {% endif %}
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">Album rip helper</div>
+    <div class="card-body">
+      <div class="row g-3 mb-3">
+        <div class="col-md-6">
+          <label class="form-label">Album clue (title/catalog/label)</label>
+          <div class="input-group">
+            <input type="text" id="album-query" class="form-control" placeholder="e.g., catalog number or album name">
+            <button class="btn btn-outline-secondary" type="button" onclick="lookupAlbum()">Lookup</button>
+          </div>
+          <div class="form-text">Fetch matching rows from the archivist DB.</div>
+          <div id="album-results" class="mt-2 small text-muted"></div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Album rip path</label>
+          <input type="text" id="album-path" class="form-control" placeholder="/path/to/full_album.wav">
+          <div class="row mt-2 g-2">
+            <div class="col-4">
+              <label class="form-label">Silence dB</label>
+              <input type="number" id="silence-thresh" class="form-control" value="-38">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Gap ms</label>
+              <input type="number" id="gap-ms" class="form-control" value="1200">
+            </div>
+            <div class="col-4">
+              <label class="form-label">Min track ms</label>
+              <input type="number" id="track-ms" class="form-control" value="60000">
+            </div>
+          </div>
+          <button class="btn btn-primary mt-3" type="button" onclick="analyzeRip()">Analyze rip</button>
+          <div class="form-text">Suggests breakpoints while ignoring pops/crackles.</div>
+          <pre id="rip-results" class="mt-2 small bg-light p-2" style="max-height:200px; overflow:auto"></pre>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Search catalog</div>
+    <div class="card-body">
+      <form method="get" class="row g-3 align-items-end mb-3">
+        <div class="col-md-8">
+          <label class="form-label" for="q">Query</label>
+          <input type="text" name="q" id="q" class="form-control" placeholder="Artist, title, album, catalog" value="{{ query }}">
+          <div class="form-text">Use % to list everything (limited). Searches are case-insensitive.</div>
+        </div>
+        <div class="col-md-4 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Search</button>
+          <a href="{{ url_for('main.archivist_page') }}" class="btn btn-outline-secondary">Clear</a>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Artist</th>
+              <th>Title</th>
+              <th>Album</th>
+              <th>Catalog</th>
+              <th>Notes</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in results %}
+              <tr>
+                <td>{{ row.artist or '-' }}</td>
+                <td>{{ row.title or '-' }}</td>
+                <td>{{ row.album or '-' }}</td>
+                <td>{{ row.catalog_number or '-' }}</td>
+                <td style="max-width:320px; white-space:pre-wrap">{{ row.notes or '' }}</td>
+              </tr>
+            {% else %}
+              <tr><td colspan="5" class="text-center text-muted py-3">No results.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+async function lookupAlbum() {
+  const q = document.getElementById('album-query').value.trim();
+  if (!q) return;
+  const res = await fetch(`/api/archivist/album-info?q=${encodeURIComponent(q)}`);
+  const data = await res.json();
+  const target = document.getElementById('album-results');
+  if (!data.length) {
+    target.innerText = 'No matches.';
+    return;
+  }
+  target.innerText = data.map(r => `${r.artist || '-'} - ${r.title || r.album || ''} (${r.catalog_number || ''})`).join('\n');
+}
+
+async function analyzeRip() {
+  const path = document.getElementById('album-path').value.trim();
+  const silence_thresh_db = parseInt(document.getElementById('silence-thresh').value || '-38');
+  const min_gap_ms = parseInt(document.getElementById('gap-ms').value || '1200');
+  const min_track_ms = parseInt(document.getElementById('track-ms').value || '60000');
+  if (!path) return;
+  const res = await fetch('/api/archivist/album-rip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ path, silence_thresh_db, min_gap_ms, min_track_ms })
+  });
+  const data = await res.json();
+  const target = document.getElementById('rip-results');
+  if (data.status !== 'ok') {
+    target.innerText = data.message || 'Analysis unavailable (check pydub/ffmpeg).';
+    return;
+  }
+  target.innerText = JSON.stringify(data, null, 2);
+}
+</script>
+</body>
+</html>
