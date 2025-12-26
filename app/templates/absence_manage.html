@@ -10,6 +10,26 @@
 {% include '_nav.html' %}
 <div class="container mt-4">
     <h2>DJ Absences</h2>
+    <div class="mb-3">
+        {% set statuses = [
+            ('pending', 'Pending'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+            ('resolved', 'Resolved'),
+            ('all', 'All')
+        ] %}
+        <div class="btn-group" role="group">
+            {% for key, label in statuses %}
+                <a class="btn btn-outline-primary {% if status_filter==key %}active{% endif %}"
+                   href="{{ url_for('main.manage_absences', status=key) }}">
+                    {{ label }}
+                    {% if counts and key != 'all' %}
+                        <span class="badge bg-secondary ms-1">{{ counts.get(key, 0) }}</span>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </div>
+    </div>
     <table class="table table-striped">
         <thead>
         <tr>
@@ -21,8 +41,8 @@
             <tr>
                 <td>{{ a.dj_name }}</td>
                 <td>{{ a.show_name }}</td>
-                <td>{{ a.start_time }}</td>
-                <td>{{ a.end_time }}</td>
+                <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ a.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>{{ a.replacement_name or '' }}</td>
                 <td>{{ a.status }}</td>
                 <td>{{ a.notes or '' }}</td>
@@ -35,6 +55,8 @@
                     </form>
                 </td>
             </tr>
+        {% else %}
+            <tr><td colspan="8" class="text-center text-muted">No absences found for this filter.</td></tr>
         {% endfor %}
         </tbody>
     </table>

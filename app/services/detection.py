@@ -16,7 +16,7 @@ from app.models import StreamProbe, db, LogEntry
 from app.services.show_run_service import get_or_create_active_run
 from app.services.alerts import check_stream_up, process_probe_alerts
 from app.services.health import record_failure
-from app.utils import get_current_show
+from app.utils import get_current_show, show_display_title, show_primary_host
 
 logger = init_logger()
 
@@ -193,10 +193,11 @@ def probe_and_record():
     show = get_current_show()
     show_run = None
     if show:
+        dj_first, dj_last = show_primary_host(show)
         show_run = get_or_create_active_run(
-            show_name=show.show_name or f"{show.host_first_name} {show.host_last_name}",
-            dj_first_name=show.host_first_name,
-            dj_last_name=show.host_last_name,
+            show_name=show_display_title(show),
+            dj_first_name=dj_first,
+            dj_last_name=dj_last,
         )
 
     probe = StreamProbe(

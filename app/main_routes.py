@@ -4,7 +4,16 @@ import os
 import secrets
 import random
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
-from .utils import update_user_config, get_current_show, format_show_window
+from .utils import (
+    update_user_config,
+    get_current_show,
+    format_show_window,
+    normalize_days_list,
+    show_host_names,
+    show_display_title,
+    show_primary_host,
+    next_show_occurrence,
+)
 from datetime import datetime, time, timedelta, date
 from .models import (
     db,
@@ -17,11 +26,12 @@ from .models import (
     LiveReadCard,
     ArchivistEntry,
     SocialPost,
+    LogSheet,
 )
 from sqlalchemy import case, func
 from functools import wraps
 from .logger import init_logger
-from app.auth_utils import admin_required, login_required, ROLE_PERMISSIONS
+from app.auth_utils import admin_required, login_required, ROLE_PERMISSIONS, ALLOWED_ADMIN_ROLES
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track, load_cue, save_cue
 from app.services.audit import audit_recordings, audit_explicit_music
@@ -162,13 +172,14 @@ def shows():
     """Render the shows database page sorted and paginated."""
 
     day_order = case(
-        (Show.days_of_week == 'mon', 1),
-        (Show.days_of_week == 'tue', 2),
-        (Show.days_of_week == 'wed', 3),
-        (Show.days_of_week == 'thu', 4),
-        (Show.days_of_week == 'fri', 5),
-        (Show.days_of_week == 'sat', 6),
-        (Show.days_of_week == 'sun', 7)
+        (Show.days_of_week.like('mon%'), 1),
+        (Show.days_of_week.like('tue%'), 2),
+        (Show.days_of_week.like('wed%'), 3),
+        (Show.days_of_week.like('thu%'), 4),
+        (Show.days_of_week.like('fri%'), 5),
+        (Show.days_of_week.like('sat%'), 6),
+        (Show.days_of_week.like('sun%'), 7),
+        else_=8,
     )
 
     page = request.args.get('page', 1, type=int)
@@ -272,6 +283,37 @@ def dj_status_page():
 def list_djs():
         djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
         return render_template("djs_list.html", djs=djs)
+
+
+@main_bp.route("/djs/<int:dj_id>")
+@login_required
+def dj_profile(dj_id: int):
+        dj = DJ.query.get_or_404(dj_id)
+        full_name = f"{dj.first_name} {dj.last_name}".strip()
+        perms = set(session.get("permissions") or []) | ROLE_PERMISSIONS.get(session.get("role"), set())
+        role = session.get("role")
+        can_view_discipline = role in ALLOWED_ADMIN_ROLES or "discipline:view" in perms or "*" in perms
+
+        disciplinary = dj.disciplinary_records if can_view_discipline else []
+        absences = DJAbsence.query.filter_by(dj_name=full_name).order_by(DJAbsence.start_time.desc()).all()
+        log_sheets = (
+            LogSheet.query.filter(
+                LogSheet.dj_first_name == dj.first_name,
+                LogSheet.dj_last_name == dj.last_name,
+            )
+            .order_by(LogSheet.show_date.desc())
+            .all()
+        )
+
+        return render_template(
+            "dj_profile.html",
+            dj=dj,
+            can_view_discipline=can_view_discipline,
+            disciplinary=disciplinary,
+            absences=absences,
+            log_sheets=log_sheets,
+            allowed_roles=sorted(ALLOWED_ADMIN_ROLES),
+        )
 
 
 @main_bp.route("/djs/discipline", methods=["GET", "POST"])
@@ -428,11 +470,8 @@ def dj_absence_submit():
                 show_id = request.form.get("show_id") or None
                 show_name = request.form.get("show_name")
                 dj_name = request.form.get("dj_name")
-                start_date = request.form.get("start_date")
-                start_time = request.form.get("start_time")
-                end_date = request.form.get("end_date") or start_date
-                end_time = request.form.get("end_time")
-                replacement = request.form.get("replacement") or None
+                replacement_id = request.form.get("replacement_id", type=int)
+                replacement_name = None
                 notes = request.form.get("notes") or None
 
                 dj_obj = DJ.query.get(dj_id) if dj_id else None
@@ -443,15 +482,20 @@ def dj_absence_submit():
                 if show_obj:
                         show_name = show_obj.show_name or f"{show_obj.host_first_name} {show_obj.host_last_name}"
 
-                if not all([dj_name, show_name, start_date, start_time, end_time]):
+                if replacement_id:
+                        rep_obj = DJ.query.get(replacement_id)
+                        if rep_obj:
+                                replacement_name = f"{rep_obj.first_name} {rep_obj.last_name}"
+
+                if not all([dj_name, show_name, show_obj]):
                         flash("All fields except replacement/notes are required.", "danger")
                         return redirect(url_for("main.dj_absence_submit"))
-                try:
-                        start_dt = datetime.fromisoformat(f"{start_date}T{start_time}")
-                        end_dt = datetime.fromisoformat(f"{end_date}T{end_time}")
-                except Exception:
-                        flash("Invalid date or time.", "danger")
+
+                occurrence = next_show_occurrence(show_obj)
+                if not occurrence:
+                        flash("Could not determine the next scheduled slot for this show.", "danger")
                         return redirect(url_for("main.dj_absence_submit"))
+                start_dt, end_dt = occurrence
 
                 absence = DJAbsence(
                         dj_name=dj_name,
@@ -459,7 +503,7 @@ def dj_absence_submit():
                         show_id=int(show_id) if show_id else None,
                         start_time=start_dt,
                         end_time=end_dt,
-                        replacement_name=replacement,
+                        replacement_name=replacement_name,
                         notes=notes,
                         status="pending",
                 )
@@ -501,8 +545,21 @@ def manage_absences():
                 flash("Absence updated.", "success")
                 return redirect(url_for("main.manage_absences"))
 
-        pending = DJAbsence.query.order_by(DJAbsence.start_time).all()
-        return render_template("absence_manage.html", absences=pending)
+        status_filter = request.args.get("status", "pending")
+        base_query = DJAbsence.query
+        if status_filter and status_filter != "all":
+                base_query = base_query.filter(DJAbsence.status == status_filter)
+
+        order_clause = [case((DJAbsence.status == "pending", 0), else_=1), DJAbsence.start_time]
+        absences = base_query.order_by(*order_clause).all()
+
+        counts = {
+                "pending": DJAbsence.query.filter_by(status="pending").count(),
+                "approved": DJAbsence.query.filter_by(status="approved").count(),
+                "rejected": DJAbsence.query.filter_by(status="rejected").count(),
+                "resolved": DJAbsence.query.filter_by(status="resolved").count(),
+        }
+        return render_template("absence_manage.html", absences=absences, status_filter=status_filter, counts=counts)
 
 
 @main_bp.route("/music/search")
@@ -1112,13 +1169,10 @@ def add_show():
                 flash("End date cannot be in the past!", "danger")
                 return redirect(url_for('main.add_show'))
 
-            #if end_time_obj == time(0, 0) and start_time_obj != time(0, 0):
-            #    pass
-            #elif end_time_obj <= start_time_obj:
-            #    flash("End time cannot be before start time!", "danger")
-            #    return redirect(url_for('main.add_show'))
-
-            short_day_name = request.form['days_of_week'].lower()[:3]
+            selected_days = request.form.getlist('days_of_week')
+            normalized_days = normalize_days_list(selected_days)
+            selected_djs = request.form.getlist('dj_ids')
+            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
 
             show = Show(
                 host_first_name=request.form['host_first_name'],
@@ -1131,8 +1185,9 @@ def add_show():
                 end_date=end_date_obj,
                 start_time=start_time_obj,
                 end_time=end_time_obj,
-                days_of_week=short_day_name
+                days_of_week=normalized_days
             )
+            show.djs = dj_objs
             db.session.add(show)
             db.session.commit()
             refresh_schedule()
@@ -1141,7 +1196,8 @@ def add_show():
             return redirect(url_for('main.shows'))
 
         logger.info("Rendering add show page.")
-        return render_template('add_show.html', config=current_app.config)
+        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        return render_template('add_show.html', config=current_app.config, djs=all_djs)
     except Exception as e:
         logger.error(f"Error adding show: {e}")
         flash(f"Error adding show: {e}", "danger")
@@ -1155,7 +1211,10 @@ def edit_show(id):
     show = Show.query.get_or_404(id)
     try:
         if request.method == 'POST':
-            short_day_name = request.form['days_of_week'].lower()[:3]
+            selected_days = request.form.getlist('days_of_week')
+            normalized_days = normalize_days_list(selected_days)
+            selected_djs = request.form.getlist('dj_ids')
+            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
 
             show.host_first_name = request.form['host_first_name']
             show.host_last_name = request.form['host_last_name']
@@ -1167,7 +1226,8 @@ def edit_show(id):
             show.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
             show.start_time = datetime.strptime(request.form['start_time'].strip(), '%H:%M').time()
             show.end_time = datetime.strptime(request.form['end_time'].strip(), '%H:%M').time()
-            show.days_of_week = short_day_name
+            show.days_of_week = normalized_days
+            show.djs = dj_objs
 
             db.session.commit()
             refresh_schedule()
@@ -1177,7 +1237,9 @@ def edit_show(id):
             return redirect(url_for('main.shows'))
 
         logger.info(f'Rendering edit show page for show {id}.')
-        return render_template('edit_show.html', show=show)
+        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        selected_ids = {dj.id for dj in show.djs}
+        return render_template('edit_show.html', show=show, djs=all_djs, selected_ids=selected_ids)
     except Exception as e:
         logger.error(f"Error editing show: {e}")
         flash(f"Error editing show: {e}", "danger")

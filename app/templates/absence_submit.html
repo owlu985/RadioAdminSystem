@@ -8,8 +8,9 @@
 </head>
 <body>
 {% include '_nav.html' %}
-<div class="container mt-4">
-    <h2>Submit DJ Absence</h2>
+    <div class="container mt-4">
+        <h2>Submit DJ Absence</h2>
+        <p class="text-muted">Select your show; the system will use the next scheduled slot for timing automatically.</p>
     <form method="post" class="row g-3">
         <div class="col-md-6">
             <label class="form-label">DJ</label>
@@ -26,25 +27,14 @@
             <select name="show_id" id="show_id" class="form-select" required></select>
             <input type="hidden" name="show_name" id="show_name">
         </div>
-        <div class="col-md-3">
-            <label class="form-label">Start Date</label>
-            <input type="date" name="start_date" class="form-control" required>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">Start Time</label>
-            <input type="time" name="start_time" class="form-control" required>
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">End Date</label>
-            <input type="date" name="end_date" class="form-control">
-        </div>
-        <div class="col-md-3">
-            <label class="form-label">End Time</label>
-            <input type="time" name="end_time" class="form-control" required>
-        </div>
         <div class="col-md-6">
             <label class="form-label">Replacement (optional)</label>
-            <input type="text" name="replacement" class="form-control" placeholder="Name of covering DJ">
+            <select name="replacement_id" id="replacement_id" class="form-select">
+                <option value="">-- No Substitute --</option>
+                {% for dj in djs %}
+                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="col-12">
             <label class="form-label">Notes</label>

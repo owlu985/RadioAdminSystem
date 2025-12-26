@@ -25,7 +25,7 @@
             min-height: 100%;
         }
         .clock {
-            font-size: 5.5rem;
+            font-size: 6.2rem;
             font-weight: 700;
             letter-spacing: 0.1rem;
             font-family: 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
@@ -79,6 +79,16 @@
         .text-neon-blue {
             color: #4de0ff;
         }
+        .flash-red {
+            color: #ff4d4d;
+            font-weight: 800;
+            animation: flash 1s linear infinite;
+        }
+        @keyframes flash {
+            0%, 50% { opacity: 1; }
+            75% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
         @media (max-width: 767px) {
             .clock {
                 font-size: 4.25rem;
@@ -102,7 +112,7 @@
     <div class="row g-3 mt-4 w-100" style="max-width: 1200px;">
         <div class="col-lg-6">
             <div class="card h-100">
-                <div class="card-header">Stream / Silence &amp; Now / Next</div>
+                <div class="card-header">Station Status</div>
                 <div class="card-body">
                     <div class="status-grid mb-3" id="statusGrid">
                         <div class="status-tile">
@@ -112,7 +122,6 @@
                         <div class="status-tile">
                             <div class="status-label">Probe</div>
                             <div class="status-value" id="probeClass">...</div>
-                            <div class="small" id="probeDetails"></div>
                         </div>
                     </div>
                     <div class="status-grid" id="nowNext">
@@ -175,21 +184,28 @@
             streamElem.textContent = data.stream_up ? 'Online' : 'Offline';
             streamElem.style.color = data.stream_up ? '#2ecc71' : '#ff4d4d';
 
+            const probeElem = document.getElementById('probeClass');
+            probeElem.className = 'status-value';
+            probeElem.style.color = '';
             if (data.probe) {
-                const probeClass = data.probe.classification === 'off_air' ? 'AUTO' : data.probe.classification;
-                const probeElem = document.getElementById('probeClass');
-                probeElem.textContent = probeClass;
-                probeElem.classList.toggle('text-neon-blue', data.probe.classification === 'off_air');
-                document.getElementById('probeDetails').textContent =
-                    `reason=${data.probe.reason}, avg_db=${data.probe.avg_db}, silence=${data.probe.silence_ratio}, automation=${data.probe.automation_ratio}`;
+                let label = 'No data';
+                if (data.probe.classification === 'automation' || data.probe.classification === 'off_air') {
+                    label = 'AUTO';
+                    probeElem.classList.add('text-neon-blue');
+                } else if (data.probe.classification === 'live_show') {
+                    label = 'LIVE SHOW';
+                    probeElem.style.color = '#2ecc71';
+                } else if (data.probe.classification === 'dead_air') {
+                    label = 'DEAD AIR';
+                    probeElem.classList.add('flash-red');
+                }
+                probeElem.textContent = label;
             } else {
-                document.getElementById('probeClass').textContent = 'No data';
-                document.getElementById('probeDetails').textContent = '';
+                probeElem.textContent = 'No data';
             }
         } catch (e) {
             document.getElementById('streamUp').textContent = 'Error';
             document.getElementById('probeClass').textContent = '';
-            document.getElementById('probeDetails').textContent = '';
         }
     }
     setInterval(refreshStatus, 5000);

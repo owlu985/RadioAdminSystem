@@ -3,7 +3,13 @@ import time
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session
 from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show, SavedSearch, db
-from app.utils import get_current_show, format_show_window
+from app.utils import (
+    get_current_show,
+    format_show_window,
+    show_display_title,
+    show_primary_host,
+    show_host_names,
+)
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
@@ -62,17 +68,18 @@ def now_playing():
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
         })
 
+    dj_first, dj_last = show_primary_host(show)
     run = get_or_create_active_run(
-        show_name=show.show_name or f"{show.host_first_name} {show.host_last_name}",
-        dj_first_name=show.host_first_name,
-        dj_last_name=show.host_last_name,
+        show_name=show_display_title(show),
+        dj_first_name=dj_first,
+        dj_last_name=dj_last,
     )
 
     return jsonify({
         "status": "on_air",
         "show": {
-            "name": show.show_name or f"{show.host_first_name} {show.host_last_name}",
-            "host": f"{show.host_first_name} {show.host_last_name}",
+            "name": show_display_title(show),
+            "host": show_host_names(show),
             "genre": show.genre,
             "description": show.description,
             "regular_host": show.is_regular_host,
@@ -392,7 +399,7 @@ def schedule_api():
         days = [d.strip() for d in (show.days_of_week or "").split(',') if d.strip()]
         for day in days:
             events.append({
-                "title": show.show_name or f"{show.host_first_name} {show.host_last_name}",
+                "title": show_display_title(show),
                 "day": day,
                 "start_time": show.start_time.strftime("%H:%M"),
                 "end_time": show.end_time.strftime("%H:%M"),
@@ -621,7 +628,7 @@ def list_djs_api():
             "shows": [
                 {
                     "id": s.id,
-                    "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
+                    "name": show_display_title(s),
                     "start_time": s.start_time.strftime("%H:%M"),
                     "end_time": s.end_time.strftime("%H:%M"),
                     "days_of_week": s.days_of_week,

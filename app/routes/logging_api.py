@@ -4,7 +4,7 @@ import io
 import zipfile
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import db, LogEntry, LogSheet, DJ, Show
-from app.utils import get_current_show
+from app.utils import get_current_show, show_display_title, show_primary_host
 from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.logger import init_logger
 from app.auth_utils import admin_required
@@ -41,7 +41,9 @@ def submit_log():
         if show_id:
             show_obj = Show.query.get(show_id)
             if show_obj:
-                show_name = show_obj.show_name or f"{show_obj.host_first_name} {show_obj.host_last_name}"
+                show_name = show_display_title(show_obj)
+                if not dj_obj and show_obj.djs:
+                    dj_first, dj_last = show_primary_host(show_obj)
 
         if not all([dj_first, dj_last, show_name]):
             flash("DJ and show selection are required.", "danger")

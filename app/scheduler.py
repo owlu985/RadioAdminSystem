@@ -10,7 +10,7 @@ from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
-from .utils import update_user_config
+from .utils import update_user_config, show_display_title, show_primary_host
 from datetime import date as date_cls
 import ffmpeg
 import json
@@ -138,7 +138,7 @@ def schedule_recording(show):
     duration = (end_time - start_time).total_seconds()
     stream_url = current_app.config['STREAM_URL']
 
-    display_name = show.show_name or f"{show.host_first_name} {show.host_last_name}"
+    display_name = show_display_title(show)
     safe_name = display_name.replace(" ", "_")
 
     if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:

@@ -95,18 +95,30 @@
             <!-- <div id="end_time_warning" class="text-danger" style="display: none;">End time cannot be before start time!</div> -->
         </div>
 
-        <!-- Day of the Week -->
+        <!-- Day(s) of the Week -->
         <div class="mb-3">
-            <label for="days_of_week" class="form-label">Day of the Week:</label>
-            <select name="days_of_week" id="days_of_week" class="form-select" required>
-                <option value="Monday">Monday</option>
-                <option value="Tuesday">Tuesday</option>
-                <option value="Wednesday">Wednesday</option>
-                <option value="Thursday">Thursday</option>
-                <option value="Friday">Friday</option>
-                <option value="Saturday">Saturday</option>
-                <option value="Sunday">Sunday</option>
+            <label for="days_of_week" class="form-label">Day(s) of the Week:</label>
+            <select name="days_of_week" id="days_of_week" class="form-select" multiple required>
+                <option value="mon">Monday</option>
+                <option value="tue">Tuesday</option>
+                <option value="wed">Wednesday</option>
+                <option value="thu">Thursday</option>
+                <option value="fri">Friday</option>
+                <option value="sat">Saturday</option>
+                <option value="sun">Sunday</option>
             </select>
+            <div class="form-text">Hold Ctrl/Cmd to pick multiple days.</div>
+        </div>
+
+        <!-- DJs (multi-select) -->
+        <div class="mb-3">
+            <label for="dj_ids" class="form-label">DJs for this show:</label>
+            <select name="dj_ids" id="dj_ids" class="form-select" multiple>
+                {% for dj in djs %}
+                    <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Select one or more DJs; the first DJ listed will be treated as primary for displays.</div>
         </div>
 
         <!-- Submit&Cancel Button -->

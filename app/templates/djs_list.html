@@ -34,7 +34,10 @@
                         <span class="badge bg-primary">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</span>
                     {% endfor %}
                 </td>
-                <td><a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.edit_dj', dj_id=dj.id) }}">Edit</a></td>
+                <td class="text-end">
+                    <a class="btn btn-sm btn-outline-secondary me-1" href="{{ url_for('main.dj_profile', dj_id=dj.id) }}">Profile</a>
+                    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.edit_dj', dj_id=dj.id) }}">Edit</a>
+                </td>
             </tr>
         {% endfor %}
         </tbody>

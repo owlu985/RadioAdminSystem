@@ -72,6 +72,23 @@ def _normalize_day(day: str) -> str:
     return day.lower()[:3]
 
 
+DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
+
+
+def normalize_days_list(days: list[str]) -> str:
+    """Normalize and order day strings into a comma-separated list of 3-letter keys."""
+    cleaned = []
+    for d in days:
+        if not d:
+            continue
+        key = _normalize_day(d)
+        if key not in cleaned:
+            cleaned.append(key)
+    # order by the standard week ordering
+    cleaned.sort(key=lambda x: DAY_ORDER.index(x) if x in DAY_ORDER else 99)
+    return ",".join(cleaned)
+
+
 def get_current_show(now: datetime | None = None):
     """
     Return the Show scheduled right now, if any.
@@ -84,8 +101,15 @@ def get_current_show(now: datetime | None = None):
     day_key = _normalize_day(now.strftime('%a'))
     yesterday_key = _normalize_day((now - timedelta(days=1)).strftime('%a'))
 
-    today_shows = Show.query.filter_by(days_of_week=day_key).all()
+    today_shows = Show.query.all()
+
+    def _has_day(show_obj: Show, key: str) -> bool:
+        days = [d.strip() for d in (show_obj.days_of_week or "").split(',') if d.strip()]
+        return key in days
+
     for show in today_shows:
+        if not _has_day(show, day_key):
+            continue
         if show.start_time <= show.end_time:
             if show.start_time <= current_time < show.end_time:
                 return show
@@ -95,8 +119,9 @@ def get_current_show(now: datetime | None = None):
                 return show
 
     # Handle shows that began yesterday and end after midnight today
-    yesterday_shows = Show.query.filter_by(days_of_week=yesterday_key).all()
-    for show in yesterday_shows:
+    for show in today_shows:
+        if not _has_day(show, yesterday_key):
+            continue
         if show.end_time < show.start_time and current_time < show.end_time:
             return show
 
@@ -112,3 +137,55 @@ def format_show_window(show: Show) -> dict:
         "end_date": show.end_date.isoformat(),
         "days_of_week": show.days_of_week,
     }
+
+
+def show_host_names(show: Show) -> str:
+    if getattr(show, "djs", None):
+        names = [f"{dj.first_name} {dj.last_name}" for dj in show.djs]
+        if names:
+            return ", ".join(names)
+    return f"{show.host_first_name} {show.host_last_name}".strip()
+
+
+def show_primary_host(show: Show) -> tuple[str, str]:
+    if getattr(show, "djs", None):
+        for dj in show.djs:
+            return dj.first_name, dj.last_name
+    return show.host_first_name, show.host_last_name
+
+
+def show_display_title(show: Show) -> str:
+    return show.show_name or show_host_names(show)
+
+
+def next_show_occurrence(show: Show, *, now: datetime | None = None) -> tuple[datetime, datetime] | None:
+    """Return the next scheduled start/end datetimes for a show based on its days_of_week.
+
+    Picks the soonest occurrence on or after ``now`` (default: current time) within the next two weeks.
+    Handles overnight shows whose end_time is earlier than start_time by rolling the end into the next day.
+    """
+
+    if now is None:
+        now = datetime.now()
+
+    days = [d.strip() for d in (show.days_of_week or "").split(',') if d.strip()]
+    if not days:
+        return None
+
+    today = now.date()
+    for offset in range(0, 14):
+        candidate = today + timedelta(days=offset)
+        key = _normalize_day(candidate.strftime('%a'))
+        if key not in days:
+            continue
+        if show.start_date and candidate < show.start_date:
+            continue
+        if show.end_date and candidate > show.end_date:
+            continue
+        start_dt = datetime.combine(candidate, show.start_time)
+        end_dt = datetime.combine(candidate, show.end_time)
+        if show.end_time <= show.start_time:
+            end_dt += timedelta(days=1)
+        if start_dt >= now or offset > 0:
+            return start_dt, end_dt
+    return None
