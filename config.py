@@ -59,6 +59,7 @@ class Config:
 
     # Stream/Icecast monitoring
     ICECAST_STATUS_URL = None
+    ICECAST_LISTCLIENTS_URL = None
     ICECAST_USERNAME = None
     ICECAST_PASSWORD = None
     ICECAST_MOUNT = None

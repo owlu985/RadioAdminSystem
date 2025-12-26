@@ -20,14 +20,55 @@ def _ignored_ip_set() -> Set[str]:
     return {ip.strip() for ip in ignored if ip and isinstance(ip, str)}
 
 
-def fetch_icecast_listeners() -> Optional[int]:
-    url = current_app.config.get("ICECAST_STATUS_URL")
-    if not url:
+def _parse_listeners_from_listclients(text: str, ignored_ips: Set[str]) -> Optional[int]:
+    try:
+        root = ET.fromstring(text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Icecast listclients parse failed: %s", exc)
         return None
+
+    ips: List[str] = []
+    for node in root.iter():
+        tag = (node.tag or "").lower()
+        if tag in {"ip", "client_ip", "clientip", "listenerip"}:
+            val = (node.text or "").strip()
+            if val:
+                ips.append(val)
+    if not ips:
+        # fallback to <listener><IP> nesting
+        for listener in root.findall(".//listener"):
+            ip = listener.findtext("IP") or listener.findtext("ip")
+            ip = ip.strip() if ip else None
+            if ip:
+                ips.append(ip)
+    if not ips:
+        return None
+    if ignored_ips:
+        ips = [ip for ip in ips if ip not in ignored_ips]
+    return len(ips)
+
+
+def fetch_icecast_listeners() -> Optional[int]:
     auth = None
     if current_app.config.get("ICECAST_USERNAME") and current_app.config.get("ICECAST_PASSWORD"):
         auth = (current_app.config.get("ICECAST_USERNAME"), current_app.config.get("ICECAST_PASSWORD"))
     mount = current_app.config.get("ICECAST_MOUNT")
+    ignored_ips = _ignored_ip_set()
+
+    listclients_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
+    if listclients_url:
+        try:
+            resp = requests.get(listclients_url, auth=auth, timeout=5)
+            resp.raise_for_status()
+            from_listclients = _parse_listeners_from_listclients(resp.text, ignored_ips)
+            if from_listclients is not None:
+                return from_listclients
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Icecast listclients request failed: %s", exc)
+
+    url = current_app.config.get("ICECAST_STATUS_URL")
+    if not url:
+        return None
     try:
         resp = requests.get(url, auth=auth, timeout=5)
         resp.raise_for_status()
@@ -42,7 +83,6 @@ def fetch_icecast_listeners() -> Optional[int]:
         return None
 
     listeners = None
-    ignored_ips = _ignored_ip_set()
     for source in root.findall(".//source"):
         mount_name = source.findtext("mount") or source.findtext("mountname") or source.attrib.get("mount")
         if mount and mount_name and mount_name != mount:

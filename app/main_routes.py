@@ -1191,7 +1191,7 @@ ALLOWED_SETTINGS_KEYS = [
     'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
     'ALERT_REPEAT_MINUTES', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
     'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
-    'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'ICECAST_IGNORED_IPS', 'SELF_HEAL_ENABLED',
+    'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'ICECAST_IGNORED_IPS', 'SELF_HEAL_ENABLED',
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
@@ -1242,6 +1242,7 @@ def settings():
                 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES': int(request.form.get('alert_stream_down_threshold_minutes') or current_app.config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1)),
                 'ALERT_REPEAT_MINUTES': int(request.form.get('alert_repeat_minutes') or current_app.config.get('ALERT_REPEAT_MINUTES', 15)),
                 'ICECAST_STATUS_URL': _clean_optional(request.form.get('icecast_status_url', '').strip()),
+                'ICECAST_LISTCLIENTS_URL': _clean_optional(request.form.get('icecast_listclients_url', '').strip()),
                 'ICECAST_USERNAME': _clean_optional(request.form.get('icecast_username', '').strip()),
                 'ICECAST_PASSWORD': _clean_optional(request.form.get('icecast_password', '').strip()),
                 'ICECAST_MOUNT': _clean_optional(request.form.get('icecast_mount', '').strip()),
@@ -1321,6 +1322,7 @@ def settings():
         'alert_stream_down_threshold_minutes': config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1),
         'alert_repeat_minutes': config.get('ALERT_REPEAT_MINUTES', 15),
         'icecast_status_url': _clean_optional(config.get('ICECAST_STATUS_URL', '')) or '',
+        'icecast_listclients_url': _clean_optional(config.get('ICECAST_LISTCLIENTS_URL', '')) or '',
         'icecast_username': _clean_optional(config.get('ICECAST_USERNAME', '')) or '',
         'icecast_password': _clean_optional(config.get('ICECAST_PASSWORD', '')) or '',
         'icecast_mount': _clean_optional(config.get('ICECAST_MOUNT', '')) or '',
@@ -1394,7 +1396,7 @@ def import_settings():
         'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
         'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
         'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
-        'ICECAST_STATUS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT'
+        'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT'
     } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
     if not filtered:

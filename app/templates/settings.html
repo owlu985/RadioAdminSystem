@@ -299,6 +299,11 @@
                 <input type="text" name="icecast_status_url" id="icecast_status_url" class="form-control" value="{{ icecast_status_url }}" placeholder="https://host:port/admin/stats">
                 <div class="form-text">Used to show listener counts on the dashboard.</div>
             </div>
+            <div class="mb-3">
+                <label for="icecast_listclients_url" class="form-label">Icecast Listener Detail URL</label>
+                <input type="text" name="icecast_listclients_url" id="icecast_listclients_url" class="form-control" value="{{ icecast_listclients_url }}" placeholder="https://host:port/admin/listclients?mount=/stream">
+                <div class="form-text">Optional: used to fetch per-listener IPs so ignored IPs can be filtered from counts.</div>
+            </div>
             <div class="row g-3 mb-3">
                 <div class="col-md-6">
                     <label for="icecast_username" class="form-label">Icecast Admin Username</label>
