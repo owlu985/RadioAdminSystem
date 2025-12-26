@@ -1,7 +1,7 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort
 import json
 import os
-from .scheduler import refresh_schedule, pause_shows_until
+from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
 from .utils import update_user_config, get_current_show, format_show_window
 from datetime import datetime, time, timedelta, date
 from .models import (
@@ -694,6 +694,29 @@ def archivist_page():
         import_count=import_count,
         show_all=show_all,
     )
+
+
+@main_bp.route("/marathon", methods=["GET", "POST"])
+@admin_required
+def marathon_page():
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        start_raw = request.form.get("start")
+        end_raw = request.form.get("end")
+        chunk_hours = int(request.form.get("chunk_hours") or 2)
+        if not name or not start_raw or not end_raw:
+            flash("Please provide name, start, and end.", "warning")
+        else:
+            try:
+                start_dt = datetime.fromisoformat(start_raw)
+                end_dt = datetime.fromisoformat(end_raw)
+                schedule_marathon_event(name, start_dt, end_dt, chunk_hours=chunk_hours)
+                flash("Marathon recording scheduled.", "success")
+                return redirect(url_for("main.marathon_page"))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to schedule marathon: %s", exc)
+                flash("Could not schedule marathon. Check dates and try again.", "danger")
+    return render_template("marathon.html")
 
 
 @main_bp.route("/social/post", methods=["GET", "POST"])

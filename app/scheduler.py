@@ -171,6 +171,42 @@ def schedule_recording(show):
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
 
 
+def schedule_marathon_event(name: str, start_dt: datetime, end_dt: datetime, chunk_hours: int = 2):
+    """
+    Schedule a temporary marathon recording window in fixed-size chunks.
+    Files are written under OUTPUT_FOLDER/Marathons/<name>/Name_day_start_end_RAWDATA.mp3
+    """
+    if flask_app is None:
+        return
+    if end_dt <= start_dt:
+        return
+    stream_url = flask_app.config["STREAM_URL"]
+    safe_name = name.replace(" ", "_")
+    base_folder = os.path.join(flask_app.config["OUTPUT_FOLDER"], "Marathons", safe_name)
+    os.makedirs(base_folder, exist_ok=True)
+    user_config_path = os.path.join(flask_app.instance_path, "user_config.json")
+
+    current = start_dt
+    while current < end_dt:
+        chunk_end = min(current + timedelta(hours=chunk_hours), end_dt)
+        label = f"{safe_name}_{current.strftime('%a_%I%p').lstrip('0')}_{chunk_end.strftime('%I%p').lstrip('0')}"
+        output_file = os.path.join(base_folder, label)
+        job_id = f"marathon_{safe_name}_{int(current.timestamp())}"
+        try:
+            scheduler.add_job(
+                record_stream,
+                "date",
+                id=job_id,
+                run_date=current,
+                args=[stream_url, (chunk_end - current).total_seconds(), output_file, user_config_path],
+                replace_existing=True,
+            )
+            logger.info("Scheduled marathon chunk %s from %s to %s", job_id, current, chunk_end)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to schedule marathon chunk %s: %s", job_id, exc)
+        current = chunk_end
+
+
 def schedule_stream_probe():
     """Schedule periodic stream probing for silence/automation detection."""
     if flask_app is None:

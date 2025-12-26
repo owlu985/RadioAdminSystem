@@ -20,6 +20,7 @@ from app.services.music_search import (
     lookup_musicbrainz,
     harvest_cover_art,
 )
+from app.services.archivist_db import lookup_album, analyze_album_rip
 from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status
@@ -48,6 +49,14 @@ def _serialize_show_run(run: ShowRun) -> dict:
 def now_playing():
     show = get_current_show()
     if not show:
+        rdj = RadioDJClient()
+        rdj_payload = rdj.now_playing()
+        if rdj_payload:
+            return jsonify({
+                "status": "automation",
+                "source": "radiodj",
+                "track": rdj_payload,
+            })
         return jsonify({
             "status": "off_air",
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
@@ -71,6 +80,24 @@ def now_playing():
         },
         "run": _serialize_show_run(run),
     })
+
+
+@api_bp.route("/now/widget")
+def now_widget():
+    """
+    Widget-friendly now-playing: if a scheduled show is active, show it; otherwise
+    return RadioDJ automation metadata when available.
+    """
+    base = now_playing().get_json()  # type: ignore
+    if base and base.get("status") != "off_air":
+        return jsonify(base)
+    rdj = RadioDJClient()
+    rdj_payload = rdj.now_playing()
+    if rdj_payload:
+        base = base or {}
+        base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+        return jsonify(base)
+    return jsonify(base or {"status": "off_air"})
 
 
 @api_bp.route("/probe", methods=["POST"])
@@ -216,7 +243,38 @@ def music_saved_searches():
             return jsonify({"status": "error", "message": "forbidden"}), 403
         db.session.delete(s)
         db.session.commit()
-        return jsonify({"status": "ok"})
+    return jsonify({"status": "ok"})
+
+
+@api_bp.route("/archivist/album-info")
+def archivist_album_info():
+    query = (request.args.get("q") or "").strip()
+    if not query:
+        return jsonify([])
+    rows = lookup_album(query)
+    return jsonify([
+        {
+            "artist": r.artist,
+            "title": r.title,
+            "album": r.album,
+            "catalog_number": r.catalog_number,
+            "notes": r.notes,
+        }
+        for r in rows
+    ])
+
+
+@api_bp.route("/archivist/album-rip", methods=["POST"])
+def archivist_album_rip():
+    payload = request.get_json(force=True) or {}
+    path = payload.get("path")
+    threshold = int(payload.get("silence_thresh_db", -38))
+    min_gap_ms = int(payload.get("min_gap_ms", 1200))
+    min_track_ms = int(payload.get("min_track_ms", 60_000))
+    result = analyze_album_rip(path, silence_thresh_db=threshold, min_gap_ms=min_gap_ms, min_track_ms=min_track_ms)
+    if not result:
+        return jsonify({"status": "error", "message": "analysis_unavailable"}), 400
+    return jsonify({"status": "ok", **result})
 
     payload = request.get_json(force=True, silent=True) or {}
     name = (payload.get("name") or "").strip()

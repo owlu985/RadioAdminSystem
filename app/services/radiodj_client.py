@@ -73,6 +73,28 @@ class RadioDJClient:
         resp.raise_for_status()
         return resp.json()
 
+    def now_playing(self) -> Optional[dict]:
+        """
+        Fetch the current on-air metadata from RadioDJ (if enabled).
+        Expected payload shape (best-effort):
+        {
+            "artist": str,
+            "title": str,
+            "album": str,
+            "duration": float,
+            "elapsed": float,
+        }
+        """
+        if not self.enabled:
+            return None
+        try:
+            resp = requests.get(f"{self.base_url}/nowplaying", headers=self._headers(), timeout=6)
+            resp.raise_for_status()
+            return resp.json() or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ now playing fetch failed: %s", exc)
+            return None
+
     def import_file(self, source_path: str, target_name: Optional[str] = None) -> Path:
         """
         Stage a file into the RadioDJ import folder (local handoff).

@@ -4,7 +4,14 @@ import csv
 import io
 import json
 import os
-from typing import List, Dict
+from typing import List, Dict, Optional
+
+try:
+    from pydub import AudioSegment
+    from pydub.silence import detect_silence
+except Exception:  # noqa: BLE001
+    AudioSegment = None
+    detect_silence = None
 
 from sqlalchemy import or_
 
@@ -96,3 +103,49 @@ def search_archivist(query: str, limit: int = 200):
             )
         )
     return q.order_by(ArchivistEntry.artist.asc().nulls_last(), ArchivistEntry.title.asc().nulls_last()).limit(limit).all()
+
+
+def lookup_album(query: str, limit: int = 5):
+    """Return archivist rows matching an album/catalog/title clue for album rips."""
+    like = f"%{query}%"
+    q = ArchivistEntry.query.filter(
+        or_(
+            ArchivistEntry.album.ilike(like),
+            ArchivistEntry.title.ilike(like),
+            ArchivistEntry.catalog_number.ilike(like),
+        )
+    )
+    return q.order_by(ArchivistEntry.artist.asc().nulls_last()).limit(limit).all()
+
+
+def analyze_album_rip(
+    path: str,
+    silence_thresh_db: int = -38,
+    min_gap_ms: int = 1200,
+    min_track_ms: int = 60_000,
+) -> Optional[dict]:
+    """
+    Analyze a full-album rip to suggest track breakpoints while ignoring pops/crackles.
+    Returns dict with duration_ms and segments (start_ms/end_ms list) when pydub is available.
+    """
+    if not AudioSegment or not detect_silence:
+        return None
+    if not os.path.exists(path):
+        return None
+    try:
+        audio = AudioSegment.from_file(path)
+        duration_ms = len(audio)
+        # light smoothing: a tiny lowpass to dampen pops
+        smooth = audio.low_pass_filter(6000) if hasattr(audio, "low_pass_filter") else audio
+        silences = detect_silence(smooth, min_silence_len=min_gap_ms, silence_thresh=silence_thresh_db)
+        segments = []
+        last_start = 0
+        for start, end in silences:
+            if start - last_start >= min_track_ms:
+                segments.append({"start_ms": last_start, "end_ms": start})
+                last_start = end
+        if duration_ms - last_start >= max(min_track_ms // 2, 30_000):
+            segments.append({"start_ms": last_start, "end_ms": duration_ms})
+        return {"duration_ms": duration_ms, "segments": segments}
+    except Exception:
+        return None

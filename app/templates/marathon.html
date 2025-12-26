@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Marathon Recorder</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+  <h2 class="mb-3">Marathon Recorder</h2>
+  <div class="card">
+    <div class="card-header">Schedule special event recording</div>
+    <div class="card-body">
+      <form method="post" class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label">Event name</label>
+          <input type="text" class="form-control" name="name" required placeholder="Vinylthon">
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">Start (local)</label>
+          <input type="datetime-local" class="form-control" name="start" required>
+        </div>
+        <div class="col-md-4">
+          <label class="form-label">End (local)</label>
+          <input type="datetime-local" class="form-control" name="end" required>
+        </div>
+        <div class="col-md-3">
+          <label class="form-label">Chunk hours</label>
+          <input type="number" class="form-control" name="chunk_hours" value="2" min="1" max="6">
+        </div>
+        <div class="col-md-12 d-flex gap-2">
+          <button type="submit" class="btn btn-primary">Schedule marathon</button>
+          <a href="{{ url_for('main.dashboard') }}" class="btn btn-outline-secondary">Back to dashboard</a>
+        </div>
+      </form>
+      <div class="form-text mt-2">Creates 2-hour chunks (default) into OUTPUT_FOLDER/Marathons/&lt;name&gt;.</div>
+    </div>
+  </div>
+</div>
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>
