@@ -122,6 +122,8 @@ class Config:
     SOCIAL_TWITTER_CONSUMER_SECRET = None
     SOCIAL_TWITTER_ACCESS_TOKEN = None
     SOCIAL_TWITTER_ACCESS_SECRET = None
+    SOCIAL_TWITTER_CLIENT_ID = None
+    SOCIAL_TWITTER_CLIENT_SECRET = None
     SOCIAL_BLUESKY_HANDLE = None
     SOCIAL_BLUESKY_PASSWORD = None
     SOCIAL_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "social_uploads")

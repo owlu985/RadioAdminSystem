@@ -1,8 +1,12 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify
 import json
 import os
 import secrets
 import random
+import base64
+import hashlib
+import requests
+from urllib.parse import quote_plus
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
 from .utils import (
     update_user_config,
@@ -105,6 +109,43 @@ def _add_identity(user: User, provider: str, external_id: str | None, email: str
             'email': email,
         })
         user.identities = json.dumps(identities)
+
+
+def _serialize_oauth_token(token: dict | None, provider: str | None = None) -> dict | None:
+    """Safely stash an OAuth token in the session for admin inspection.
+
+    Tokens can contain datetime or other non-JSON values; coerce everything to
+    JSON-safe types and track the provider and capture time. This is only used
+    for the current session and exposed via an admin-only endpoint.
+    """
+
+    if token is None:
+        return None
+
+    def _coerce(value):
+        try:
+            json.dumps(value)
+            return value
+        except Exception:
+            return str(value)
+
+    if isinstance(token, dict):
+        sanitized = {k: _coerce(v) for k, v in token.items()}
+    else:
+        sanitized = _coerce(token)
+
+    return {
+        "provider": provider,
+        "token": sanitized,
+        "captured_at": datetime.utcnow().isoformat(),
+    }
+
+
+def _pkce_pair():
+    verifier = secrets.token_urlsafe(64)
+    digest = hashlib.sha256(verifier.encode()).digest()
+    challenge = base64.urlsafe_b64encode(digest).rstrip(b"=").decode()
+    return verifier, challenge
 
 
 def _find_user(provider: str, external_id: str | None, email: str | None, display_name: str | None = None):
@@ -959,6 +1000,86 @@ def login_oauth_google():
         return client.authorize_redirect(redirect_uri, nonce=nonce)
 
 
+@main_bp.route("/login/oauth/twitter/start")
+@admin_required
+def login_oauth_twitter_start():
+        """Start a Twitter/X OAuth2 PKCE flow to fetch a user-context token."""
+
+        client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
+        if not client_id:
+                flash("Twitter client ID is required to start OAuth.", "danger")
+                return redirect(url_for("main.settings"))
+
+        redirect_uri = url_for("main.oauth_callback_twitter", _external=True)
+        state = secrets.token_urlsafe(16)
+        verifier, challenge = _pkce_pair()
+        session["twitter_oauth_state"] = state
+        session["twitter_code_verifier"] = verifier
+
+        scopes = "tweet.read tweet.write offline.access"
+        auth_url = (
+            "https://twitter.com/i/oauth2/authorize?response_type=code"
+            f"&client_id={quote_plus(client_id)}"
+            f"&redirect_uri={quote_plus(redirect_uri)}"
+            f"&scope={quote_plus(scopes)}"
+            f"&state={quote_plus(state)}"
+            f"&code_challenge={quote_plus(challenge)}"
+            "&code_challenge_method=S256"
+        )
+        return redirect(auth_url)
+
+
+@main_bp.route("/login/oauth/twitter/callback")
+def oauth_callback_twitter():
+        """Handle the Twitter/X OAuth2 callback and stash the token for admin inspection."""
+
+        state = request.args.get("state")
+        code = request.args.get("code")
+        expected_state = session.pop("twitter_oauth_state", None)
+        verifier = session.pop("twitter_code_verifier", None)
+
+        if not code:
+                flash("Missing OAuth code from Twitter.", "danger")
+                return redirect(url_for("main.login"))
+
+        if not expected_state or state != expected_state:
+                flash("Invalid OAuth state for Twitter flow.", "danger")
+                return redirect(url_for("main.login"))
+
+        client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
+        client_secret = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_SECRET"))
+        if not client_id or not verifier:
+                flash("Twitter OAuth is not configured correctly (client ID / PKCE).", "danger")
+                return redirect(url_for("main.login"))
+
+        redirect_uri = url_for("main.oauth_callback_twitter", _external=True)
+        data = {
+            "client_id": client_id,
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "code_verifier": verifier,
+        }
+        try:
+            resp = requests.post(
+                "https://api.twitter.com/2/oauth2/token",
+                data=data,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                auth=(client_id, client_secret) if client_secret else None,
+                timeout=20,
+            )
+            resp.raise_for_status()
+            token = resp.json()
+            session["last_oauth_token"] = _serialize_oauth_token(token, "twitter")
+            session["last_oauth_token_twitter"] = session["last_oauth_token"]
+            flash("Twitter/X OAuth token captured. Copy it below for posting.", "success")
+            return render_template("oauth_token.html", provider="Twitter/X", token=token)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Twitter OAuth exchange failed: {exc}")
+            flash("Twitter OAuth token exchange failed. Check credentials and try again.", "danger")
+            return redirect(url_for("main.login"))
+
+
 @main_bp.route("/login/oauth/google/callback")
 def oauth_callback_google():
         """Handle Google OAuth callback and establish a session."""
@@ -972,6 +1093,7 @@ def oauth_callback_google():
 
         try:
                 token = client.authorize_access_token()
+                session["last_oauth_token"] = _serialize_oauth_token(token, "google")
                 nonce = session.pop("oauth_google_nonce", None)
                 userinfo = None
                 try:
@@ -1060,6 +1182,7 @@ def oauth_callback_discord():
 
         try:
                 token = client.authorize_access_token()
+                session["last_oauth_token"] = _serialize_oauth_token(token, "discord")
                 userinfo_resp = client.get("users/@me")
                 userinfo = userinfo_resp.json() if userinfo_resp else {}
         except Exception as exc:  # noqa: BLE001
@@ -1124,6 +1247,29 @@ def oauth_callback_discord():
         if merge_candidate:
                 profile["merge_candidate_id"] = merge_candidate.id
         return _redirect_pending(profile)
+
+
+@main_bp.route("/api/oauth/last-token")
+@admin_required
+def last_oauth_token():
+    """Return the most recent OAuth token captured in this session.
+
+    This is intended for debugging/verification and is restricted to admin roles.
+    """
+
+    token = session.get("last_oauth_token")
+    if not token:
+        return jsonify({"status": "empty", "message": "No OAuth token captured in this session."}), 404
+    return jsonify({"status": "ok", "token": token})
+
+
+@main_bp.route("/api/oauth/x-token")
+@admin_required
+def twitter_oauth_token():
+    token = session.get("last_oauth_token_twitter") or session.get("last_oauth_token")
+    if not token or token.get("provider") != "twitter":
+        return jsonify({"status": "empty", "message": "No Twitter/X OAuth token captured in this session."}), 404
+    return jsonify({"status": "ok", "token": token})
 
 @main_bp.route('/logout')
 def logout():
@@ -1353,7 +1499,7 @@ ALLOWED_SETTINGS_KEYS = [
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
     'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_TWITTER_CONSUMER_KEY', 'SOCIAL_TWITTER_CONSUMER_SECRET',
-    'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
+    'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_TWITTER_CLIENT_ID', 'SOCIAL_TWITTER_CLIENT_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
     'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
     'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH'
 ]
@@ -1443,6 +1589,8 @@ def settings():
                 'SOCIAL_TWITTER_CONSUMER_SECRET': _clean_optional(request.form.get('social_twitter_consumer_secret', '').strip()),
                 'SOCIAL_TWITTER_ACCESS_TOKEN': _clean_optional(request.form.get('social_twitter_access_token', '').strip()),
                 'SOCIAL_TWITTER_ACCESS_SECRET': _clean_optional(request.form.get('social_twitter_access_secret', '').strip()),
+                'SOCIAL_TWITTER_CLIENT_ID': _clean_optional(request.form.get('social_twitter_client_id', '').strip()),
+                'SOCIAL_TWITTER_CLIENT_SECRET': _clean_optional(request.form.get('social_twitter_client_secret', '').strip()),
                 'SOCIAL_BLUESKY_HANDLE': _clean_optional(request.form.get('social_bluesky_handle', '').strip()),
                 'SOCIAL_BLUESKY_PASSWORD': _clean_optional(request.form.get('social_bluesky_password', '').strip()),
                 'SOCIAL_UPLOAD_DIR': _clean_optional(request.form.get('social_upload_dir', '').strip()) or config.get('SOCIAL_UPLOAD_DIR'),
@@ -1534,6 +1682,8 @@ def settings():
         'social_twitter_consumer_secret': _clean_optional(config.get('SOCIAL_TWITTER_CONSUMER_SECRET', '')) or '',
         'social_twitter_access_token': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_TOKEN', '')) or '',
         'social_twitter_access_secret': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_SECRET', '')) or '',
+        'social_twitter_client_id': _clean_optional(config.get('SOCIAL_TWITTER_CLIENT_ID', '')) or '',
+        'social_twitter_client_secret': _clean_optional(config.get('SOCIAL_TWITTER_CLIENT_SECRET', '')) or '',
         'social_bluesky_handle': _clean_optional(config.get('SOCIAL_BLUESKY_HANDLE', '')) or '',
         'social_bluesky_password': _clean_optional(config.get('SOCIAL_BLUESKY_PASSWORD', '')) or '',
         'social_upload_dir': config.get('SOCIAL_UPLOAD_DIR', ''),

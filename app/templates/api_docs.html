@@ -119,6 +119,11 @@ GET/POST /absences              (admin manage/filter)
 GET/POST /djs/discipline        (management only)
 GET      /djs/&lt;id&gt;              (DJ profile)</code></pre>
 
+    <h4 class="mt-4">Auth & OAuth</h4>
+    <pre><code>GET /api/oauth/last-token        (admin-only, returns last OAuth token captured this session)
+GET /api/oauth/x-token          (admin-only, returns the last Twitter/X OAuth token captured via PKCE flow)</code></pre>
+    <p>Used for debugging OAuth flows (Google/Discord); requires an authenticated admin session.</p>
+
     <h4 class="mt-4">Social & Live Reads</h4>
     <pre><code>GET/POST /production/live-reads          (card creation + print)
 GET/POST /social/post                   (multi-network posting console)</code></pre>

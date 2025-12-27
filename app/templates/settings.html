@@ -427,6 +427,16 @@
                                     <input type="text" name="social_twitter_bearer_token" id="social_twitter_bearer_token" class="form-control" value="{{ social_twitter_bearer_token }}" placeholder="User bearer with tweet.write">
                                 </div>
                                 <div class="col-md-6">
+                                    <label for="social_twitter_client_id" class="form-label">Twitter Client ID (OAuth2)</label>
+                                    <input type="text" name="social_twitter_client_id" id="social_twitter_client_id" class="form-control" value="{{ social_twitter_client_id }}" placeholder="OAuth2 client ID">
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label for="social_twitter_client_secret" class="form-label">Twitter Client Secret (OAuth2)</label>
+                                    <input type="text" name="social_twitter_client_secret" id="social_twitter_client_secret" class="form-control" value="{{ social_twitter_client_secret }}" placeholder="OAuth2 client secret (optional)">
+                                </div>
+                                <div class="col-md-6">
                                     <label for="social_twitter_consumer_key" class="form-label">Twitter Consumer Key</label>
                                     <input type="text" name="social_twitter_consumer_key" id="social_twitter_consumer_key" class="form-control" value="{{ social_twitter_consumer_key }}" placeholder="API key (OAuth1)">
                                 </div>
@@ -469,7 +479,7 @@
                             <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label class="form-label">Client ID</label>
-                                    <input type="text" id="link_client_id" class="form-control" value="{{ social_twitter_consumer_key }}" placeholder="Your Twitter client ID">
+                                    <input type="text" id="link_client_id" class="form-control" value="{{ social_twitter_client_id }}" placeholder="Your Twitter client ID">
                                 </div>
                                 <div class="col-md-6">
                                     <label class="form-label">Redirect URI</label>
