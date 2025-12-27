@@ -1,7 +1,8 @@
 from datetime import datetime
 import time
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app, request, session
+from flask import Blueprint, jsonify, current_app, request, session, url_for
+import os
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -12,6 +13,7 @@ from app.models import (
     Plugin,
     WebsiteContent,
     PodcastEpisode,
+    DJAbsence,
     db,
 )
 from app.utils import (
@@ -20,6 +22,8 @@ from app.utils import (
     show_display_title,
     show_primary_host,
     show_host_names,
+    active_absence_for_show,
+    next_show_occurrence,
 )
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
@@ -62,42 +66,123 @@ def _serialize_show_run(run: ShowRun) -> dict:
     }
 
 
+def _psa_root() -> str:
+    root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
+    host_label = show_host_names(show)
+    if absence and absence.replacement_name:
+        host_label = f"{absence.replacement_name} (cover)"
+    return {
+        "name": show_display_title(show),
+        "host": host_label,
+        "genre": show.genre,
+        "description": show.description,
+        "regular_host": show.is_regular_host,
+        "window": window or format_show_window(show),
+    }
+
+
+def _find_next_show(now: datetime) -> tuple[Show | None, tuple[datetime, datetime] | None, DJAbsence | None]:
+    soonest: tuple[datetime, datetime, Show] | None = None
+    for show in Show.query.all():
+        occ = next_show_occurrence(show, now=now)
+        if not occ:
+            continue
+        start_dt, end_dt = occ
+        if start_dt <= now:
+            continue
+        if not soonest or start_dt < soonest[0]:
+            soonest = (start_dt, end_dt, show)
+
+    if not soonest:
+        return None, None, None
+
+    start_dt, end_dt, show_obj = soonest
+    absence = DJAbsence.query.filter(
+        DJAbsence.show_id == show_obj.id,
+        DJAbsence.start_time <= start_dt,
+        DJAbsence.end_time >= start_dt,
+        DJAbsence.status.in_(["approved", "pending"]),
+    ).first()
+    return show_obj, (start_dt, end_dt), absence
+
+
 @api_bp.route("/now")
 def now_playing():
+    now = datetime.utcnow()
     show = get_current_show()
+    absence = active_absence_for_show(show, now=now) if show else None
+
     if not show:
         rdj = RadioDJClient()
         rdj_payload = rdj.now_playing()
-        if rdj_payload:
-            return jsonify({
-                "status": "automation",
-                "source": "radiodj",
-                "track": rdj_payload,
-            })
-        return jsonify({
+        base = {
             "status": "off_air",
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
-        })
+        }
+        if rdj_payload:
+            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+        next_show, window, next_absence = _find_next_show(now)
+        if next_show and window:
+            start_dt, end_dt = window
+            base["next_show"] = {
+                "name": show_display_title(next_show),
+                "host": show_host_names(next_show) if not next_absence or not next_absence.replacement_name else f"{next_absence.replacement_name} (cover)",
+                "window": {
+                    "start_time": start_dt.strftime("%H:%M"),
+                    "end_time": end_dt.strftime("%H:%M"),
+                },
+                "absence": {
+                    "status": next_absence.status,
+                    "replacement": next_absence.replacement_name,
+                } if next_absence else None,
+            }
+        return jsonify(base)
 
     dj_first, dj_last = show_primary_host(show)
+    if absence and absence.replacement_name:
+        parts = absence.replacement_name.split(" ", 1)
+        if parts:
+            dj_first, dj_last = parts[0], parts[1] if len(parts) > 1 else ""
+
     run = get_or_create_active_run(
         show_name=show_display_title(show),
         dj_first_name=dj_first,
         dj_last_name=dj_last,
     )
 
-    return jsonify({
+    next_show, window, next_absence = _find_next_show(now)
+
+    payload = {
         "status": "on_air",
-        "show": {
-            "name": show_display_title(show),
-            "host": show_host_names(show),
-            "genre": show.genre,
-            "description": show.description,
-            "regular_host": show.is_regular_host,
-            "window": format_show_window(show),
-        },
+        "show": _serialize_show(show, absence=absence),
         "run": _serialize_show_run(run),
-    })
+        "absence": {
+            "status": absence.status,
+            "replacement": absence.replacement_name,
+            "dj": absence.dj_name,
+        } if absence else None,
+    }
+    if next_show and window:
+        start_dt, end_dt = window
+        payload["next_show"] = {
+            "name": show_display_title(next_show),
+            "host": show_host_names(next_show) if not next_absence or not next_absence.replacement_name else f"{next_absence.replacement_name} (cover)",
+            "window": {
+                "start_time": start_dt.strftime("%H:%M"),
+                "end_time": end_dt.strftime("%H:%M"),
+            },
+            "absence": {
+                "status": next_absence.status,
+                "replacement": next_absence.replacement_name,
+            } if next_absence else None,
+        }
+
+    return jsonify(payload)
 
 
 @api_bp.route("/now/widget")
@@ -359,6 +444,30 @@ def music_bulk_update():
     return jsonify(result)
 
 
+@api_bp.route("/psa/library")
+def psa_library():
+    root = _psa_root()
+    entries = []
+    for fname in sorted(os.listdir(root)):
+        if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
+            continue
+        duration = None
+        full = os.path.join(root, fname)
+        try:
+            import mutagen  # type: ignore
+            audio = mutagen.File(full)
+            if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
+                duration = round(audio.info.length, 1)
+        except Exception:
+            duration = None
+        entries.append({
+            "name": fname,
+            "url": url_for("main.psa_file", filename=fname),
+            "duration": duration,
+        })
+    return jsonify(entries)
+
+
 @api_bp.route("/music/scan/library")
 def music_scan_library():
     snapshot = queues_snapshot()
@@ -405,20 +514,35 @@ def music_cue():
 def schedule_api():
     tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
     shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
+    now = datetime.utcnow()
+    absences = DJAbsence.query.filter(
+        DJAbsence.end_time >= now - timedelta(days=1),
+        DJAbsence.status.in_(["approved", "pending"]),
+    ).all()
     events = []
     for show in shows:
         days = [d.strip() for d in (show.days_of_week or "").split(',') if d.strip()]
         for day in days:
+            absence = None
+            for a in absences:
+                if a.show_id == show.id and a.start_time.strftime('%a').lower().startswith(day.lower()[:3]):
+                    absence = a
+                    break
             events.append({
                 "title": show_display_title(show),
                 "day": day,
                 "start_time": show.start_time.strftime("%H:%M"),
                 "end_time": show.end_time.strftime("%H:%M"),
-                "start_date": show.start_date.isoformat(),
-                "end_date": show.end_date.isoformat(),
+                "start_date": show.start_date.isoformat() if show.start_date else None,
+                "end_date": show.end_date.isoformat() if show.end_date else None,
                 "timezone": tz,
                 "description": show.description,
                 "genre": show.genre,
+                "absence": {
+                    "status": absence.status,
+                    "replacement": absence.replacement_name,
+                    "dj": absence.dj_name,
+                } if absence else None,
             })
     return jsonify({"events": events, "timezone": tz})
 

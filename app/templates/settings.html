@@ -199,6 +199,15 @@
                     <input class="form-check-input" type="checkbox" id="inline_help_enabled" name="inline_help_enabled" {% if inline_help_enabled %}checked{% endif %}>
                     <label class="form-check-label" for="inline_help_enabled">Show inline help tips</label>
                 </div>
+                <div class="form-check mt-2">
+                    <input class="form-check-input" type="checkbox" id="high_contrast_default" name="high_contrast_default" {% if high_contrast_default %}checked{% endif %}>
+                    <label class="form-check-label" for="high_contrast_default">High contrast by default</label>
+                </div>
+                <div class="mt-2">
+                    <label for="font_scale_percent" class="form-label">Font scale (studio displays)</label>
+                    <input type="number" min="80" max="140" step="5" class="form-control" id="font_scale_percent" name="font_scale_percent" value="{{ font_scale_percent }}" aria-describedby="fontScaleHelp">
+                    <div id="fontScaleHelp" class="form-text">Applies to DJ status and dashboard; users can still override locally.</div>
+                </div>
             </div>
         </div>
 
@@ -227,6 +236,11 @@
                 Station Background (filename in static/ or full URL)
             </label>
             <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="e.g. first-bkg-variant.jpg or https://example.com/bg.jpg">
+        </div>
+        <div class="mb-3">
+            <label for="psa_library_path" class="form-label">PSA Library Path</label>
+            <input type="text" name="psa_library_path" id="psa_library_path" class="form-control" value="{{ psa_library_path }}" placeholder="/path/to/psa/files">
+            <div class="form-text">Used for the PSA player queue page and RadioDJ PSA tools.</div>
         </div>
         <div class="mb-3 border rounded p-3 bg-light">
             <h5 class="mb-3">Weather (Tempest)</h5>

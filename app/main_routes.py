@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response
 import json
 import os
 import secrets
@@ -13,6 +13,7 @@ from .utils import (
     show_display_title,
     show_primary_host,
     next_show_occurrence,
+    active_absence_for_show,
 )
 from datetime import datetime, time, timedelta, date
 from .models import (
@@ -156,6 +157,9 @@ def inject_branding():
         "station_background": _resolve_station_background(),
         "current_year": datetime.utcnow().year,
         "theme_default": current_app.config.get("THEME_DEFAULT", "system"),
+        "inline_help_enabled": current_app.config.get("INLINE_HELP_ENABLED", True),
+        "high_contrast_default": current_app.config.get("HIGH_CONTRAST_DEFAULT", False),
+        "font_scale_percent": current_app.config.get("FONT_SCALE_PERCENT", 100),
     }
 
 @main_bp.route('/')
@@ -272,13 +276,40 @@ def dashboard():
 @main_bp.route("/api-docs")
 @admin_required
 def api_docs_page():
-    return render_template("api_docs.html")
+        return render_template("api_docs.html")
 
 
 @main_bp.route("/dj/status")
 def dj_status_page():
     """Public DJ status screen."""
     return render_template("dj_status.html")
+
+
+def _psa_library_root():
+    root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+@main_bp.route("/psa/player")
+def psa_player():
+    resp = make_response(render_template("psa_player.html"))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+@main_bp.route("/psa/file/<path:filename>")
+def psa_file(filename: str):
+    root = _psa_library_root()
+    full = os.path.abspath(os.path.join(root, filename))
+    root_abs = os.path.abspath(root)
+    if not full.startswith(root_abs):
+        abort(404)
+    if not os.path.isfile(full):
+        abort(404)
+    resp = send_file(full)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
 
 
 @main_bp.route("/djs")
@@ -1285,7 +1316,8 @@ ALLOWED_SETTINGS_KEYS = [
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
     'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD',
-    'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS'
+    'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
+    'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH'
 ]
 
 
@@ -1359,8 +1391,11 @@ def settings():
                 'DATA_BACKUP_RETENTION_DAYS': int(request.form.get('data_backup_retention_days') or current_app.config.get('DATA_BACKUP_RETENTION_DAYS', 60)),
                 'THEME_DEFAULT': request.form.get('theme_default', current_app.config.get('THEME_DEFAULT', 'system')),
                 'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
+                'HIGH_CONTRAST_DEFAULT': 'high_contrast_default' in request.form,
+                'FONT_SCALE_PERCENT': int(request.form.get('font_scale_percent') or current_app.config.get('FONT_SCALE_PERCENT', 100)),
                 'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
                 'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
+                'PSA_LIBRARY_PATH': request.form.get('psa_library_path', current_app.config.get('PSA_LIBRARY_PATH', '')).strip(),
                 'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
                 'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
                 'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
@@ -1441,8 +1476,11 @@ def settings():
         'data_backup_retention_days': config.get('DATA_BACKUP_RETENTION_DAYS', 60),
         'theme_default': config.get('THEME_DEFAULT', 'system'),
         'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
+        'high_contrast_default': config.get('HIGH_CONTRAST_DEFAULT', False),
+        'font_scale_percent': config.get('FONT_SCALE_PERCENT', 100),
         'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
         'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
+        'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
         'social_send_enabled': config.get('SOCIAL_SEND_ENABLED', False),
         'social_dry_run': config.get('SOCIAL_DRY_RUN', True),
         'social_facebook_page_token': _clean_optional(config.get('SOCIAL_FACEBOOK_PAGE_TOKEN', '')) or '',

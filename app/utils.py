@@ -1,7 +1,7 @@
 from datetime import datetime, time, timedelta
 from flask import current_app as app
 from .logger import init_logger
-from .models import Show
+from .models import Show, DJAbsence
 import threading
 import json
 import os
@@ -156,6 +156,24 @@ def show_primary_host(show: Show) -> tuple[str, str]:
 
 def show_display_title(show: Show) -> str:
     return show.show_name or show_host_names(show)
+
+
+def active_absence_for_show(show: Show, *, now: datetime | None = None) -> DJAbsence | None:
+    """Return an approved/pending absence covering ``now`` for the given show."""
+
+    if now is None:
+        now = datetime.utcnow()
+
+    query = DJAbsence.query.filter(
+        DJAbsence.start_time <= now,
+        DJAbsence.end_time >= now,
+        DJAbsence.status.in_(["approved", "pending"]),
+    )
+    if getattr(show, "id", None):
+        query = query.filter((DJAbsence.show_id == show.id) | (DJAbsence.show_name == show.show_name))
+    else:
+        query = query.filter(DJAbsence.show_name == show.show_name)
+    return query.order_by(DJAbsence.status.desc(), DJAbsence.start_time.desc()).first()
 
 
 def next_show_occurrence(show: Show, *, now: datetime | None = None) -> tuple[datetime, datetime] | None:

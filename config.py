@@ -42,6 +42,10 @@ class Config:
     TEMPEST_UNITS_TEMP = "f"
     TEMPEST_UNITS_WIND = "mph"
 
+    # Accessibility / display
+    HIGH_CONTRAST_DEFAULT = False
+    FONT_SCALE_PERCENT = 100
+
     # Roles / auth
     CUSTOM_ROLES = []
     OAUTH_ONLY = False
@@ -87,6 +91,7 @@ class Config:
     TEST_SAMPLE_AUDIO = os.path.join(NAS_ROOT, "sample_probe.mp3")
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
     NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
+    PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
     RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")
     RADIODJ_API_BASE_URL = None
     RADIODJ_API_KEY = None

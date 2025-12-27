@@ -62,6 +62,14 @@
           <option value="light">Light</option>
           <option value="dark">Dark</option>
         </select>
+        <button class="btn btn-outline-light btn-sm" id="helpToggle" type="button" title="Toggle inline help">Help</button>
+        <button class="btn btn-outline-light btn-sm" id="contrastToggle" type="button" title="High contrast">HC</button>
+        <select id="fontScaleToggle" class="form-select form-select-sm bg-dark text-white" style="width:auto;">
+          <option value="90">90%</option>
+          <option value="100">100%</option>
+          <option value="110">110%</option>
+          <option value="120">120%</option>
+        </select>
         {% if is_auth %}
           <div class="dropdown">
             <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
@@ -102,6 +110,46 @@
       sel.addEventListener('change', (e)=>{
         localStorage.setItem('rams-theme', e.target.value);
         apply(e.target.value);
+      });
+    }
+
+    const contrastBtn = document.getElementById('contrastToggle');
+    const helpBtn = document.getElementById('helpToggle');
+    const fontSel = document.getElementById('fontScaleToggle');
+
+    const applyContrast = (enabled) => {
+      document.body.classList.toggle('high-contrast', enabled);
+      localStorage.setItem('rams-contrast', enabled ? '1' : '0');
+    };
+    const applyHelp = (enabled) => {
+      document.body.classList.toggle('help-on', enabled);
+      localStorage.setItem('rams-help', enabled ? '1' : '0');
+    };
+    const applyFont = (val) => {
+      document.documentElement.style.setProperty('--rams-font-scale', `${val}%`);
+      localStorage.setItem('rams-font', val);
+    };
+
+    const defaultContrast = {{ 'true' if high_contrast_default else 'false' }};
+    applyContrast(localStorage.getItem('rams-contrast') === '1' || (localStorage.getItem('rams-contrast') === null && defaultContrast));
+    const savedHelp = localStorage.getItem('rams-help');
+    applyHelp(savedHelp === '1' || (savedHelp === null && {{ 'true' if inline_help_enabled else 'false' }}));
+    const storedFont = localStorage.getItem('rams-font') || '{{ font_scale_percent if font_scale_percent else 100 }}';
+    applyFont(storedFont);
+    if (fontSel) {
+      fontSel.value = storedFont;
+      fontSel.addEventListener('change', (e) => applyFont(e.target.value));
+    }
+    if (contrastBtn) {
+      contrastBtn.addEventListener('click', () => {
+        const next = !(document.body.classList.contains('high-contrast'));
+        applyContrast(next);
+      });
+    }
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => {
+        const next = !(document.body.classList.contains('help-on'));
+        applyHelp(next);
       });
     }
   })();

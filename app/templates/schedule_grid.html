@@ -24,15 +24,17 @@
         const res = await fetch('/api/schedule');
         const data = await res.json();
         const tbody = document.querySelector('#grid tbody');
-        tbody.innerHTML = data.events.map(e => `
+        tbody.innerHTML = data.events.map(e => {
+            const absence = e.absence ? `<span class="badge bg-warning text-dark ms-1">Sub: ${e.absence.replacement || 'TBD'} (${e.absence.status})</span>` : '';
+            return `
             <tr>
                 <td>${e.day.toUpperCase()}</td>
-                <td>${e.title}</td>
+                <td>${e.title} ${absence}</td>
                 <td>${e.start_time} - ${e.end_time} (${data.timezone})</td>
                 <td>${e.genre || ''}</td>
                 <td>${e.description || ''}</td>
-            </tr>
-        `).join('');
+            </tr>`;
+        }).join('');
     }
     loadSchedule();
 </script>

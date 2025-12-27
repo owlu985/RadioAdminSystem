@@ -59,16 +59,20 @@
             <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
             <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
             <div class="small text-muted mt-2" id="listenerHistory"></div>
+            <div class="help-hint mt-2">Need details? See API docs for <code>/api/stream/status</code> and probe history.</div>
         </div>
     </div>
 
     {% if health %}
     <div class="card mb-3">
-        <div class="card-header">Self-heal / Job Health</div>
-        <div class="card-body">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Self-heal / Job Health</span>
+            <input type="search" id="healthFilter" class="form-control form-control-sm" placeholder="Quick filter..." style="max-width: 220px;">
+        </div>
+        <div class="card-body" id="healthCards">
             <div class="row">
                 {% for name, h in health.items() %}
-                <div class="col-md-6 mb-2">
+                <div class="col-md-6 mb-2 health-card" data-health="{{ name }} {{ h['reason'] or '' }}">
                     <div class="border rounded p-2 h-100">
                         <div class="fw-bold text-uppercase small">{{ name.replace('_', ' ') }}</div>
                         <div class="d-flex justify-content-between">
@@ -84,6 +88,7 @@
                 </div>
                 {% endfor %}
             </div>
+            <div class="help-hint mt-2">Filter by job name or reason. See docs for job health in <code>docs/features_overview.md</code>.</div>
         </div>
     </div>
     {% endif %}
@@ -96,6 +101,7 @@
                 <li><a href="{{ url_for('logs.manage_logs') }}">View/Export station logs</a></li>
                 <li><a href="{{ url_for('logs.submit_log') }}" target="_blank">Public logger form</a></li>
                 <li><a href="{{ url_for('main.dj_absence_submit') }}" target="_blank">Submit DJ absence</a> | <a href="{{ url_for('main.manage_absences') }}">Review absences</a></li>
+                <li><a href="{{ url_for('main.psa_player') }}" rel="nofollow">PSA queue/player (noindex)</a></li>
                 <li><a href="{{ url_for('news.upload_news') }}">Upload daily newscast</a></li>
                 <li>REST: <code>/api/now</code> (current show), <code>/api/probes/latest</code> (silence/automation), <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code></li>
                 <li>NAS watcher + RadioDJ import runs periodically (news/calendar)</li>
@@ -106,10 +112,15 @@
     <div class="card mb-3">
         <div class="card-header">Upcoming/Pending Absences</div>
         <div class="card-body">
+            <div class="mb-2">
+                <input type="search" id="absenceFilter" class="form-control form-control-sm" placeholder="Search DJ or show..." aria-label="Filter absences">
+            </div>
             {% if absences %}
-            <ul class="mb-0">
+            <ul class="mb-0" id="absenceList">
                 {% for a in absences %}
-                <li><strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time }} to {{ a.end_time }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}</li>
+                <li data-absence="{{ a.dj_name }} {{ a.show_name }} {{ a.replacement_name or '' }} {{ a.status }}">
+                    <strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time }} to {{ a.end_time }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}
+                </li>
                 {% endfor %}
             </ul>
             {% else %}
@@ -159,6 +170,28 @@
     refreshListeners();
     setInterval(refreshStatus, 5000);
     setInterval(refreshListeners, 60000);
+
+    const healthFilter = document.getElementById('healthFilter');
+    if (healthFilter) {
+        healthFilter.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            document.querySelectorAll('#healthCards .health-card').forEach(card => {
+                const match = card.dataset.health.toLowerCase().includes(term);
+                card.style.display = match ? '' : 'none';
+            });
+        });
+    }
+
+    const absenceFilter = document.getElementById('absenceFilter');
+    if (absenceFilter) {
+        absenceFilter.addEventListener('input', (e) => {
+            const term = e.target.value.toLowerCase();
+            document.querySelectorAll('#absenceList li').forEach(li => {
+                const match = li.dataset.absence.toLowerCase().includes(term);
+                li.style.display = match ? '' : 'none';
+            });
+        });
+    }
 </script>
 </body>
 </html>

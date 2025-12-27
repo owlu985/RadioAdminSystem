@@ -51,6 +51,10 @@ GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
         <li><strong>DJ Status screen:</strong>
             <pre><code>GET /dj/status</code></pre>
             Full-screen clock + weather + station status for studio displays.</li>
+        <li><strong>PSA library (player queue):</strong>
+            <pre><code>GET /api/psa/library
+GET /psa/player</code></pre>
+            JSON list of PSA files (name, duration, URL) plus a noindex PSA player for DJs.</li>
     </ul>
 
     <h4 class="mt-4">Stream Monitoring & Probes</h4>

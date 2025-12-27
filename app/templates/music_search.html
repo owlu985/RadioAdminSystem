@@ -18,8 +18,9 @@
     </div>
     <form class="row g-2 mb-3" id="searchForm">
         <div class="col-md-6">
-            <input type="text" class="form-control" id="query" placeholder="Search title, artist, album, composer (use % to list all)" required>
-            <small class="text-muted">Tip: enter % to show the entire library.</small>
+            <input type="text" class="form-control" id="query" placeholder="Search title, artist, album, composer (use % to list all)" required aria-describedby="searchHelp">
+            <small class="text-muted" id="searchHelp">Tip: enter % to show the entire library. Press Tab/Enter to move through results.</small>
+            <div class="help-hint text-info">Need guidance? See the Music Search section in the API docs for filters and saved searches.</div>
         </div>
         <div class="col-md-3">
             <button type="submit" class="btn btn-primary w-100">Search</button>
@@ -106,14 +107,27 @@
 
     function renderResults(data) {
         tbody.innerHTML = data.map(item => `
-            <tr>
-                <td><input type="checkbox" value="${item.path}"></td>
+            <tr class="result-row" tabindex="0" data-path="${item.path}">
+                <td><input type="checkbox" value="${item.path}" aria-label="Select ${item.title || 'track'}"></td>
                 <td><a href="/music/detail?path=${encodeURIComponent(item.path)}">${item.title || ''}</a></td>
                 <td>${item.artist || ''}</td>
                 <td>${item.album || ''}</td>
                 <td>${item.duration_seconds ? item.duration_seconds.toFixed(1)+'s' : ''}</td>
             </tr>
         `).join('');
+        document.querySelectorAll('.result-row').forEach(row => {
+            row.addEventListener('keydown', (ev) => {
+                if (ev.key === ' ' || ev.key === 'Spacebar') {
+                    ev.preventDefault();
+                    const cb = row.querySelector('input[type=checkbox]');
+                    if (cb) { cb.checked = !cb.checked; }
+                }
+                if (ev.key === 'Enter') {
+                    const link = row.querySelector('a');
+                    if (link) { link.click(); }
+                }
+            });
+        });
     }
 
     renderSaved();
