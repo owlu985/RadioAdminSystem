@@ -1062,12 +1062,18 @@ def social_oauth_twitter_callback():
             "redirect_uri": redirect_uri,
             "code_verifier": verifier,
         }
+        # Twitter's token endpoint expects Basic auth even for PKCE; for public
+        # clients the secret may be blank, but the header must still be present.
+        basic_token = base64.b64encode(f"{client_id}:{client_secret or ''}".encode()).decode()
+        headers = {
+            "Content-Type": "application/x-www-form-urlencoded",
+            "Authorization": f"Basic {basic_token}",
+        }
         try:
             resp = requests.post(
                 "https://api.twitter.com/2/oauth2/token",
                 data=data,
-                headers={"Content-Type": "application/x-www-form-urlencoded"},
-                auth=(client_id, client_secret) if client_secret else None,
+                headers=headers,
                 timeout=20,
             )
             resp.raise_for_status()
