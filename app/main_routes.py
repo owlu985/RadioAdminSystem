@@ -27,6 +27,9 @@ from .models import (
     ArchivistEntry,
     SocialPost,
     LogSheet,
+    Plugin,
+    WebsiteContent,
+    PodcastEpisode,
 )
 from sqlalchemy import case, func
 from functools import wraps
@@ -55,6 +58,10 @@ BASE_ROLE_CHOICES = [
     ("viewer", "Viewer"),
 ]
 
+PLUGIN_DISPLAY_NAMES = {
+    "website_content": "Website Content & Podcasts",
+}
+
 
 def _role_choices():
     custom = current_app.config.get("CUSTOM_ROLES") or []
@@ -62,6 +69,15 @@ def _role_choices():
     for role in custom:
         choices.append((role, role.title()))
     return choices
+
+
+def ensure_plugin_record(name: str) -> Plugin:
+    plugin = Plugin.query.filter_by(name=name).first()
+    if not plugin:
+        plugin = Plugin(name=name, enabled=True)
+        db.session.add(plugin)
+        db.session.commit()
+    return plugin
 
 
 def _complete_login(user: User):
@@ -1244,6 +1260,69 @@ def edit_show(id):
         logger.error(f"Error editing show: {e}")
         flash(f"Error editing show: {e}", "danger")
         return redirect(url_for('main.shows'))
+
+
+@main_bp.route('/plugins')
+@admin_required
+def plugins_home():
+    ensure_plugin_record("website_content")
+    plugins = Plugin.query.order_by(Plugin.name.asc()).all()
+    return render_template('plugins.html', plugins=plugins, plugin_labels=PLUGIN_DISPLAY_NAMES)
+
+
+@main_bp.route('/plugins/<string:name>/toggle', methods=['POST'])
+@admin_required
+def toggle_plugin(name):
+    plugin = ensure_plugin_record(name)
+    plugin.enabled = not plugin.enabled
+    db.session.commit()
+    flash(f"Plugin '{name}' is now {'enabled' if plugin.enabled else 'disabled'}.", "success")
+    return redirect(url_for('main.plugins_home'))
+
+
+@main_bp.route('/plugins/website', methods=['GET', 'POST'])
+@admin_required
+def website_plugin():
+    plugin = ensure_plugin_record("website_content")
+    content = WebsiteContent.query.first()
+    if not content:
+        content = WebsiteContent(headline="", body="", image_url="")
+        db.session.add(content)
+        db.session.commit()
+
+    if request.method == 'POST':
+        action = request.form.get('action')
+        if action == 'save_content':
+            content.headline = request.form.get('headline', '').strip() or None
+            content.body = request.form.get('body', '').strip() or None
+            content.image_url = request.form.get('image_url', '').strip() or None
+            db.session.commit()
+            flash("Website content saved.", "success")
+            return redirect(url_for('main.website_plugin'))
+        elif action == 'add_podcast':
+            title = request.form.get('podcast_title', '').strip()
+            embed_code = request.form.get('podcast_embed', '').strip()
+            description = request.form.get('podcast_description', '').strip() or None
+            if not title or not embed_code:
+                flash("Title and embed code are required for podcasts.", "danger")
+            else:
+                episode = PodcastEpisode(title=title, embed_code=embed_code, description=description)
+                db.session.add(episode)
+                db.session.commit()
+                flash("Podcast added.", "success")
+            return redirect(url_for('main.website_plugin'))
+        elif action == 'delete_podcast':
+            pod_id = request.form.get('podcast_id')
+            if pod_id:
+                episode = PodcastEpisode.query.get(int(pod_id))
+                if episode:
+                    db.session.delete(episode)
+                    db.session.commit()
+                    flash("Podcast removed.", "info")
+            return redirect(url_for('main.website_plugin'))
+
+    podcasts = PodcastEpisode.query.order_by(PodcastEpisode.created_at.desc()).all()
+    return render_template('plugin_website.html', plugin=plugin, content=content, podcasts=podcasts)
 
 ALLOWED_SETTINGS_KEYS = [
     'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'BIND_HOST', 'BIND_PORT', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',

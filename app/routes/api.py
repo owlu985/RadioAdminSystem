@@ -2,7 +2,18 @@ from datetime import datetime
 import time
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session
-from app.models import ShowRun, StreamProbe, LogEntry, DJ, Show, SavedSearch, db
+from app.models import (
+    ShowRun,
+    StreamProbe,
+    LogEntry,
+    DJ,
+    Show,
+    SavedSearch,
+    Plugin,
+    WebsiteContent,
+    PodcastEpisode,
+    db,
+)
 from app.utils import (
     get_current_show,
     format_show_window,
@@ -410,6 +421,35 @@ def schedule_api():
                 "genre": show.genre,
             })
     return jsonify({"events": events, "timezone": tz})
+
+
+@api_bp.route("/plugins/website/content")
+def website_plugin_content():
+    plugin = Plugin.query.filter_by(name="website_content").first()
+    if plugin and not plugin.enabled:
+        return jsonify({"status": "disabled", "message": "website_content plugin disabled"}), 503
+
+    content = WebsiteContent.query.first()
+    podcasts = PodcastEpisode.query.order_by(PodcastEpisode.created_at.desc()).all()
+    return jsonify({
+        "status": "ok",
+        "content": {
+            "headline": content.headline if content else None,
+            "body": content.body if content else None,
+            "image_url": content.image_url if content else None,
+            "updated_at": content.updated_at.isoformat() if content else None,
+        },
+        "podcasts": [
+            {
+                "id": p.id,
+                "title": p.title,
+                "description": p.description,
+                "embed_code": p.embed_code,
+                "created_at": p.created_at.isoformat(),
+            }
+            for p in podcasts
+        ],
+    })
 
 
 @api_bp.route("/weather/tempest")

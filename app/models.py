@@ -288,3 +288,34 @@ class SocialPost(db.Model):
     result_log = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     sent_at = db.Column(db.DateTime, nullable=True)
+
+
+class Plugin(db.Model):
+    __tablename__ = "plugin"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), unique=True, nullable=False)
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
+    config = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class WebsiteContent(db.Model):
+    __tablename__ = "website_content"
+
+    id = db.Column(db.Integer, primary_key=True)
+    headline = db.Column(db.String(255), nullable=True)
+    body = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.String(500), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class PodcastEpisode(db.Model):
+    __tablename__ = "podcast_episode"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    embed_code = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
