@@ -40,8 +40,9 @@
                 <form method="post" action="{{ url_for('main.toggle_plugin', name=plugin.name) }}">
                   <button class="btn btn-outline-primary" type="submit">{{ 'Disable' if plugin.enabled else 'Enable' }}</button>
                 </form>
-                {% if plugin.name == 'website_content' %}
-                  <a class="btn btn-outline-secondary" href="{{ url_for('main.website_plugin') }}">Manage</a>
+                {% set meta = plugin_meta.get(plugin.name) if plugin_meta else None %}
+                {% if meta and meta.manage_endpoint %}
+                  <a class="btn btn-outline-secondary" href="{{ url_for(meta.manage_endpoint) }}">Manage</a>
                 {% endif %}
               </div>
             </td>

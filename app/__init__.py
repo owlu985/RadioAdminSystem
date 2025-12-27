@@ -5,6 +5,7 @@ import traceback
 from flask import Flask, render_template
 from config import Config
 from .models import db, Show, Plugin
+from app.plugins import load_plugins
 from .utils import init_utils
 from .oauth import init_oauth, oauth
 from .logger import init_logger
@@ -416,6 +417,10 @@ def create_app(config_class=Config):
     from app.routes.api import api_bp
     from app.routes.logging_api import logs_bp
     from app.routes.news import news_bp
+
+    with app.app_context():
+        load_plugins(app)
+
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
     app.register_blueprint(logs_bp)
