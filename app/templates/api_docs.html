@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>API Documentation</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>API Documentation</h2>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('main.dashboard') }}">Back to Dashboard</a>
+    </div>
+
+    <p class="text-muted">Base URL: <code>http://&lt;host&gt;:&lt;port&gt;</code></p>
+
+    <h4 class="mt-4">Public & Website-Facing APIs</h4>
+    <ul>
+        <li><strong>Now Playing (widget-friendly):</strong>
+            <pre><code>GET /api/now
+GET /api/now/widget</code></pre>
+            Returns current scheduled show or automation/off-air with run metadata. The widget variant is compact for website embeds.</li>
+        <li><strong>Station Status (stream + probe):</strong>
+            <pre><code>GET /api/stream/status</code></pre>
+            Stream reachability, listener counts (Icecast), latest probe classification (live/auto/dead air), and dB ratios.</li>
+        <li><strong>Schedule grid + calendar:</strong>
+            <pre><code>GET /api/schedule</code></pre>
+            <pre><code>GET /schedule/grid   (public HTML)
+GET /schedule/ical   (iCal feed)</code></pre>
+            Returns the weekly schedule for the website’s interactive grid and calendar exports.</li>
+        <li><strong>Website content (plugin):</strong>
+            <pre><code>GET /api/plugins/website/content</code></pre>
+            Front-page headline/body/image plus podcast embeds for the new website.</li>
+        <li><strong>DJs:</strong>
+            <pre><code>GET /api/djs</code></pre>
+            DJ bios with photo URLs and the shows they host.</li>
+        <li><strong>Tempest Weather:</strong>
+            <pre><code>GET /api/weather/tempest</code></pre>
+            Current conditions plus 1/2/4/8-hour snapshots and 3-day outlook (Tempest API key + station required).</li>
+        <li><strong>Logs (public form):</strong>
+            <pre><code>GET  /logs/submit
+POST /logs/submit</code></pre>
+            Public DJ log submission form; uses dropdown DJs/shows and required fields.</li>
+        <li><strong>Log view/exports:</strong>
+            <pre><code>GET /logs/view?sheet_id=&lt;id&gt;
+GET /logs/download/csv?sheet_id=&lt;id&gt;
+GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
+        </li>
+        <li><strong>DJ Status screen:</strong>
+            <pre><code>GET /dj/status</code></pre>
+            Full-screen clock + weather + station status for studio displays.</li>
+    </ul>
+
+    <h4 class="mt-4">Stream Monitoring & Probes</h4>
+    <pre><code>POST /api/probe                 (trigger probe)
+GET  /api/probes/latest        (latest probe)
+GET  /api/runs/&lt;run_id&gt;
+GET  /api/runs/&lt;run_id&gt;/logs
+GET  /api/psa/compliance/&lt;run_id&gt;
+GET  /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=...&amp;end=...
+POST /api/audit/start          (recording + explicitness audits)
+GET  /api/audit/status/&lt;job_id&gt;</code></pre>
+    <p>Probes classify live/automation/dead-air and log dB ratios. Audit jobs run in the background with progress polling.</p>
+
+    <h4 class="mt-4">Music Library</h4>
+    <pre><code>GET    /api/music/search?q=&lt;query&gt;            (use q=% to list all)
+GET    /api/music/detail?path=&lt;abs_path&gt;
+POST   /api/music/cover-art                   (harvest/embed cover art)
+GET    /api/music/musicbrainz?title=&lt;t&gt;&amp;artist=&lt;a&gt;&amp;limit=5
+POST   /api/music/bulk-update                 (batch tag edits)
+POST   /api/music/scan/library                (re-scan library & queues)
+GET/POST /api/music/cue                       (get/set cue points)
+GET/POST/DELETE /api/music/saved-searches     (save/load/delete searches)
+POST   /api/archivist/album-rip               (analyze album rip for breaks)
+GET    /api/archivist/album-info              (lookup album metadata)
+POST   /api/music/musicbrainz                 (same as GET; lookup helper)</code></pre>
+    <p>Detail responses include title/artist/album/composer/ISRC/year/track/disc/copyright/path, loudness/peaks, and cue data where available.</p>
+
+    <h4 class="mt-4">RadioDJ Integration</h4>
+    <pre><code>GET    /api/now/widget            (uses RadioDJ now-playing when off-schedule)
+GET    /api/radiodj/psas
+POST   /api/radiodj/psas/&lt;psa_id&gt;/enable
+POST   /api/radiodj/psas/&lt;psa_id&gt;/disable
+DELETE /api/radiodj/psas/&lt;psa_id&gt;
+PATCH  /api/radiodj/psas/&lt;psa_id&gt;/metadata   (JSON body)
+POST   /api/radiodj/import/news
+POST   /api/radiodj/import/community_calendar</code></pre>
+    <p>Requires <code>RADIODJ_API_BASE_URL</code> and <code>RADIODJ_API_KEY</code> plus the RadioDJ REST plugin configured.</p>
+
+    <h4 class="mt-4">Schedule & Marathon Recording</h4>
+    <pre><code>GET  /api/schedule                (JSON grid)
+GET  /schedule/grid              (HTML)
+GET  /schedule/ical              (iCal feed)
+POST /marathon                   (admin form to schedule 24–48h marathon chunks)</code></pre>
+
+    <h4 class="mt-4">Icecast Analytics</h4>
+    <pre><code>GET /api/icecast/analytics</code></pre>
+    <p>Returns listener counts with optional per-IP filtering using <code>ICECAST_IGNORED_IPS</code> and <code>ICECAST_LISTCLIENTS_URL</code>.</p>
+
+    <h4 class="mt-4">News & Uploads</h4>
+    <pre><code>GET/POST /news/upload            (auth form, supports multiple news types)
+POST    /api/radiodj/import/news
+POST    /api/radiodj/import/community_calendar</code></pre>
+
+    <h4 class="mt-4">Logs, Absences, Discipline</h4>
+    <pre><code>GET/POST /logs/submit            (public log form)
+GET     /logs/manage            (admin)
+GET     /logs/view?sheet_id=&lt;id&gt;
+GET     /logs/download/csv?sheet_id=&lt;id&gt;
+GET     /logs/download/docx?sheet_id=&lt;id&gt;
+GET/POST /dj/absence            (DJ self-report)
+GET/POST /absences              (admin manage/filter)
+GET/POST /djs/discipline        (management only)
+GET      /djs/&lt;id&gt;              (DJ profile)</code></pre>
+
+    <h4 class="mt-4">Social & Live Reads</h4>
+    <pre><code>GET/POST /production/live-reads          (card creation + print)
+GET/POST /social/post                   (multi-network posting console)</code></pre>
+
+    <h4 class="mt-4">Settings, Backup, Auth</h4>
+    <pre><code>GET/POST /settings                       (branding, OAuth, alerts, stream, etc.)
+GET      /settings/export               (JSON)
+POST     /settings/import               (JSON)
+POST     /settings/backup-now           (settings backup)
+POST     /settings/backup-data          (JSON backups of DJs/shows/discipline)
+GET      /login                         (OAuth-first)
+GET/POST /login/master                  (master password)
+GET      /logout</code></pre>
+
+    <hr>
+    <h5>Example: Now Playing (on-air)</h5>
+    <pre><code>{
+  "status": "on_air",
+  "show": {"name": "Morning Buzz", "host": "Alex Smith", "genre": "Talk", "description": "Campus headlines", "regular_host": true, "window": {"start_time": "08:00","end_time": "10:00","start_date": "2025-01-01","end_date": "2025-12-31","days_of_week": "mon"}},
+  "run": {"id": 42, "show_name": "Morning Buzz", "dj": "Alex Smith", "start_time": "2025-12-22T13:00:00", "end_time": null, "classification": "live_show", "classification_reason": "dynamic_levels", "avg_db": -12.3, "silence_ratio": 0.02, "automation_ratio": 0.1, "flagged_missed": false}
+}</code></pre>
+
+    <h5>Example: Music Search</h5>
+    <pre><code>GET /api/music/search?q=dua
+[
+  {"title": "Houdini", "artist": "Dua Lipa", "album": "Radical Optimism", "path": "/nas/music/Dua Lipa/Houdini.mp3", ...}
+]</code></pre>
+
+    <h5>Example: DJs</h5>
+    <pre><code>GET /api/djs
+[
+  {
+    "id": 5,
+    "first_name": "Chris",
+    "last_name": "Rivera",
+    "bio": "Loves vinyl and campus news.",
+    "photo_url": "https://example.com/djs/chris.jpg",
+    "shows": [
+      {"id": 7, "name": "Evening Drive", "start_time": "17:00", "end_time": "19:00", "days_of_week": "mon", "genre": "Rock", "description": "Alt/indie drive-time"}
+    ]
+  }
+]</code></pre>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
