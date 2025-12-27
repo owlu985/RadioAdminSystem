@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DJ Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-0">{{ dj.first_name }} {{ dj.last_name }}</h3>
+            {% if dj.bio %}
+                <div class="text-muted">{{ dj.bio }}</div>
+            {% endif %}
+        </div>
+        {% if dj.photo_url %}
+            <img src="{{ dj.photo_url }}" alt="{{ dj.first_name }}" class="rounded" style="max-height:80px; width:auto; object-fit:cover;">
+        {% endif %}
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Shows Hosted</div>
+                <div class="card-body">
+                    {% if dj.shows %}
+                        <ul class="list-group list-group-flush">
+                            {% for show in dj.shows %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</div>
+                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time.strftime('%H:%M') }} - {{ show.end_time.strftime('%H:%M') }}</small>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div class="text-muted">No shows assigned.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Absences</div>
+                <div class="card-body">
+                    {% if absences %}
+                        <div class="table-responsive">
+                            <table class="table table-sm table-borderless mb-0">
+                                <thead>
+                                <tr><th>Date</th><th>Show</th><th>Status</th><th>Replacement</th></tr>
+                                </thead>
+                                <tbody>
+                                {% for a in absences %}
+                                    <tr>
+                                        <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>{{ a.show_name }}</td>
+                                        <td><span class="badge bg-secondary text-uppercase">{{ a.status }}</span></td>
+                                        <td>{{ a.replacement_name or '—' }}</td>
+                                    </tr>
+                                {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="text-muted">No absences on file.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3 mt-2">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Log Sheets</div>
+                <div class="card-body">
+                    {% if log_sheets %}
+                        <ul class="list-group list-group-flush">
+                            {% for log in log_sheets %}
+                                <li class="list-group-item d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">{{ log.show_name }}</div>
+                                        <small class="text-muted">{{ log.show_date.strftime('%Y-%m-%d') }}</small>
+                                    </div>
+                                </li>
+                            {% endfor %}
+                        </ul>
+                    {% else %}
+                        <div class="text-muted">No log sheets recorded.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Disciplinary Records</div>
+                <div class="card-body">
+                    {% if can_view_discipline %}
+                        {% if disciplinary %}
+                            <ul class="list-group list-group-flush">
+                                {% for record in disciplinary %}
+                                    <li class="list-group-item">
+                                        <div class="d-flex justify-content-between">
+                                            <div class="fw-semibold">{{ record.severity or 'Note' }}</div>
+                                            <small class="text-muted">{{ record.issued_at.strftime('%Y-%m-%d') }}</small>
+                                        </div>
+                                        <div>{{ record.notes or '' }}</div>
+                                        {% if record.action_taken %}
+                                            <div class="text-muted small">Action: {{ record.action_taken }}</div>
+                                        {% endif %}
+                                        {% if record.resolved %}
+                                            <span class="badge bg-success mt-1">Resolved</span>
+                                        {% endif %}
+                                    </li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <div class="text-muted">No disciplinary records.</div>
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-warning mb-0">You must be {{ ', '.join(allowed_roles) }}+ to see disciplinary records.</div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
