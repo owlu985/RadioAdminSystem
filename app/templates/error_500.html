@@ -1,0 +1,21 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Server Error</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  {% include '_nav.html' %}
+  <div class="container py-5">
+    <h1 class="display-5 fw-bold text-danger mb-3">Something went wrong</h1>
+    <p class="lead">{{ error_message or 'An unexpected error occurred.' }}</p>
+    {% if error_details %}
+    <pre class="bg-dark text-white p-3 rounded small">{{ error_details }}</pre>
+    {% endif %}
+    <a class="btn btn-primary" href="{{ url_for('main.dashboard') if session.get('authenticated') else url_for('main.login') }}">Return home</a>
+  </div>
+  {% include '_footer.html' %}
+</body>
+</html>
