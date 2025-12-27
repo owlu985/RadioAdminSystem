@@ -2,6 +2,11 @@
 
 Use these steps to fetch API tokens/credentials for each supported platform. Paste the resulting values into **Settings → Social Posting** in RAMS.
 
+> Live delivery requirements (current implementation)
+> - RAMS will send live posts to **Facebook (page token)**, **X/Twitter (OAuth2 user bearer token with tweet.write scope)**, and **Bluesky (handle + app password)** when **Enable real delivery** is on **and** **Simulate posts** is off.
+> - Instagram remains **simulated/unsupported** with the current settings because it requires additional IDs/keys not yet captured.
+> - Blank tokens automatically skip that platform; RAMS never attempts a call without credentials.
+
 > **Security tip:** Treat all tokens/app passwords as secrets. Rotate them if you suspect they were exposed.
 
 ---
@@ -18,12 +23,12 @@ Use these steps to fetch API tokens/credentials for each supported platform. Pas
 
 ---
 ## X (Twitter)
-1. Sign in to the [Twitter/X Developer Portal](https://developer.twitter.com/) and create a new project/app.
-2. Under **Keys and Tokens**, generate:
-   - **API Key** and **API Key Secret** (a.k.a. consumer key/secret)
-   - **Access Token** and **Access Token Secret** with write permissions
-3. Set app permissions to **Read and Write** (and **DM** only if needed). Copy all four values into RAMS **X/Twitter** settings.
-4. If your account is on a paid tier, ensure posting is allowed for your chosen API level.
+RAMS posts using the v2 `/2/tweets` endpoint with an OAuth2 user-context bearer token that has `tweet.write` scope.
+
+1. In the [Twitter/X Developer Portal](https://developer.twitter.com/), create an app with **Read and Write** permissions.
+2. Configure OAuth2 (User Context) and request `tweet.read`, `tweet.write`, `offline.access` scopes.
+3. Complete the OAuth flow once to obtain a **user bearer/access token** (not just the app-only bearer). Paste that token into **Twitter/X Bearer Token** in RAMS settings.
+4. If your account is on a paid tier, ensure posting is allowed for your API access level. Blank tokens are skipped automatically.
 
 ---
 ## Bluesky
