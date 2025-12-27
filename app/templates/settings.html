@@ -59,7 +59,7 @@
                 <input type="file" name="settings_file" accept="application/json" class="form-control form-control-sm" aria-label="Choose settings JSON">
                 <button type="submit" class="btn btn-outline-secondary btn-sm" aria-label="Import settings JSON"><i class="bi bi-upload"></i> Import JSON</button>
             </form>
-            {% if current_app.config.get('PAUSE_SHOWS_RECORDING') %}
+            {% if pause_shows_recording %}
                 <form action="{{ url_for('main.resume') }}" method="POST" class="m-0">
                     <button type="submit" class="btn btn-secondary" aria-label="Resume Recordings">
                         <i class="bi bi-play-circle"></i> Resume Recordings

@@ -1524,6 +1524,7 @@ def settings():
         'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
         'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
         'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
+        'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
         'social_send_enabled': config.get('SOCIAL_SEND_ENABLED', False),
         'social_dry_run': config.get('SOCIAL_DRY_RUN', True),
         'social_facebook_page_token': _clean_optional(config.get('SOCIAL_FACEBOOK_PAGE_TOKEN', '')) or '',
