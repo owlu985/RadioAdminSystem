@@ -27,7 +27,7 @@ RAMS posts using the v2 `/2/tweets` endpoint with an OAuth2 user-context bearer 
 
 1. In the [Twitter/X Developer Portal](https://developer.twitter.com/), create an app with **Read and Write** permissions.
 2. Configure OAuth2 (User Context) and request `tweet.read`, `tweet.write`, `offline.access` scopes.
-3. Complete the OAuth flow once to obtain a **user bearer/access token** (not just the app-only bearer). Paste that token into **Twitter/X Bearer Token** in RAMS settings.
+3. In RAMS, open **Settings → Social Posting → Start Twitter OAuth** to run the OAuth2 user-context flow; on success, the returned access token is auto-saved into **Twitter/X Bearer Token**. (You can still paste a token manually if preferred.)
 4. If your account is on a paid tier, ensure posting is allowed for your API access level. Blank tokens are skipped automatically.
 
 ---

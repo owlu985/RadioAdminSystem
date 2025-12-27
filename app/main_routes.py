@@ -1000,17 +1000,17 @@ def login_oauth_google():
         return client.authorize_redirect(redirect_uri, nonce=nonce)
 
 
-@main_bp.route("/login/oauth/twitter/start")
+@main_bp.route("/social/oauth/twitter/start")
 @admin_required
-def login_oauth_twitter_start():
-        """Start a Twitter/X OAuth2 PKCE flow to fetch a user-context token."""
+def social_oauth_twitter_start():
+        """Start a Twitter/X OAuth2 PKCE flow for social posting token capture (not login)."""
 
         client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
         if not client_id:
                 flash("Twitter client ID is required to start OAuth.", "danger")
-                return redirect(url_for("main.settings"))
+                return redirect(url_for("main.settings") + "#tab-social")
 
-        redirect_uri = url_for("main.oauth_callback_twitter", _external=True)
+        redirect_uri = url_for("main.social_oauth_twitter_callback", _external=True)
         state = secrets.token_urlsafe(16)
         verifier, challenge = _pkce_pair()
         session["twitter_oauth_state"] = state
@@ -1029,30 +1029,32 @@ def login_oauth_twitter_start():
         return redirect(auth_url)
 
 
-@main_bp.route("/login/oauth/twitter/callback")
-def oauth_callback_twitter():
-        """Handle the Twitter/X OAuth2 callback and stash the token for admin inspection."""
+@main_bp.route("/social/oauth/twitter/callback")
+def social_oauth_twitter_callback():
+        """Handle Twitter/X OAuth2 callback and persist the user bearer token for social posting."""
 
         state = request.args.get("state")
         code = request.args.get("code")
         expected_state = session.pop("twitter_oauth_state", None)
         verifier = session.pop("twitter_code_verifier", None)
 
+        redirect_target = url_for("main.settings") + "#tab-social"
+
         if not code:
                 flash("Missing OAuth code from Twitter.", "danger")
-                return redirect(url_for("main.login"))
+                return redirect(redirect_target)
 
         if not expected_state or state != expected_state:
                 flash("Invalid OAuth state for Twitter flow.", "danger")
-                return redirect(url_for("main.login"))
+                return redirect(redirect_target)
 
         client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
         client_secret = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_SECRET"))
         if not client_id or not verifier:
                 flash("Twitter OAuth is not configured correctly (client ID / PKCE).", "danger")
-                return redirect(url_for("main.login"))
+                return redirect(redirect_target)
 
-        redirect_uri = url_for("main.oauth_callback_twitter", _external=True)
+        redirect_uri = url_for("main.social_oauth_twitter_callback", _external=True)
         data = {
             "client_id": client_id,
             "grant_type": "authorization_code",
@@ -1072,12 +1074,19 @@ def oauth_callback_twitter():
             token = resp.json()
             session["last_oauth_token"] = _serialize_oauth_token(token, "twitter")
             session["last_oauth_token_twitter"] = session["last_oauth_token"]
-            flash("Twitter/X OAuth token captured. Copy it below for posting.", "success")
-            return render_template("oauth_token.html", provider="Twitter/X", token=token)
+
+            bearer = token.get("access_token")
+            if bearer:
+                update_user_config({"SOCIAL_TWITTER_BEARER_TOKEN": bearer})
+                flash("Twitter/X OAuth token captured and saved to Social settings for posting.", "success")
+            else:
+                flash("Twitter/X OAuth token response did not include an access token.", "warning")
+
+            return redirect(redirect_target)
         except Exception as exc:  # noqa: BLE001
             logger.error(f"Twitter OAuth exchange failed: {exc}")
             flash("Twitter OAuth token exchange failed. Check credentials and try again.", "danger")
-            return redirect(url_for("main.login"))
+            return redirect(redirect_target)
 
 
 @main_bp.route("/login/oauth/google/callback")

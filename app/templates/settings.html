@@ -421,6 +421,10 @@
                                     <input type="text" name="social_instagram_token" id="social_instagram_token" class="form-control" value="{{ social_instagram_token }}" placeholder="IG access token">
                                 </div>
                             </div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="text-muted small">Use Twitter OAuth to capture a user-context token and auto-save it for social posting.</div>
+                                <a class="btn btn-outline-primary" href="{{ url_for('main.social_oauth_twitter_start') }}"><i class="bi bi-link-45deg"></i> Start Twitter OAuth (fill bearer token)</a>
+                            </div>
                             <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label for="social_twitter_bearer_token" class="form-label">Twitter/X Bearer Token (user-context)</label>
