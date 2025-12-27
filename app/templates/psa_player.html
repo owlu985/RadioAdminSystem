@@ -16,7 +16,7 @@
             <div class="text-muted">Build a quick queue and play PSAs directly in the browser.</div>
             <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
         </div>
-        <div class="text-muted small">Source: {{ current_app.config.get('PSA_LIBRARY_PATH', 'psa') }}</div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
     </div>
     <div class="row g-3">
         <div class="col-lg-6">

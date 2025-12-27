@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import requests
 from requests import Response
@@ -63,25 +63,62 @@ def _post_bluesky(message: str, handle: str, app_password: str) -> str:
         return f"error: {exc}"
 
 
-def _post_twitter(message: str, bearer_token: str) -> str:
-    """Post to X (Twitter) using an OAuth2 bearer token with tweet.write scope."""
-    try:
-        resp = requests.post(
-            "https://api.twitter.com/2/tweets",
-            headers={"Authorization": f"Bearer {bearer_token}"},
-            json={"text": message},
-            timeout=15,
-        )
-        if resp.ok:
-            return "sent"
+def _post_twitter(
+    message: str,
+    user_bearer: Optional[str] = None,
+    consumer_key: Optional[str] = None,
+    consumer_secret: Optional[str] = None,
+    access_token: Optional[str] = None,
+    access_secret: Optional[str] = None,
+) -> str:
+    """Post to X (Twitter) using either OAuth2 user-context bearer or OAuth1a user tokens."""
+
+    # Prefer OAuth1a if the full token set is available and requests-oauthlib is installed.
+    if consumer_key and consumer_secret and access_token and access_secret:
         try:
-            data = resp.json()
-            err = data.get("errors") or data.get("detail") or resp.text
-        except Exception:  # noqa: BLE001
-            err = resp.text
-        return f"error: {err}"
-    except Exception as exc:  # noqa: BLE001
-        return f"error: {exc}"
+            from requests_oauthlib import OAuth1  # type: ignore
+        except Exception as exc:  # noqa: BLE001
+            return "error: OAuth1 requires requests-oauthlib (install manually)"
+
+        try:
+            resp = requests.post(
+                "https://api.twitter.com/1.1/statuses/update.json",
+                auth=OAuth1(consumer_key, consumer_secret, access_token, access_secret),
+                data={"status": message},
+                timeout=15,
+            )
+            if resp.ok:
+                return "sent"
+            try:
+                data = resp.json()
+                err = data.get("errors") or data.get("error") or resp.text
+            except Exception:  # noqa: BLE001
+                err = resp.text
+            return f"error: {err}"
+        except Exception as exc:  # noqa: BLE001
+            return f"error: {exc}"
+
+    # Fall back to OAuth2 user-context bearer token (must be user-context, not app-only).
+    if user_bearer:
+        try:
+            resp = requests.post(
+                "https://api.twitter.com/2/tweets",
+                headers={"Authorization": f"Bearer {user_bearer}"},
+                json={"text": message},
+                timeout=15,
+            )
+            if resp.ok:
+                return "sent"
+            try:
+                data = resp.json()
+                err = data.get("errors") or data.get("detail") or resp.text
+            except Exception:  # noqa: BLE001
+                err = resp.text
+            return f"error: {err}"
+        except Exception as exc:  # noqa: BLE001
+            return f"error: {exc}"
+
+    return "error: no twitter credentials provided"
 
 
 def _platform_status(platforms: List[str], config) -> Dict[str, str]:
@@ -97,7 +134,14 @@ def _platform_status(platforms: List[str], config) -> Dict[str, str]:
             # Posting to Instagram requires additional account IDs not captured in current settings; keep simulated.
             token_state = "unsupported"
         elif platform in {"twitter", "x"}:
-            token_state = "present" if config.get("SOCIAL_TWITTER_BEARER_TOKEN") else "missing"
+            has_user_bearer = bool(config.get("SOCIAL_TWITTER_BEARER_TOKEN"))
+            has_oauth1 = bool(
+                config.get("SOCIAL_TWITTER_CONSUMER_KEY")
+                and config.get("SOCIAL_TWITTER_CONSUMER_SECRET")
+                and config.get("SOCIAL_TWITTER_ACCESS_TOKEN")
+                and config.get("SOCIAL_TWITTER_ACCESS_SECRET")
+            )
+            token_state = "present" if (has_user_bearer or has_oauth1) else "missing"
         elif platform == "bluesky":
             token_state = "present" if (config.get("SOCIAL_BLUESKY_HANDLE") and config.get("SOCIAL_BLUESKY_PASSWORD")) else "missing"
 
@@ -143,7 +187,11 @@ def send_social_post(post: SocialPost, config) -> Dict[str, str]:
                 elif platform in {"twitter", "x"}:
                     statuses[platform] = _post_twitter(
                         post.content,
-                        config.get("SOCIAL_TWITTER_BEARER_TOKEN"),
+                        user_bearer=config.get("SOCIAL_TWITTER_BEARER_TOKEN"),
+                        consumer_key=config.get("SOCIAL_TWITTER_CONSUMER_KEY"),
+                        consumer_secret=config.get("SOCIAL_TWITTER_CONSUMER_SECRET"),
+                        access_token=config.get("SOCIAL_TWITTER_ACCESS_TOKEN"),
+                        access_secret=config.get("SOCIAL_TWITTER_ACCESS_SECRET"),
                     )
                 elif platform == "bluesky":
                     statuses[platform] = _post_bluesky(

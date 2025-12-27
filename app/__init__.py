@@ -256,6 +256,7 @@ def create_app(config_class=Config):
                             content TEXT NOT NULL,
                             platforms TEXT,
                             image_url VARCHAR(500),
+                            image_path VARCHAR(500),
                             status VARCHAR(32) NOT NULL DEFAULT 'pending',
                             result_log TEXT,
                             created_at DATETIME NOT NULL,
@@ -263,6 +264,10 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                else:
+                    social_cols = {c['name'] for c in insp.get_columns('social_post')}
+                    if 'image_path' not in social_cols:
+                        conn.execute(text("ALTER TABLE social_post ADD COLUMN image_path VARCHAR(500)"))
                 if "plugin" not in insp.get_table_names():
                     conn.execute(text(
                         """
@@ -354,6 +359,9 @@ def create_app(config_class=Config):
                         {"key": "news", "label": "News", "filename": "wlmc_news.mp3", "frequency": "daily"},
                         {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3", "frequency": "weekly", "rotation_day": 0},
                     ], f, indent=2)
+
+            # Ensure social upload directory exists for uploaded post images
+            os.makedirs(app.config.get("SOCIAL_UPLOAD_DIR", os.path.join(app.instance_path, "social_uploads")), exist_ok=True)
 
         Migrate(app, db)
 

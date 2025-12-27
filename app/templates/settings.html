@@ -406,16 +406,42 @@
             </div>
             <div class="row g-3 mt-2">
                 <div class="col-md-6">
-                    <label for="social_twitter_bearer_token" class="form-label">Twitter/X Bearer Token</label>
-                    <input type="text" name="social_twitter_bearer_token" id="social_twitter_bearer_token" class="form-control" value="{{ social_twitter_bearer_token }}" placeholder="Bearer token">
+                    <label for="social_twitter_bearer_token" class="form-label">Twitter/X User Bearer Token</label>
+                    <input type="text" name="social_twitter_bearer_token" id="social_twitter_bearer_token" class="form-control" value="{{ social_twitter_bearer_token }}" placeholder="OAuth2 user token (tweet.write)">
+                    <div class="form-text">Must be a user-context token (app-only will be rejected). Alternatively provide OAuth1 keys below.</div>
                 </div>
                 <div class="col-md-3">
+                    <label for="social_twitter_consumer_key" class="form-label">Twitter Consumer Key</label>
+                    <input type="text" name="social_twitter_consumer_key" id="social_twitter_consumer_key" class="form-control" value="{{ social_twitter_consumer_key }}" placeholder="API key (OAuth1)">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_twitter_consumer_secret" class="form-label">Twitter Consumer Secret</label>
+                    <input type="text" name="social_twitter_consumer_secret" id="social_twitter_consumer_secret" class="form-control" value="{{ social_twitter_consumer_secret }}" placeholder="API secret (OAuth1)">
+                </div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-3">
+                    <label for="social_twitter_access_token" class="form-label">Twitter Access Token</label>
+                    <input type="text" name="social_twitter_access_token" id="social_twitter_access_token" class="form-control" value="{{ social_twitter_access_token }}" placeholder="Access token (OAuth1)">
+                </div>
+                <div class="col-md-3">
+                    <label for="social_twitter_access_secret" class="form-label">Twitter Access Secret</label>
+                    <input type="text" name="social_twitter_access_secret" id="social_twitter_access_secret" class="form-control" value="{{ social_twitter_access_secret }}" placeholder="Access secret (OAuth1)">
+                </div>
+                <div class="col-md-6">
                     <label for="social_bluesky_handle" class="form-label">Bluesky Handle</label>
                     <input type="text" name="social_bluesky_handle" id="social_bluesky_handle" class="form-control" value="{{ social_bluesky_handle }}" placeholder="handle.bsky.social">
                 </div>
                 <div class="col-md-3">
                     <label for="social_bluesky_password" class="form-label">Bluesky App Password</label>
                     <input type="password" name="social_bluesky_password" id="social_bluesky_password" class="form-control" value="{{ social_bluesky_password }}" placeholder="App password">
+                </div>
+            </div>
+            <div class="row g-3 mt-2">
+                <div class="col-md-6">
+                    <label for="social_upload_dir" class="form-label">Social Upload Directory</label>
+                    <input type="text" name="social_upload_dir" id="social_upload_dir" class="form-control" value="{{ social_upload_dir }}" placeholder="Path for uploaded social images">
+                    <div class="form-text">Images uploaded via Social Posting are stored here and served from RAMS.</div>
                 </div>
             </div>
         </div>

@@ -293,7 +293,8 @@ def _psa_library_root():
 
 @main_bp.route("/psa/player")
 def psa_player():
-    resp = make_response(render_template("psa_player.html"))
+    psa_root = _psa_library_root()
+    resp = make_response(render_template("psa_player.html", psa_root=psa_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -838,19 +839,55 @@ def marathon_page():
     return render_template("marathon.html")
 
 
+@main_bp.route("/social/uploads/<path:filename>")
+def social_upload(filename: str):
+    upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
+    return send_from_directory(upload_dir, filename, as_attachment=False)
+
+
 @main_bp.route("/social/post", methods=["GET", "POST"])
 @admin_required
 def social_post_page():
+    upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
+    os.makedirs(upload_dir, exist_ok=True)
+
+    platform_tokens = {
+        "facebook": bool(current_app.config.get("SOCIAL_FACEBOOK_PAGE_TOKEN")),
+        "instagram": bool(current_app.config.get("SOCIAL_INSTAGRAM_TOKEN")),
+        "twitter": bool(
+            current_app.config.get("SOCIAL_TWITTER_BEARER_TOKEN")
+            or (
+                current_app.config.get("SOCIAL_TWITTER_CONSUMER_KEY")
+                and current_app.config.get("SOCIAL_TWITTER_CONSUMER_SECRET")
+                and current_app.config.get("SOCIAL_TWITTER_ACCESS_TOKEN")
+                and current_app.config.get("SOCIAL_TWITTER_ACCESS_SECRET")
+            )
+        ),
+        "bluesky": bool(current_app.config.get("SOCIAL_BLUESKY_HANDLE") and current_app.config.get("SOCIAL_BLUESKY_PASSWORD")),
+    }
+
     if request.method == "POST":
         content = (request.form.get("content") or "").strip()
         image_url = (request.form.get("image_url") or "").strip() or None
         platforms = request.form.getlist("platforms")
+        image_path = None
+
         if not content:
             flash("Please enter content for the post.", "warning")
             return redirect(url_for("main.social_post_page"))
         if not platforms:
-            platforms = ["facebook", "instagram", "twitter", "bluesky"]
-        post = SocialPost(content=content, image_url=image_url, platforms=json.dumps(platforms))
+            platforms = [p for p, enabled in platform_tokens.items() if enabled] or ["facebook", "instagram", "twitter", "bluesky"]
+
+        file = request.files.get("image_file")
+        if file and file.filename:
+            fname = secure_filename(file.filename)
+            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
+            stored_name = f"{timestamp}_{fname}"
+            file.save(os.path.join(upload_dir, stored_name))
+            image_path = stored_name
+            image_url = url_for("main.social_upload", filename=stored_name, _external=True)
+
+        post = SocialPost(content=content, image_url=image_url, image_path=image_path, platforms=json.dumps(platforms))
         db.session.add(post)
         db.session.commit()
         statuses = send_social_post(post, current_app.config)
@@ -864,7 +901,7 @@ def social_post_page():
             p.status_map = json.loads(p.result_log) if p.result_log else {}
         except json.JSONDecodeError:
             p.status_map = {}
-    return render_template("social_post.html", posts=posts, config=current_app.config)
+    return render_template("social_post.html", posts=posts, config=current_app.config, platform_tokens=platform_tokens)
 
 @main_bp.route('/login', methods=['GET'])
 def login():
@@ -1315,7 +1352,8 @@ ALLOWED_SETTINGS_KEYS = [
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
     'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
-    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD',
+    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_TWITTER_CONSUMER_KEY', 'SOCIAL_TWITTER_CONSUMER_SECRET',
+    'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
     'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
     'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH'
 ]
@@ -1401,8 +1439,13 @@ def settings():
                 'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
                 'SOCIAL_INSTAGRAM_TOKEN': _clean_optional(request.form.get('social_instagram_token', '').strip()),
                 'SOCIAL_TWITTER_BEARER_TOKEN': _clean_optional(request.form.get('social_twitter_bearer_token', '').strip()),
+                'SOCIAL_TWITTER_CONSUMER_KEY': _clean_optional(request.form.get('social_twitter_consumer_key', '').strip()),
+                'SOCIAL_TWITTER_CONSUMER_SECRET': _clean_optional(request.form.get('social_twitter_consumer_secret', '').strip()),
+                'SOCIAL_TWITTER_ACCESS_TOKEN': _clean_optional(request.form.get('social_twitter_access_token', '').strip()),
+                'SOCIAL_TWITTER_ACCESS_SECRET': _clean_optional(request.form.get('social_twitter_access_secret', '').strip()),
                 'SOCIAL_BLUESKY_HANDLE': _clean_optional(request.form.get('social_bluesky_handle', '').strip()),
                 'SOCIAL_BLUESKY_PASSWORD': _clean_optional(request.form.get('social_bluesky_password', '').strip()),
+                'SOCIAL_UPLOAD_DIR': _clean_optional(request.form.get('social_upload_dir', '').strip()) or config.get('SOCIAL_UPLOAD_DIR'),
             }
 
             update_user_config(updated_settings)
@@ -1486,8 +1529,13 @@ def settings():
         'social_facebook_page_token': _clean_optional(config.get('SOCIAL_FACEBOOK_PAGE_TOKEN', '')) or '',
         'social_instagram_token': _clean_optional(config.get('SOCIAL_INSTAGRAM_TOKEN', '')) or '',
         'social_twitter_bearer_token': _clean_optional(config.get('SOCIAL_TWITTER_BEARER_TOKEN', '')) or '',
+        'social_twitter_consumer_key': _clean_optional(config.get('SOCIAL_TWITTER_CONSUMER_KEY', '')) or '',
+        'social_twitter_consumer_secret': _clean_optional(config.get('SOCIAL_TWITTER_CONSUMER_SECRET', '')) or '',
+        'social_twitter_access_token': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_TOKEN', '')) or '',
+        'social_twitter_access_secret': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_SECRET', '')) or '',
         'social_bluesky_handle': _clean_optional(config.get('SOCIAL_BLUESKY_HANDLE', '')) or '',
         'social_bluesky_password': _clean_optional(config.get('SOCIAL_BLUESKY_PASSWORD', '')) or '',
+        'social_upload_dir': config.get('SOCIAL_UPLOAD_DIR', ''),
     }
 
     logger.info(f'Rendering settings page.')

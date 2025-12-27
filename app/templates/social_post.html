@@ -19,7 +19,7 @@
   <div class="card mb-4">
     <div class="card-header">Compose</div>
     <div class="card-body">
-      <form method="post" class="row g-3">
+      <form method="post" class="row g-3" enctype="multipart/form-data">
         <div class="col-12">
           <label class="form-label" for="content">Message</label>
           <textarea class="form-control" id="content" name="content" rows="4" required placeholder="What do you want to post?"></textarea>
@@ -29,12 +29,17 @@
           <input type="url" class="form-control" name="image_url" id="image_url" placeholder="https://...">
         </div>
         <div class="col-md-6">
+          <label class="form-label" for="image_file">Upload Image (optional)</label>
+          <input type="file" class="form-control" name="image_file" id="image_file" accept="image/*">
+          <div class="form-text">Uploaded images are hosted by RAMS and used when posting if provided.</div>
+        </div>
+        <div class="col-md-6">
           <label class="form-label">Platforms</label>
           <div class="d-flex flex-wrap gap-3">
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="facebook" id="pf-facebook" checked><label class="form-check-label" for="pf-facebook">Facebook</label></div>
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="instagram" id="pf-instagram" checked><label class="form-check-label" for="pf-instagram">Instagram</label></div>
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="twitter" id="pf-twitter" checked><label class="form-check-label" for="pf-twitter">Twitter/X</label></div>
-            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="bluesky" id="pf-bluesky" checked><label class="form-check-label" for="pf-bluesky">Bluesky</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="facebook" id="pf-facebook" {% if platform_tokens.facebook %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.facebook else '' }}" for="pf-facebook">Facebook</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="instagram" id="pf-instagram" disabled><label class="form-check-label text-muted" for="pf-instagram">Instagram (simulated)</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="twitter" id="pf-twitter" {% if platform_tokens.twitter %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.twitter else '' }}" for="pf-twitter">Twitter/X</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="bluesky" id="pf-bluesky" {% if platform_tokens.bluesky %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.bluesky else '' }}" for="pf-bluesky">Bluesky</label></div>
           </div>
           <div class="form-text">If no platform is selected, all are assumed. Posts are simulated unless delivery is enabled in Settings.</div>
         </div>

@@ -118,8 +118,13 @@ class Config:
     SOCIAL_FACEBOOK_PAGE_TOKEN = None
     SOCIAL_INSTAGRAM_TOKEN = None
     SOCIAL_TWITTER_BEARER_TOKEN = None
+    SOCIAL_TWITTER_CONSUMER_KEY = None
+    SOCIAL_TWITTER_CONSUMER_SECRET = None
+    SOCIAL_TWITTER_ACCESS_TOKEN = None
+    SOCIAL_TWITTER_ACCESS_SECRET = None
     SOCIAL_BLUESKY_HANDLE = None
     SOCIAL_BLUESKY_PASSWORD = None
+    SOCIAL_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "social_uploads")
 
     # Metadata enrichment
     MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
