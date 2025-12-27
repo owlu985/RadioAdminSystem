@@ -177,6 +177,14 @@ def _post_twitter(
             )
             if resp.ok:
                 return "sent"
+
+            # Provide a clearer hint when the token lacks the correct access level.
+            if resp.status_code == 453:
+                return (
+                    "error: X access level insufficient for posting (requires user-context "
+                    "token with tweet.write scope; app-only tokens are rejected)"
+                )
+
             try:
                 data = resp.json()
                 err = data.get("errors") or data.get("detail") or resp.text
