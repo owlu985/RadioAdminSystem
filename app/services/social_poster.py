@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import json
+import mimetypes
+import os
 from datetime import datetime
-from typing import Dict, List, Optional
+from typing import Dict, List, Optional, Tuple
 
 import requests
 from requests import Response
@@ -27,8 +29,14 @@ def _post_facebook(message: str, image_url: str | None, token: str) -> str:
     return f"error: {err}"
 
 
-def _post_bluesky(message: str, handle: str, app_password: str) -> str:
-    """Post to Bluesky using app password credentials."""
+def _post_bluesky(
+    message: str,
+    handle: str,
+    app_password: str,
+    image_bytes: Optional[bytes] = None,
+    image_mime: Optional[str] = None,
+) -> str:
+    """Post to Bluesky using app password credentials (supports optional image)."""
     try:
         auth_resp = requests.post(
             "https://bsky.social/xrpc/com.atproto.server.createSession",
@@ -43,17 +51,48 @@ def _post_bluesky(message: str, handle: str, app_password: str) -> str:
         if not jwt or not did:
             return "error: missing session token"
 
+        embed = None
+        if image_bytes:
+            upload_resp = requests.post(
+                "https://bsky.social/xrpc/com.atproto.repo.uploadBlob",
+                headers={
+                    "Authorization": f"Bearer {jwt}",
+                    "Content-Type": image_mime or "application/octet-stream",
+                },
+                data=image_bytes,
+                timeout=15,
+            )
+            if upload_resp.ok:
+                blob = upload_resp.json().get("blob")
+                if blob:
+                    embed = {
+                        "$type": "app.bsky.embed.images",
+                        "images": [
+                            {
+                                "image": blob,
+                                "alt": (message or "RAMS upload")[:300],
+                            }
+                        ],
+                    }
+            else:
+                # Continue with text-only post if upload fails.
+                pass
+
+        payload = {
+            "repo": did,
+            "collection": "app.bsky.feed.post",
+            "record": {
+                "text": message,
+                "createdAt": datetime.utcnow().isoformat() + "Z",
+            },
+        }
+        if embed:
+            payload["record"]["embed"] = embed
+
         create_resp = requests.post(
             "https://bsky.social/xrpc/com.atproto.repo.createRecord",
             headers={"Authorization": f"Bearer {jwt}"},
-            json={
-                "repo": did,
-                "collection": "app.bsky.feed.post",
-                "record": {
-                    "text": message,
-                    "createdAt": datetime.utcnow().isoformat() + "Z",
-                },
-            },
+            json=payload,
             timeout=15,
         )
         if create_resp.ok:
@@ -70,8 +109,14 @@ def _post_twitter(
     consumer_secret: Optional[str] = None,
     access_token: Optional[str] = None,
     access_secret: Optional[str] = None,
+    image_bytes: Optional[bytes] = None,
+    image_mime: Optional[str] = None,
 ) -> str:
-    """Post to X (Twitter) using either OAuth2 user-context bearer or OAuth1a user tokens."""
+    """Post to X (Twitter) using either OAuth2 user-context bearer or OAuth1a user tokens.
+
+    Images are sent when OAuth1a user tokens are available; OAuth2 user-context posts
+    fall back to text-only because Twitter's media upload endpoint is OAuth1a-only.
+    """
 
     # Prefer OAuth1a if the full token set is available and requests-oauthlib is installed.
     if consumer_key and consumer_secret and access_token and access_secret:
@@ -80,11 +125,34 @@ def _post_twitter(
         except Exception as exc:  # noqa: BLE001
             return "error: OAuth1 requires requests-oauthlib (install manually)"
 
+        media_id = None
+        if image_bytes:
+            try:
+                upload_resp = requests.post(
+                    "https://upload.twitter.com/1.1/media/upload.json",
+                    auth=OAuth1(consumer_key, consumer_secret, access_token, access_secret),
+                    files={"media": ("image", image_bytes, image_mime or "application/octet-stream")},
+                    timeout=20,
+                )
+                if upload_resp.ok:
+                    media_id = upload_resp.json().get("media_id_string")
+                else:
+                    try:
+                        err = upload_resp.json()
+                    except Exception:  # noqa: BLE001
+                        err = upload_resp.text
+                    return f"error: media upload failed {err}"
+            except Exception as exc:  # noqa: BLE001
+                return f"error: media upload error {exc}"
+
         try:
+            data = {"status": message}
+            if media_id:
+                data["media_ids"] = media_id
             resp = requests.post(
                 "https://api.twitter.com/1.1/statuses/update.json",
                 auth=OAuth1(consumer_key, consumer_secret, access_token, access_secret),
-                data={"status": message},
+                data=data,
                 timeout=15,
             )
             if resp.ok:
@@ -172,6 +240,8 @@ def send_social_post(post: SocialPost, config) -> Dict[str, str]:
     dry_run = (not config.get("SOCIAL_SEND_ENABLED", False)) or config.get("SOCIAL_DRY_RUN", True)
     statuses = _platform_status(platforms, config)
 
+    image_bytes, image_mime, _ = _resolve_image(post, config)
+
     # Perform live sends where possible
     if not dry_run:
         for platform, state in statuses.items():
@@ -192,12 +262,16 @@ def send_social_post(post: SocialPost, config) -> Dict[str, str]:
                         consumer_secret=config.get("SOCIAL_TWITTER_CONSUMER_SECRET"),
                         access_token=config.get("SOCIAL_TWITTER_ACCESS_TOKEN"),
                         access_secret=config.get("SOCIAL_TWITTER_ACCESS_SECRET"),
+                        image_bytes=image_bytes,
+                        image_mime=image_mime,
                     )
                 elif platform == "bluesky":
                     statuses[platform] = _post_bluesky(
                         post.content,
                         config.get("SOCIAL_BLUESKY_HANDLE"),
                         config.get("SOCIAL_BLUESKY_PASSWORD"),
+                        image_bytes=image_bytes,
+                        image_mime=image_mime,
                     )
                 else:
                     statuses[platform] = "unsupported"
@@ -220,3 +294,43 @@ def send_social_post(post: SocialPost, config) -> Dict[str, str]:
     post.sent_at = datetime.utcnow()
     db.session.commit()
     return statuses
+
+
+def _resolve_image(post: SocialPost, config) -> Tuple[Optional[bytes], Optional[str], Optional[str]]:
+    """Resolve an image from an uploaded path or external URL.
+
+    Returns (bytes, mime_type, error_message). Errors are non-fatal; callers can
+    still send text-only posts if bytes are None.
+    """
+
+    upload_dir = config.get("SOCIAL_UPLOAD_DIR") or os.path.join(
+        os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir)),
+        "instance",
+        "social_uploads",
+    )
+
+    if post.image_path:
+        path = post.image_path
+        if not os.path.isabs(path):
+            path = os.path.join(upload_dir, path)
+        if os.path.exists(path):
+            try:
+                with open(path, "rb") as fh:
+                    data = fh.read()
+                mime = mimetypes.guess_type(path)[0] or "application/octet-stream"
+                return data, mime, None
+            except Exception as exc:  # noqa: BLE001
+                return None, None, f"read error: {exc}"
+        return None, None, "image path not found"
+
+    if post.image_url:
+        try:
+            resp = requests.get(post.image_url, timeout=15)
+            if resp.ok:
+                mime = resp.headers.get("content-type", "application/octet-stream").split(";")[0]
+                return resp.content, mime, None
+            return None, None, f"fetch failed: {resp.status_code}"
+        except Exception as exc:  # noqa: BLE001
+            return None, None, f"fetch error: {exc}"
+
+    return None, None, None
