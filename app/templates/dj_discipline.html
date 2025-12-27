@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+  <head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>DJ Discipline</title>
+  </head>
+  <body>
+    {% include '_nav.html' %}
+    <div class="container my-4">
+      <h2 class="mb-3">Disciplinary Records</h2>
+      <p class="text-muted">Only management can view/add records. Use this to track warnings and resolutions.</p>
+      <form class="card mb-4" method="post">
+        <div class="card-body row g-3 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label">DJ</label>
+            <select name="dj_id" class="form-select" required>
+              <option value="">Select DJ</option>
+              {% for dj in djs %}
+                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Severity</label>
+            <select name="severity" class="form-select">
+              <option value="">Unspecified</option>
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Notes</label>
+            <input type="text" class="form-control" name="notes" placeholder="Reason/details" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Action</label>
+            <input type="text" class="form-control" name="action_taken" placeholder="Follow-up or action">
+          </div>
+          <div class="col-md-1 form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="resolved" id="resolved">
+            <label class="form-check-label" for="resolved">Resolved</label>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary">Save Record</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr><th>DJ</th><th>Severity</th><th>Notes</th><th>Action</th><th>Status</th><th>When</th><th>By</th></tr>
+          </thead>
+          <tbody>
+            {% for rec in records %}
+              <tr>
+                <td>{{ rec.dj.first_name }} {{ rec.dj.last_name }}</td>
+                <td class="text-uppercase small">{{ rec.severity or 'n/a' }}</td>
+                <td>{{ rec.notes }}</td>
+                <td>{{ rec.action_taken or '' }}</td>
+                <td>{% if rec.resolved %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
+                <td>{{ rec.issued_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ rec.created_by or 'system' }}</td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% include '_footer.html' %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
