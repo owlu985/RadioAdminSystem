@@ -499,11 +499,21 @@ def profile():
 def add_dj():
     from app.models import Show
     if request.method == "POST":
+        upload_dir = current_app.config.get("DJ_PHOTO_UPLOAD_DIR") or os.path.join(current_app.instance_path, "dj_photos")
+        os.makedirs(upload_dir, exist_ok=True)
+        photo_url = request.form.get("photo_url") or None
+        file = request.files.get("photo_file")
+        if file and file.filename:
+            fname = secure_filename(file.filename)
+            stored_name = f"{secrets.token_hex(8)}_{fname}"
+            file.save(os.path.join(upload_dir, stored_name))
+            photo_url = url_for("main.dj_photo", filename=stored_name, _external=True)
         dj = DJ(
             first_name=request.form.get("first_name").strip(),
             last_name=request.form.get("last_name").strip(),
             bio=request.form.get("bio"),
-            photo_url=request.form.get("photo_url"),
+            description=request.form.get("description"),
+            photo_url=photo_url,
         )
         selected = request.form.getlist("show_ids")
         if selected:
@@ -523,18 +533,28 @@ def edit_dj(dj_id):
     from app.models import Show
     dj = DJ.query.get_or_404(dj_id)
     if request.method == "POST":
+        upload_dir = current_app.config.get("DJ_PHOTO_UPLOAD_DIR") or os.path.join(current_app.instance_path, "dj_photos")
+        os.makedirs(upload_dir, exist_ok=True)
+        photo_url = request.form.get("photo_url") or dj.photo_url
+        file = request.files.get("photo_file")
+        if file and file.filename:
+            fname = secure_filename(file.filename)
+            stored_name = f"{secrets.token_hex(8)}_{fname}"
+            file.save(os.path.join(upload_dir, stored_name))
+            photo_url = url_for("main.dj_photo", filename=stored_name, _external=True)
         dj.first_name = request.form.get("first_name").strip()
         dj.last_name = request.form.get("last_name").strip()
         dj.bio = request.form.get("bio")
-        dj.photo_url = request.form.get("photo_url")
+        dj.description = request.form.get("description")
+        dj.photo_url = photo_url
         selected = request.form.getlist("show_ids")
         dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
         db.session.commit()
         flash("DJ updated.", "success")
         return redirect(url_for("main.list_djs"))
 
-        shows = Show.query.order_by(Show.start_time).all()
-        return render_template("dj_form.html", dj=dj, shows=shows)
+    shows = Show.query.order_by(Show.start_time).all()
+    return render_template("dj_form.html", dj=dj, shows=shows)
 
 
 @main_bp.route("/dj/absence", methods=["GET", "POST"])
@@ -883,6 +903,12 @@ def marathon_page():
 @main_bp.route("/social/uploads/<path:filename>")
 def social_upload(filename: str):
     upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
+    return send_from_directory(upload_dir, filename, as_attachment=False)
+
+
+@main_bp.route("/djs/photos/<path:filename>")
+def dj_photo(filename: str):
+    upload_dir = current_app.config.get("DJ_PHOTO_UPLOAD_DIR") or os.path.join(current_app.instance_path, "dj_photos")
     return send_from_directory(upload_dir, filename, as_attachment=False)
 
 

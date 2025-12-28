@@ -107,6 +107,7 @@ class Config:
     SCHEDULE_TIMEZONE = "America/New_York"
     THEME_DEFAULT = "system"
     INLINE_HELP_ENABLED = True
+    DJ_PHOTO_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "dj_photos")
 
     # Production / archivist
     ARCHIVIST_DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "archivist_db.json")

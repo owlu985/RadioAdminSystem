@@ -788,6 +788,7 @@ def list_djs_api():
             "first_name": dj.first_name,
             "last_name": dj.last_name,
             "bio": dj.bio,
+            "description": dj.description,
             "photo_url": dj.photo_url,
             "shows": [
                 {

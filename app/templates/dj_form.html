@@ -10,7 +10,7 @@
 {% include '_nav.html' %}
 <div class="container mt-4">
     <h3>{{ 'Edit' if dj else 'Add' }} DJ</h3>
-    <form method="post">
+    <form method="post" enctype="multipart/form-data">
         <div class="row mb-2">
             <div class="col-md-6">
                 <label class="form-label">First Name</label>
@@ -26,8 +26,21 @@
             <input type="url" class="form-control" name="photo_url" value="{{ dj.photo_url if dj else '' }}">
         </div>
         <div class="mb-2">
+            <label class="form-label">Upload Photo</label>
+            <input type="file" class="form-control" name="photo_file" accept="image/*">
+            {% if dj and dj.photo_url %}
+                <div class="mt-2">
+                    <img src="{{ dj.photo_url }}" alt="{{ dj.first_name }}" class="rounded" style="max-height:120px; object-fit:cover;">
+                </div>
+            {% endif %}
+        </div>
+        <div class="mb-2">
             <label class="form-label">Bio</label>
             <textarea class="form-control" name="bio" rows="4">{{ dj.bio if dj else '' }}</textarea>
+        </div>
+        <div class="mb-2">
+            <label class="form-label">Description</label>
+            <textarea class="form-control" name="description" rows="3">{{ dj.description if dj else '' }}</textarea>
         </div>
         <div class="mb-3">
             <label class="form-label">Shows (hold Ctrl/Cmd to multi-select)</label>

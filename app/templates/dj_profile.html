@@ -15,6 +15,9 @@
             {% if dj.bio %}
                 <div class="text-muted">{{ dj.bio }}</div>
             {% endif %}
+            {% if dj.description %}
+                <div class="mt-1">{{ dj.description }}</div>
+            {% endif %}
         </div>
         {% if dj.photo_url %}
             <img src="{{ dj.photo_url }}" alt="{{ dj.first_name }}" class="rounded" style="max-height:80px; width:auto; object-fit:cover;">
