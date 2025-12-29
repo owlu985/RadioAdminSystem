@@ -71,9 +71,13 @@ def record_stream(stream_url, duration, output_file, config_file_path):
     if ctx:
         ctx.push()
 
-    with open(config_file_path, 'r') as file:
-        config = json.load(file)
-    if config['PAUSE_SHOWS_RECORDING'] is True:
+    try:
+        with open(config_file_path, 'r') as file:
+            config = json.load(file)
+    except FileNotFoundError:
+        config = {}
+    paused = config.get('PAUSE_SHOWS_RECORDING', False)
+    if paused is True:
         logger.info("Recording paused. Skipping recording.")
         return
 

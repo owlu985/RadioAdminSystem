@@ -17,6 +17,7 @@
     <p class="text-muted">Base URL: <code>http://&lt;host&gt;:&lt;port&gt;</code></p>
 
     <h4 class="mt-4">Public & Website-Facing APIs</h4>
+    <p class="text-muted">These endpoints are safe for the website and public widgets. For a quick index of every API, see the "Full Endpoint Index" section below.</p>
     <ul>
         <li><strong>Now Playing (widget-friendly):</strong>
             <pre><code>GET /api/now
@@ -122,7 +123,7 @@ GET      /djs/&lt;id&gt;              (DJ profile)</code></pre>
     <h4 class="mt-4">Auth & OAuth</h4>
     <pre><code>GET /api/oauth/last-token        (admin-only, returns last OAuth token captured this session)
 GET /api/oauth/x-token          (admin-only, returns the last Twitter/X OAuth token captured via PKCE flow)</code></pre>
-    <p>Used for debugging OAuth flows (Google/Discord); requires an authenticated admin session.</p>
+    <p>Used for debugging OAuth flows (Google/Discord/Twitter); requires an authenticated admin session.</p>
 
     <h4 class="mt-4">Social & Live Reads</h4>
     <pre><code>GET/POST /production/live-reads          (card creation + print)
@@ -137,6 +138,21 @@ POST     /settings/backup-data          (JSON backups of DJs/shows/discipline)
 GET      /login                         (OAuth-first)
 GET/POST /login/master                  (master password)
 GET      /logout</code></pre>
+
+    <h4 class="mt-4">Full Endpoint Index</h4>
+    <p class="text-muted">Quick list of all published endpoints (public first, then authenticated/admin). For details, see the sections above.</p>
+    <ul>
+        <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>, <code>/psa/player</code>.</li>
+        <li>Logging & reports: <code>/logs/view</code>, <code>/logs/download/csv</code>, <code>/logs/download/docx</code>, <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code>.</li>
+        <li>Probes, runs, audits: <code>/api/probe</code>, <code>/api/probes/latest</code>, <code>/api/runs/&lt;id&gt;</code>, <code>/api/runs/&lt;id&gt;/logs</code>, <code>/api/audit/start</code>, <code>/api/audit/status/&lt;job_id&gt;</code>.</li>
+        <li>Music library: <code>/api/music/search</code>, <code>/api/music/detail</code>, <code>/api/music/cover-art</code>, <code>/api/music/musicbrainz</code>, <code>/api/music/bulk-update</code>, <code>/api/music/scan/library</code>, <code>/api/music/cue</code>, <code>/api/music/saved-searches</code>, <code>/api/archivist/album-rip</code>, <code>/api/archivist/album-info</code>, archivist CSV import UI, <code>/music/</code> pages for search/detail/edit/cue.</li>
+        <li>RadioDJ & stream: <code>/api/radiodj/psas</code>, <code>/api/radiodj/psas/&lt;id&gt;/enable</code>, <code>/api/radiodj/psas/&lt;id&gt;/disable</code>, <code>/api/radiodj/psas/&lt;id&gt;</code> (DELETE), <code>/api/radiodj/psas/&lt;id&gt;/metadata</code>, <code>/api/radiodj/import/news</code>, <code>/api/radiodj/import/community_calendar</code>, <code>/api/icecast/analytics</code>.</li>
+        <li>Absences & DJs: <code>/dj/absence</code> (public form), <code>/absences</code> (manage/filter), <code>/djs</code> (list), <code>/djs/&lt;id&gt;</code> (profile), <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code>, <code>/djs/discipline</code>.</li>
+        <li>Plugins & content: <code>/plugins</code> (admin list), <code>/plugins/website</code> (content/podcasts), <code>/api/plugins/website/content</code>.</li>
+        <li>News & uploads: <code>/news/upload</code>, <code>/api/radiodj/import/news</code>, <code>/api/radiodj/import/community_calendar</code>.</li>
+        <li>Social posting: <code>/social/post</code>, <code>/api/oauth/x-token</code> (last X token), Twitter OAuth helper actions in Social settings.</li>
+        <li>Settings/Auth: <code>/settings</code>, <code>/settings/export</code>, <code>/settings/import</code>, <code>/settings/backup-now</code>, <code>/settings/backup-data</code>, <code>/login</code>, <code>/login/master</code>, <code>/logout</code>, <code>/api/oauth/last-token</code>, <code>/api/oauth/x-token</code>.</li>
+    </ul>
 
     <hr>
     <h5>Example: Now Playing (on-air)</h5>
