@@ -4,7 +4,10 @@ import csv
 import io
 import json
 import os
+import time
 from typing import List, Dict, Optional
+
+from werkzeug.utils import secure_filename
 
 try:
     from pydub import AudioSegment
@@ -16,6 +19,54 @@ except Exception:  # noqa: BLE001
 from sqlalchemy import or_
 
 from app.models import ArchivistEntry, db
+
+
+def _album_tmp_dir() -> str:
+    base = os.path.join(os.getcwd(), "instance", "album_rip_tmp")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def save_album_rip_upload(file_storage) -> str:
+    """Persist a single album-rip upload to a temp folder and return its path."""
+
+    tmp_dir = _album_tmp_dir()
+    # Remove stale files older than 20 minutes
+    cleanup_album_tmp(max_age_seconds=20 * 60)
+
+    filename = secure_filename(file_storage.filename or "rip.wav") or "rip.wav"
+    ts = int(time.time())
+    path = os.path.join(tmp_dir, f"{ts}_{filename}")
+
+    file_storage.save(path)
+    return path
+
+
+def delete_album_rip_upload(path: str):
+    try:
+        if path and os.path.exists(path):
+            os.remove(path)
+    except OSError:
+        # Best-effort cleanup
+        pass
+
+
+def cleanup_album_tmp(max_age_seconds: int = 15 * 60):
+    """Remove album-rip temp files older than the provided age (default 15 minutes)."""
+
+    tmp_dir = _album_tmp_dir()
+    now = time.time()
+    for name in os.listdir(tmp_dir):
+        path = os.path.join(tmp_dir, name)
+        try:
+            stat = os.stat(path)
+        except OSError:
+            continue
+        if now - stat.st_mtime > max_age_seconds:
+            try:
+                os.remove(path)
+            except OSError:
+                continue
 
 
 def _normalize_row(row: Dict[str, str]):
