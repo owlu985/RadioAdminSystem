@@ -23,7 +23,10 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Available PSAs</span>
-                    <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
                 </div>
                 <div class="card-body" style="max-height:60vh; overflow:auto;">
                     <ul class="list-group" id="psaList"></ul>
@@ -139,6 +142,10 @@
 
     document.getElementById('psaSearch').addEventListener('input', (e) => {
         renderLibrary(e.target.value || '');
+    });
+
+    document.getElementById('refreshPsa').addEventListener('click', () => {
+        loadPSAs();
     });
 
     async function loadPSAs() {

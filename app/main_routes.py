@@ -1654,6 +1654,8 @@ def settings():
                 'SOCIAL_BLUESKY_HANDLE': _clean_optional(request.form.get('social_bluesky_handle', '').strip()),
                 'SOCIAL_BLUESKY_PASSWORD': _clean_optional(request.form.get('social_bluesky_password', '').strip()),
                 'SOCIAL_UPLOAD_DIR': _clean_optional(request.form.get('social_upload_dir', '').strip()) or config.get('SOCIAL_UPLOAD_DIR'),
+                'AUDIO_HOST_UPLOAD_DIR': request.form.get('audio_host_upload_dir', current_app.config.get('AUDIO_HOST_UPLOAD_DIR')).strip(),
+                'AUDIO_HOST_BACKDROP_DEFAULT': request.form.get('audio_host_backdrop_default', current_app.config.get('AUDIO_HOST_BACKDROP_DEFAULT', '')).strip(),
             }
 
             update_user_config(updated_settings)
@@ -1747,10 +1749,33 @@ def settings():
         'social_bluesky_handle': _clean_optional(config.get('SOCIAL_BLUESKY_HANDLE', '')) or '',
         'social_bluesky_password': _clean_optional(config.get('SOCIAL_BLUESKY_PASSWORD', '')) or '',
         'social_upload_dir': config.get('SOCIAL_UPLOAD_DIR', ''),
+        'audio_host_upload_dir': config.get('AUDIO_HOST_UPLOAD_DIR', ''),
+        'audio_host_backdrop_default': config.get('AUDIO_HOST_BACKDROP_DEFAULT', ''),
     }
 
     logger.info(f'Rendering settings page.')
     return render_template('settings.html', **settings_data)
+
+
+@main_bp.route('/settings/logs')
+@admin_required
+def view_system_log():
+    log_path = os.path.join(current_app.instance_path, 'logs', 'ShowRecorder.log')
+    entries = []
+    error = None
+    try:
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            raw_lines = fh.readlines()
+        for line in raw_lines[-800:]:
+            level = 'info'
+            if ' - ERROR - ' in line:
+                level = 'error'
+            elif ' - WARNING - ' in line:
+                level = 'warning'
+            entries.append({'text': line.rstrip('\n'), 'level': level})
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+    return render_template('log_file.html', log_entries=entries, log_error=error, log_path=log_path)
 
 
 @main_bp.route('/settings/export', methods=['GET'])

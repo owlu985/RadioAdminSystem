@@ -42,13 +42,21 @@
 <body>
   <div class="card" role="region" aria-label="Hosted audio">
     <div class="row">
-      <div class="backdrop" style="background-image:url('{{ item.backdrop_url or url_for('static', filename='logo.png') }}');"></div>
+      <div class="backdrop" style="background-image:url('{{ backdrop_url }}');"></div>
       <div>
         <p class="title">{{ item.title }}</p>
         {% if item.description %}<p class="desc">{{ item.description }}</p>{% endif %}
       </div>
     </div>
-    <audio controls preload="metadata" src="{{ item.file_url }}"></audio>
+    <audio controls preload="metadata" src="{{ item.file_url }}" controlsList="nodownload noplaybackrate"></audio>
   </div>
+  <script>
+    document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    document.addEventListener('keydown', function(e){
+      if ((e.ctrlKey || e.metaKey) && ['s','S','u','U','p','P'].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+  </script>
 </body>
 </html>

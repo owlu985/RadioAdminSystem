@@ -3,6 +3,7 @@ import time
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session, url_for
 import os
+import shutil
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -607,7 +608,25 @@ def website_plugin_content():
 @api_bp.route("/plugins/audio/embed/<int:item_id>")
 def audio_embed(item_id: int):
     item = HostedAudio.query.get_or_404(item_id)
-    return render_template("embed_audio.html", item=item)
+    backdrop_url = item.backdrop_url
+    upload_dir = current_app.config.get("AUDIO_HOST_UPLOAD_DIR")
+    default_backdrop = current_app.config.get("AUDIO_HOST_BACKDROP_DEFAULT")
+    if not backdrop_url:
+        if default_backdrop and os.path.isfile(default_backdrop):
+            if upload_dir:
+                os.makedirs(upload_dir, exist_ok=True)
+                dest = os.path.join(upload_dir, os.path.basename(default_backdrop))
+                if not os.path.exists(dest):
+                    try:
+                        shutil.copyfile(default_backdrop, dest)
+                    except Exception:
+                        pass
+                backdrop_url = url_for('audio_host_plugin.serve_file', filename=os.path.basename(default_backdrop), _external=True)
+        elif default_backdrop and default_backdrop.startswith("http"):
+            backdrop_url = default_backdrop
+    if not backdrop_url:
+        backdrop_url = url_for('static', filename='logo.png', _external=True)
+    return render_template("embed_audio.html", item=item, backdrop_url=backdrop_url)
 
 
 @api_bp.route("/weather/tempest")

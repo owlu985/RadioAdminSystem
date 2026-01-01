@@ -13,18 +13,29 @@
   <div class="card mb-4">
     <div class="card-header">Add audio</div>
     <div class="card-body">
-      <form method="post" class="row g-3">
+      <form method="post" class="row g-3" enctype="multipart/form-data">
         <div class="col-md-4">
           <label class="form-label">Title</label>
           <input type="text" name="title" class="form-control" required>
         </div>
         <div class="col-md-4">
-          <label class="form-label">Audio URL</label>
-          <input type="url" name="file_url" class="form-control" placeholder="https://..." required>
+          <label class="form-label">Audio URL (optional)</label>
+          <input type="url" name="file_url" class="form-control" placeholder="https://...">
+          <div class="form-text">Or upload a file below.</div>
         </div>
         <div class="col-md-4">
           <label class="form-label">Backdrop URL (optional)</label>
           <input type="url" name="backdrop_url" class="form-control" placeholder="https://.../image.jpg">
+          <div class="form-text">Leave blank to use default.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Upload Audio</label>
+          <input type="file" name="file_upload" class="form-control" accept="audio/*">
+          <div class="form-text">Stored in {{ upload_dir or 'configured upload dir' }}.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Upload Backdrop</label>
+          <input type="file" name="backdrop_upload" class="form-control" accept="image/*">
         </div>
         <div class="col-12">
           <label class="form-label">Description</label>

@@ -21,11 +21,14 @@ def create_app(config_class=Config):
     user_config_path = os.path.join(app.instance_path, 'user_config.json')
     logs_dir = os.path.join(app.instance_path, 'logs')
     log_file_path = os.path.join(logs_dir, 'ShowRecorder.log')
-    
+    audio_host_dir = app.config.get("AUDIO_HOST_UPLOAD_DIR", Config.AUDIO_HOST_UPLOAD_DIR)
+
     if not os.path.exists(app.instance_path):
         os.mkdir(app.instance_path)
     if not os.path.exists(logs_dir):
         os.mkdir(logs_dir)
+    if audio_host_dir and not os.path.exists(audio_host_dir):
+        os.makedirs(audio_host_dir, exist_ok=True)
 
     initial_logger = init_logger(log_file_path)
     initial_logger.info("Init logger initialized.")
