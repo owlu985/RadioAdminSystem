@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>PSA Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">PSA Player</h2>
+            <div class="text-muted">Build a quick queue and play PSAs directly in the browser.</div>
+            <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
+        </div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Available PSAs</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:60vh; overflow:auto;">
+                    <ul class="list-group" id="psaList"></ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Queue</div>
+                <div class="card-body">
+                    <audio id="psaAudio" controls class="w-100 mb-2"></audio>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                    </div>
+                    <ol class="mb-0" id="queueList"></ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+<script>
+    let library = [];
+    const psaList = document.getElementById('psaList');
+    const queueList = document.getElementById('queueList');
+    const audioEl = document.getElementById('psaAudio');
+    const queue = [];
+
+    function renderLibrary(filter = '') {
+        psaList.innerHTML = '';
+        const term = filter.toLowerCase();
+        library.filter(item => item.name.toLowerCase().includes(term)).forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.dataset.name = item.name.toLowerCase();
+            li.innerHTML = `<span>${item.name}${item.duration ? ` <small class='text-muted'>(${item.duration}s)</small>` : ''}</span>`;
+            const btn = document.createElement('button');
+            btn.className = 'btn btn-sm btn-outline-primary';
+            btn.textContent = 'Add to queue';
+            btn.addEventListener('click', () => addToQueue(item));
+            li.appendChild(btn);
+            psaList.appendChild(li);
+        });
+        if (!psaList.children.length) {
+            const li = document.createElement('li');
+            li.className = 'list-group-item text-muted';
+            li.textContent = 'No PSAs found.';
+            psaList.appendChild(li);
+        }
+    }
+
+    function renderQueue() {
+        queueList.innerHTML = '';
+        if (!queue.length) {
+            queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
+            return;
+        }
+        queue.forEach((item, idx) => {
+            const li = document.createElement('li');
+            li.innerHTML = `${item.name} <small class="text-muted">${item.duration ? '('+item.duration+'s)' : ''}</small>`;
+            li.dataset.index = idx;
+            li.tabIndex = 0;
+            li.addEventListener('click', () => startFrom(idx));
+            li.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') startFrom(idx);
+            });
+            queueList.appendChild(li);
+        });
+    }
+
+    function addToQueue(item) {
+        queue.push(item);
+        if (queue.length === 1 && audioEl.paused) {
+            startFrom(0);
+        }
+        renderQueue();
+    }
+
+    function startFrom(idx) {
+        const item = queue[idx];
+        if (!item) return;
+        if (idx > 0) {
+            queue.splice(0, idx);
+            renderQueue();
+        }
+        audioEl.src = item.url;
+        audioEl.play();
+    }
+
+    document.getElementById('clearQueue').addEventListener('click', () => {
+        queue.length = 0;
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+        renderQueue();
+    });
+    document.getElementById('playNext').addEventListener('click', () => {
+        if (!queue.length) return;
+        queue.shift();
+        if (queue.length) {
+            startFrom(0);
+        } else {
+            audioEl.pause();
+            audioEl.removeAttribute('src');
+            renderQueue();
+        }
+    });
+    audioEl.addEventListener('ended', () => {
+        queue.shift();
+        renderQueue();
+        if (queue.length) startFrom(0);
+    });
+
+    document.getElementById('psaSearch').addEventListener('input', (e) => {
+        renderLibrary(e.target.value || '');
+    });
+
+    document.getElementById('refreshPsa').addEventListener('click', () => {
+        loadPSAs();
+    });
+
+    async function loadPSAs() {
+        try {
+            const res = await fetch('/api/psa/library');
+            library = await res.json();
+            renderLibrary();
+        } catch (e) {
+            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load PSAs.</li>';
+        }
+    }
+    loadPSAs();
+</script>
+</body>
+</html>
