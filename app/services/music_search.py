@@ -338,8 +338,13 @@ def _augment_with_analysis(tags: Dict) -> Dict:
     return payload
 
 
-def lookup_musicbrainz(title: Optional[str], artist: Optional[str], limit: int = 5) -> List[Dict]:
-    """Query the MusicBrainz recordings API to suggest metadata including ISRC."""
+def lookup_musicbrainz(
+    title: Optional[str],
+    artist: Optional[str],
+    limit: int = 5,
+    include_releases: bool = False,
+) -> List[Dict]:
+    """Query MusicBrainz for recordings (and optionally release variants) to suggest metadata including ISRC."""
     if not title and not artist:
         return []
 
@@ -355,7 +360,7 @@ def lookup_musicbrainz(title: Optional[str], artist: Optional[str], limit: int =
         "query": query,
         "fmt": "json",
         "limit": limit,
-        "inc": "isrcs+releases",
+        "inc": "isrcs+releases" if not include_releases else "isrcs+releases+recordings+media",
     }
 
     ua = current_app.config.get("MUSICBRAINZ_USER_AGENT") or f"RAMS/1.0 ({current_app.config.get('STATION_NAME', 'RAMS')})"
@@ -391,16 +396,45 @@ def lookup_musicbrainz(title: Optional[str], artist: Optional[str], limit: int =
         isrcs = rec.get("isrcs") or []
         isrc = isrcs[0] if isrcs else None
 
-        results.append(
-            {
-                "title": rec.get("title"),
-                "artist": artist_name,
-                "album": release_title,
-                "year": year,
-                "isrc": isrc,
-                "musicbrainz_id": rec.get("id"),
-            }
-        )
+        entry = {
+            "title": rec.get("title"),
+            "artist": artist_name,
+            "album": release_title,
+            "year": year,
+            "isrc": isrc,
+            "musicbrainz_id": rec.get("id"),
+        }
+
+        if include_releases:
+            release_variants = []
+            for rel in releases:
+                medium_list = rel.get("media") or rel.get("mediums") or []
+                fmt = medium_list[0].get("format") if medium_list else None
+                tracks = []
+                for medium in medium_list:
+                    for track in medium.get("tracks", []) or []:
+                        tracks.append(
+                            {
+                                "title": track.get("title"),
+                                "length_ms": track.get("length"),
+                                "position": track.get("position"),
+                                "format": medium.get("format"),
+                            }
+                        )
+                release_variants.append(
+                    {
+                        "id": rel.get("id"),
+                        "title": rel.get("title"),
+                        "date": rel.get("date") or rel.get("first-release-date"),
+                        "country": rel.get("country"),
+                        "format": fmt,
+                        "track_count": rel.get("track-count") or rel.get("track_count"),
+                        "tracks": tracks,
+                    }
+                )
+            entry["releases"] = release_variants
+
+        results.append(entry)
 
     return results
 

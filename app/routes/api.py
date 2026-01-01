@@ -45,7 +45,13 @@ from app.services.music_search import (
     lookup_musicbrainz,
     harvest_cover_art,
 )
-from app.services.archivist_db import lookup_album, analyze_album_rip
+from app.services.archivist_db import (
+    lookup_album,
+    analyze_album_rip,
+    save_album_rip_upload,
+    delete_album_rip_upload,
+    cleanup_album_tmp,
+)
 from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status
@@ -371,28 +377,44 @@ def archivist_album_info():
     ])
 
 
+@api_bp.route("/archivist/album-rip/upload", methods=["POST"])
+def archivist_album_rip_upload():
+    file = request.files.get("rip_file")
+    if not file or file.filename == "":
+        return jsonify({"status": "error", "message": "file required"}), 400
+    try:
+        path = save_album_rip_upload(file)
+        session["album_rip_path"] = path
+        session["album_rip_uploaded_at"] = time.time()
+        return jsonify({"status": "ok", "path": path})
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Album rip upload failed: {exc}")
+        return jsonify({"status": "error", "message": "upload_failed"}), 500
+
+
+@api_bp.route("/archivist/album-rip/cleanup", methods=["POST"])
+def archivist_album_rip_cleanup():
+    path = session.pop("album_rip_path", None)
+    if path:
+        delete_album_rip_upload(path)
+    cleanup_album_tmp()
+    session.pop("album_rip_uploaded_at", None)
+    return jsonify({"status": "ok"})
+
+
 @api_bp.route("/archivist/album-rip", methods=["POST"])
 def archivist_album_rip():
     payload = request.get_json(force=True) or {}
-    path = payload.get("path")
     threshold = int(payload.get("silence_thresh_db", -38))
     min_gap_ms = int(payload.get("min_gap_ms", 1200))
     min_track_ms = int(payload.get("min_track_ms", 60_000))
+    path = session.get("album_rip_path")
+    if not path:
+        return jsonify({"status": "error", "message": "no_upload"}), 400
     result = analyze_album_rip(path, silence_thresh_db=threshold, min_gap_ms=min_gap_ms, min_track_ms=min_track_ms)
     if not result:
         return jsonify({"status": "error", "message": "analysis_unavailable"}), 400
-    return jsonify({"status": "ok", **result})
-
-    payload = request.get_json(force=True, silent=True) or {}
-    name = (payload.get("name") or "").strip()
-    query = (payload.get("query") or "").strip()
-    filters = payload.get("filters")
-    if not name or not query:
-        return jsonify({"status": "error", "message": "name_and_query_required"}), 400
-    s = SavedSearch(name=name[:128], query=query[:255], filters=filters, created_by=user_email)
-    db.session.add(s)
-    db.session.commit()
-    return jsonify({"status": "ok", "id": s.id})
+    return jsonify({"status": "ok", **result, "source_path": path})
 
 
 @api_bp.route("/music/detail")
@@ -426,6 +448,15 @@ def music_musicbrainz():
         return jsonify({"status": "error", "message": "title_or_artist_required"}), 400
     results = lookup_musicbrainz(title=title or None, artist=artist or None, limit=limit)
     return jsonify({"status": "ok", "results": results})
+
+
+@api_bp.route("/archivist/musicbrainz-releases")
+def archivist_musicbrainz_releases():
+    title = request.args.get("title") or request.args.get("q")
+    artist = request.args.get("artist")
+    limit = request.args.get("limit", type=int, default=5)
+    data = lookup_musicbrainz(title=title or None, artist=artist or None, limit=limit, include_releases=True)
+    return jsonify({"status": "ok", "results": data})
 
 
 @api_bp.route("/music/bulk-update", methods=["POST"])

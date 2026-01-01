@@ -134,6 +134,7 @@
             audioEl.removeAttribute('src');
             renderQueue();
         }
+        loadPSAs();
     });
     audioEl.addEventListener('ended', () => {
         queue.shift();

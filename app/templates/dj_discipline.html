@@ -50,7 +50,7 @@
       <div class="table-responsive">
         <table class="table table-striped align-middle">
           <thead>
-            <tr><th>DJ</th><th>Severity</th><th>Notes</th><th>Action</th><th>Status</th><th>When</th><th>By</th></tr>
+            <tr><th>DJ</th><th>Severity</th><th>Notes</th><th>Action</th><th>Status</th><th>When</th><th>By</th><th></th></tr>
           </thead>
           <tbody>
             {% for rec in records %}
@@ -62,6 +62,48 @@
                 <td>{% if rec.resolved %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
                 <td>{{ rec.issued_at.strftime('%Y-%m-%d %H:%M') }}</td>
                 <td>{{ rec.created_by or 'system' }}</td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#edit{{ rec.id }}">Edit</button>
+                    <form method="post" class="d-inline">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="record_id" value="{{ rec.id }}">
+                      <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Delete this record?')">Delete</button>
+                    </form>
+                  </div>
+                  <div class="collapse mt-2" id="edit{{ rec.id }}">
+                    <form method="post" class="border rounded p-2 bg-light">
+                      <input type="hidden" name="action" value="update">
+                      <input type="hidden" name="record_id" value="{{ rec.id }}">
+                      <div class="row g-2 align-items-center">
+                        <div class="col-md-3">
+                          <select name="dj_id" class="form-select" required>
+                            {% for dj in djs %}
+                              <option value="{{ dj.id }}" {% if dj.id == rec.dj_id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="col-md-2">
+                          <select name="severity" class="form-select">
+                            <option value="" {% if not rec.severity %}selected{% endif %}>Unspecified</option>
+                            <option value="info" {% if rec.severity=='info' %}selected{% endif %}>Info</option>
+                            <option value="warning" {% if rec.severity=='warning' %}selected{% endif %}>Warning</option>
+                            <option value="critical" {% if rec.severity=='critical' %}selected{% endif %}>Critical</option>
+                          </select>
+                        </div>
+                        <div class="col-md-2"><input type="text" class="form-control" name="notes" value="{{ rec.notes }}" required></div>
+                        <div class="col-md-2"><input type="text" class="form-control" name="action_taken" value="{{ rec.action_taken or '' }}"></div>
+                        <div class="col-md-2 form-check ms-2">
+                          <input class="form-check-input" type="checkbox" name="resolved" id="resolved{{ rec.id }}" {% if rec.resolved %}checked{% endif %}>
+                          <label class="form-check-label" for="resolved{{ rec.id }}">Resolved</label>
+                        </div>
+                        <div class="col-md-1 text-end">
+                          <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </td>
               </tr>
             {% endfor %}
           </tbody>

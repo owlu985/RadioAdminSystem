@@ -398,11 +398,36 @@ def dj_profile(dj_id: int):
 def manage_dj_discipline():
         djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
         if request.method == "POST":
+                action = request.form.get("action", "create")
+                if action == "delete":
+                        rec_id = request.form.get("record_id", type=int)
+                        if rec_id:
+                                rec = DJDisciplinary.query.get(rec_id)
+                                if rec:
+                                        db.session.delete(rec)
+                                        db.session.commit()
+                                        flash("Disciplinary record removed.", "success")
+                        return redirect(url_for("main.manage_dj_discipline"))
+
+                rec_id = request.form.get("record_id", type=int)
                 dj_id = request.form.get("dj_id", type=int)
                 severity = request.form.get("severity") or None
                 notes = request.form.get("notes") or None
                 action_taken = request.form.get("action_taken") or None
                 resolved = bool(request.form.get("resolved"))
+
+                if action == "update" and rec_id:
+                        rec = DJDisciplinary.query.get(rec_id)
+                        if rec:
+                                rec.dj_id = dj_id or rec.dj_id
+                                rec.severity = severity
+                                rec.notes = notes
+                                rec.action_taken = action_taken
+                                rec.resolved = resolved
+                                db.session.commit()
+                                flash("Disciplinary record updated.", "success")
+                        return redirect(url_for("main.manage_dj_discipline"))
+
                 if dj_id:
                         rec = DJDisciplinary(
                                 dj_id=dj_id,
@@ -1760,12 +1785,14 @@ def settings():
 @main_bp.route('/settings/logs')
 @admin_required
 def view_system_log():
-    log_dir = os.path.join(current_app.instance_path, 'logs')
-    os.makedirs(log_dir, exist_ok=True)
-    log_path = os.path.join(log_dir, 'ShowRecorder.log')
+    repo_root = os.path.abspath(os.path.join(current_app.root_path, os.pardir))
+    log_path = os.path.join(repo_root, 'ShowRecorder.log')
     entries = []
     error = None
     try:
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
         if not os.path.exists(log_path):
             # ensure the log file exists so the viewer can open it without raising
             open(log_path, 'a', encoding='utf-8').close()

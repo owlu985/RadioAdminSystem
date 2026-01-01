@@ -26,7 +26,7 @@
             <button type="submit" class="btn btn-primary w-100">Search</button>
         </div>
         <div class="col-md-3 d-flex gap-2 align-items-stretch">
-            <button type="button" class="btn btn-outline-success w-100" id="saveSearchBtn">Save search</button>
+            <button type="button" class="btn btn-outline-success w-100 h-100" id="saveSearchBtn">Save search</button>
             <div class="dropdown w-100">
                 <button class="btn btn-outline-secondary dropdown-toggle w-100 h-100" type="button" data-bs-toggle="dropdown">Saved</button>
                 <ul class="dropdown-menu" id="savedList"></ul>
@@ -40,10 +40,10 @@
                 <thead>
                 <tr>
                     <th><input type="checkbox" id="selectAll"></th>
-                    <th>Title</th>
-                    <th>Artist</th>
-                    <th>Album</th>
-                    <th>Length</th>
+                    <th role="button" data-sort="title">Title</th>
+                    <th role="button" data-sort="artist">Artist</th>
+                    <th role="button" data-sort="album">Album</th>
+                    <th role="button" data-sort="duration_seconds">Length</th>
                 </tr>
                 </thead>
                 <tbody></tbody>
@@ -90,6 +90,8 @@
     const selectAll = document.getElementById('selectAll');
     const queuesBox = document.getElementById('queues');
     let savedSearches = {{ saved_searches|default([])|tojson }};
+    let resultsData = [];
+    let sortState = { key: null, dir: 1 };
 
     function renderSaved() {
         const list = document.getElementById('savedList');
@@ -106,6 +108,7 @@
     }
 
     function renderResults(data) {
+        resultsData = data.slice();
         tbody.innerHTML = data.map(item => `
             <tr class="result-row" tabindex="0" data-path="${item.path}">
                 <td><input type="checkbox" value="${item.path}" aria-label="Select ${item.title || 'track'}"></td>
@@ -131,6 +134,35 @@
     }
 
     renderSaved();
+
+    function applySort(key) {
+        if (!key) return;
+        if (sortState.key === key) {
+            sortState.dir *= -1;
+        } else {
+            sortState = { key, dir: 1 };
+        }
+        const sorted = resultsData.slice().sort((a, b) => {
+            const av = a[key] || '';
+            const bv = b[key] || '';
+            if (typeof av === 'number' && typeof bv === 'number') {
+                return (av - bv) * sortState.dir;
+            }
+            return av.toString().localeCompare(bv.toString()) * sortState.dir;
+        });
+        renderResults(sorted);
+    }
+
+    document.querySelectorAll('#resultsTable thead [data-sort]').forEach(th => {
+        th.addEventListener('click', () => applySort(th.dataset.sort));
+        th.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                applySort(th.dataset.sort);
+            }
+        });
+        th.tabIndex = 0;
+    });
 
     document.getElementById('savedList').addEventListener('click', async (e) => {
         const load = e.target.getAttribute('data-query');

@@ -36,17 +36,13 @@
     <div class="card-body">
       <div class="row g-3 mb-3">
         <div class="col-md-6">
-          <label class="form-label">Album clue (title/catalog/label)</label>
-          <div class="input-group">
-            <input type="text" id="album-query" class="form-control" placeholder="e.g., catalog number or album name">
-            <button class="btn btn-outline-secondary" type="button" onclick="lookupAlbum()">Lookup</button>
-          </div>
-          <div class="form-text">Fetch matching rows from the archivist DB.</div>
-          <div id="album-results" class="mt-2 small text-muted"></div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">Album rip path</label>
-          <input type="text" id="album-path" class="form-control" placeholder="/path/to/full_album.wav">
+          <label class="form-label">Upload album rip (one at a time)</label>
+          <form class="d-flex gap-2 align-items-center" onsubmit="uploadRip(event)">
+            <input type="file" id="rip-file" name="rip_file" accept="audio/*" class="form-control" required>
+            <button class="btn btn-outline-primary" type="submit">Upload</button>
+          </form>
+          <div class="form-text">Stored temporarily; cleared after analysis, tab close, or ~15 minutes.</div>
+          <div id="upload-status" class="small text-muted mt-2"></div>
           <div class="row mt-2 g-2">
             <div class="col-4">
               <label class="form-label">Silence dB</label>
@@ -62,8 +58,29 @@
             </div>
           </div>
           <button class="btn btn-primary mt-3" type="button" onclick="analyzeRip()">Analyze rip</button>
-          <div class="form-text">Suggests breakpoints while ignoring pops/crackles.</div>
+          <div class="form-text">Suggests breakpoints while ignoring pops/crackles. Only works after an upload.</div>
           <pre id="rip-results" class="mt-2 small bg-light p-2" style="max-height:200px; overflow:auto"></pre>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Album clue (title/catalog/label)</label>
+          <div class="input-group">
+            <input type="text" id="album-query" class="form-control" placeholder="e.g., catalog number or album name">
+            <button class="btn btn-outline-secondary" type="button" onclick="lookupAlbum()">Lookup</button>
+          </div>
+          <div class="form-text">Fetch matching rows from the archivist DB.</div>
+          <div id="album-results" class="mt-2 small text-muted"></div>
+
+          <hr>
+          <label class="form-label">MusicBrainz release search</label>
+          <div class="input-group mb-2">
+            <input type="text" id="mb-title" class="form-control" placeholder="Title">
+            <input type="text" id="mb-artist" class="form-control" placeholder="Artist">
+            <button class="btn btn-outline-secondary" type="button" onclick="lookupMB()">Search</button>
+          </div>
+          <select id="mb-releases" class="form-select mb-2" onchange="renderMBTracks()">
+            <option value="">Select a release variant…</option>
+          </select>
+          <div id="mb-tracks" class="small" style="max-height:180px; overflow:auto"></div>
         </div>
       </div>
     </div>
@@ -128,24 +145,86 @@ async function lookupAlbum() {
   target.innerText = data.map(r => `${r.artist || '-'} - ${r.title || r.album || ''} (${r.catalog_number || ''})`).join('\n');
 }
 
+async function uploadRip(evt) {
+  evt.preventDefault();
+  const fileInput = document.getElementById('rip-file');
+  const statusEl = document.getElementById('upload-status');
+  if (!fileInput.files.length) return;
+  const form = new FormData();
+  form.append('rip_file', fileInput.files[0]);
+  statusEl.textContent = 'Uploading…';
+  const res = await fetch('/api/archivist/album-rip/upload', { method: 'POST', body: form });
+  const data = await res.json();
+  if (data.status === 'ok') {
+    statusEl.textContent = `Uploaded: ${fileInput.files[0].name}`;
+  } else {
+    statusEl.textContent = data.message || 'Upload failed';
+  }
+}
+
 async function analyzeRip() {
-  const path = document.getElementById('album-path').value.trim();
   const silence_thresh_db = parseInt(document.getElementById('silence-thresh').value || '-38');
   const min_gap_ms = parseInt(document.getElementById('gap-ms').value || '1200');
   const min_track_ms = parseInt(document.getElementById('track-ms').value || '60000');
-  if (!path) return;
   const res = await fetch('/api/archivist/album-rip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ path, silence_thresh_db, min_gap_ms, min_track_ms })
+    body: JSON.stringify({ silence_thresh_db, min_gap_ms, min_track_ms })
   });
   const data = await res.json();
   const target = document.getElementById('rip-results');
   if (data.status !== 'ok') {
-    target.innerText = data.message || 'Analysis unavailable (check pydub/ffmpeg).';
+    target.innerText = data.message || 'Analysis unavailable (check pydub/ffmpeg or upload a file).';
     return;
   }
   target.innerText = JSON.stringify(data, null, 2);
+}
+
+async function cleanupRip() {
+  try {
+    await fetch('/api/archivist/album-rip/cleanup', { method: 'POST', keepalive: true });
+  } catch (e) {
+    // ignore
+  }
+}
+
+window.addEventListener('beforeunload', cleanupRip);
+
+async function lookupMB() {
+  const title = document.getElementById('mb-title').value.trim();
+  const artist = document.getElementById('mb-artist').value.trim();
+  if (!title && !artist) return;
+  const res = await fetch(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
+  const data = await res.json();
+  const select = document.getElementById('mb-releases');
+  select.innerHTML = '<option value="">Select a release variant…</option>';
+  data.forEach((rec, idx) => {
+    (rec.releases || []).forEach((rel) => {
+      const label = `${rec.title || ''} — ${rec.artist || ''} [${rel.format || 'format?'} | ${rel.date || 'n/a'}]`;
+      const opt = document.createElement('option');
+      opt.value = `${rec.musicbrainz_id}:${rel.id}:${idx}`;
+      opt.dataset.release = JSON.stringify(rel);
+      opt.textContent = label;
+      select.appendChild(opt);
+    });
+  });
+}
+
+function renderMBTracks() {
+  const select = document.getElementById('mb-releases');
+  const target = document.getElementById('mb-tracks');
+  const opt = select.selectedOptions[0];
+  if (!opt || !opt.dataset.release) {
+    target.innerHTML = '';
+    return;
+  }
+  const rel = JSON.parse(opt.dataset.release);
+  if (!rel.tracks || !rel.tracks.length) {
+    target.innerHTML = '<div class="text-muted">No tracklist available.</div>';
+    return;
+  }
+  target.innerHTML = `<div class="mb-1"><strong>Format:</strong> ${rel.format || 'n/a'} | <strong>Tracks:</strong> ${rel.tracks.length}</div>` +
+    '<ol class="mb-0">' + rel.tracks.map(t => `<li>${t.title || 'Track'} — ${t.length_ms ? (t.length_ms/1000).toFixed(1)+'s' : 'n/a'} (${t.format || ''})</li>`).join('') + '</ol>';
 }
 </script>
 {% include '_footer.html' %}
