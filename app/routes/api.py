@@ -1,7 +1,7 @@
 from datetime import datetime
 import time
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app, request, session, url_for
+from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template
 import os
 import shutil
 from app.models import (

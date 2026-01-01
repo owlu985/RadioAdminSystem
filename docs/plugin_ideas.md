@@ -57,3 +57,17 @@ Below are suggestions for modular plugins and broader feature expansions that ca
 - **Disaster Playlists**: Pre-baked “hold music”/emergency rotations that can be triggered from the dashboard or via webhook.
 
 Use these as a menu: enable only what you need, and keep plugin code self-contained (blueprints, templates, static assets, models, and services under a single package) so RAMS stays modular.
+
+## New RAMS Feature Ideas (core)
+- **Inline API token manager**: Per-scope API keys with expirations for automation bots.
+- **Incident timeline overlay**: Combine probes, alerts, listener drops, and schedule events on one timeline for faster RCA.
+- **Studio kiosk mode**: Locked-down dashboards (DJ Status, PSA player, log form) for shared studio PCs with large-type UI.
+- **Content freshness guards**: Highlight stale news/PSA assets and prompt owners before expiry windows.
+
+## Plugin Ideas by Department
+- **Programming**: “Sub finder” marketplace plugin so open shifts can be claimed; show prep cards surfaced on DJ Status.
+- **Production/Creative**: Multi-size promo/export templates with loudness presets; shared palette of approved beds/FX.
+- **News**: Assignment board with “ready to air” tags; versioned briefs with diff view; auto-publish to the website plugin.
+- **Social**: Scheduled queue with blackout windows and per-network cooldowns; engagement snapshots; link-in-bio generator.
+- **Archiving**: Fingerprint-based ingest plus checksum/bit-rot monitoring; digitization queue for tapes/vinyl.
+- **Management/Compliance**: PSA pacing heatmaps by daypart; consent/rights tracker for recorded interviews; compliance export bundles.

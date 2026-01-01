@@ -127,6 +127,7 @@
         if (!queue.length) return;
         queue.shift();
         if (queue.length) {
+            renderQueue();
             startFrom(0);
         } else {
             audioEl.pause();

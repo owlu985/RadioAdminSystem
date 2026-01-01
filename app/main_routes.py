@@ -1760,10 +1760,15 @@ def settings():
 @main_bp.route('/settings/logs')
 @admin_required
 def view_system_log():
-    log_path = os.path.join(current_app.instance_path, 'logs', 'ShowRecorder.log')
+    log_dir = os.path.join(current_app.instance_path, 'logs')
+    os.makedirs(log_dir, exist_ok=True)
+    log_path = os.path.join(log_dir, 'ShowRecorder.log')
     entries = []
     error = None
     try:
+        if not os.path.exists(log_path):
+            # ensure the log file exists so the viewer can open it without raising
+            open(log_path, 'a', encoding='utf-8').close()
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
             raw_lines = fh.readlines()
         for line in raw_lines[-800:]:

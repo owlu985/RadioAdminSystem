@@ -6,6 +6,7 @@ This document summarizes the major features available in RAMS, with links to key
 - Configurable station name/slogan and RAMS branding (logo at `app/static/logo.png`).
 - Global navbar/footer on every page with quick links to Dashboard, Schedule, Logs, Music, News, DJs, Audit, API Docs, Settings, and more.
 - Settings UI: admin credentials, stream URL, NAS roots, station branding/background, Tempest weather token/station, alert thresholds, OAuth toggles, and JSON import/export for settings.
+- Color-coded system log viewer (Settings → Logs) with in-app access to recent log lines.
 
 ## Authentication and Roles
 - OAuth login with Google and Discord (optional guild/domain restriction).
@@ -25,6 +26,7 @@ This document summarizes the major features available in RAMS, with links to key
 - Stream probing via FFmpeg/pydub/numpy classifies silence, automation, and live audio; results logged to StreamProbe and ShowRun.
 - Self-healing: probe/recorder failures auto-retry; health counters visible on dashboard.
 - Dead-air/stream-down alert pipeline (Discord webhook and optional email) with rate-limiting; defaults simulate sending until enabled in Settings.
+- PSA player (public, noindex) with refreshable library, queue controls, and a DJ Tools menu entry.
 
 ## Logs and Compliance
 - Public DJ log submission (no auth) with required fields, “now” time button, artist suggestions, localStorage autosave, and row add/clear controls.
@@ -39,6 +41,7 @@ This document summarizes the major features available in RAMS, with links to key
 - Live read card generator with printable layout and expiry tracking for on-air copy.
 - Social posting console to draft/queue multi-network posts (simulated by default until enabled in Settings).
 - Archivist catalog import/search from CSV/TSV to speed cross-referencing against external music databases.
+- Hosted audio plugin for slim iframe embeds, upload/URL support, and configurable backdrops for posting interviews or long-form audio externally.
 
 ## Music Library and Metadata
 - NAS search UI/API with detail and edit pages (mutagen-enabled writes), cover art preview, audio preview stream, and RadioDJ-style visual CUE editor with waveform markers.
@@ -50,6 +53,7 @@ This document summarizes the major features available in RAMS, with links to key
 ## DJs and Bios
 - DJ model with bio/photo URL; assign DJs to shows.
 - Admin pages to add/edit/list DJs; public API `/api/djs` for website bios and show mappings.
+- DJ profiles surface absences, logs, and permission-aware disciplinary notes.
 
 ## Audits
 - Recording classification audit: scan recordings folder to label live/automation/dead air using the detector.
@@ -73,6 +77,8 @@ This document summarizes the major features available in RAMS, with links to key
 - Audit jobs: `/api/audit/start`, `/api/audit/status/<job_id>`
 - Schedule grid JSON/iCal feeds
 - News upload and config-backed endpoints
+- Website content & podcast plugin feed: `/api/plugins/website/content`; hosted audio embeds: `/api/plugins/audio/embed/<id>`
+- OAuth/token helpers: `/api/oauth/last-token`, `/api/oauth/x-token` (admin)
 
 ## Additional Utilities
 - Automatic DB column backfill/DDL patches on startup for new fields.
