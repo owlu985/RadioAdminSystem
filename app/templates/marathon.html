@@ -38,6 +38,56 @@
       <div class="form-text mt-2">Creates 2-hour chunks (default) into OUTPUT_FOLDER/Marathons/&lt;name&gt;.</div>
     </div>
   </div>
+
+  <div class="card mt-4">
+    <div class="card-header">Scheduled marathons</div>
+    <div class="card-body">
+      {% if events %}
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Window</th>
+              <th>Chunk</th>
+              <th>Status</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for ev in events %}
+            <tr>
+              <td>{{ ev.name }}</td>
+              <td>{{ ev.start_time }} → {{ ev.end_time }}</td>
+              <td>{{ ev.chunk_hours }}h</td>
+              <td>
+                {% if ev.canceled_at %}
+                  <span class="badge bg-secondary">Cancelled</span>
+                {% elif ev.status == 'running' %}
+                  <span class="badge bg-success">Running</span>
+                {% elif ev.start_time > (now or ev.start_time) %}
+                  <span class="badge bg-warning text-dark">Pending</span>
+                {% else %}
+                  <span class="badge bg-info">{{ ev.status|capitalize }}</span>
+                {% endif %}
+              </td>
+              <td class="text-end">
+                {% if not ev.canceled_at and ev.end_time > (now or ev.end_time) %}
+                <form method="post" action="{{ url_for('main.marathon_cancel', event_id=ev.id) }}" onsubmit="return confirm('Cancel future chunks for this marathon?');">
+                  <button class="btn btn-sm btn-outline-danger">Cancel</button>
+                </form>
+                {% endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+      {% else %}
+        <div class="text-muted">No marathons scheduled.</div>
+      {% endif %}
+    </div>
+  </div>
 </div>
 {% include '_footer.html' %}
 </body>

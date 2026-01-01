@@ -7,7 +7,7 @@ import base64
 import hashlib
 import requests
 from urllib.parse import quote_plus
-from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event
+from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
     get_current_show,
@@ -35,6 +35,7 @@ from .models import (
     Plugin,
     WebsiteContent,
     PodcastEpisode,
+    MarathonEvent,
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func
@@ -897,7 +898,25 @@ def marathon_page():
             except Exception as exc:  # noqa: BLE001
                 logger.error("Failed to schedule marathon: %s", exc)
                 flash("Could not schedule marathon. Check dates and try again.", "danger")
-    return render_template("marathon.html")
+
+    events = MarathonEvent.query.order_by(MarathonEvent.start_time.desc()).all()
+    now = datetime.utcnow()
+    for ev in events:
+        if ev.status == "pending" and ev.start_time <= now < ev.end_time and not ev.canceled_at:
+            ev.status = "running"
+    db.session.commit()
+
+    return render_template("marathon.html", events=events, now=now)
+
+
+@main_bp.route("/marathon/<int:event_id>/cancel", methods=["POST"])
+@admin_required
+def marathon_cancel(event_id: int):
+    if cancel_marathon_event(event_id):
+        flash("Marathon cancelled. Current chunk will finish, future chunks removed.", "info")
+    else:
+        flash("Marathon not found.", "warning")
+    return redirect(url_for("main.marathon_page"))
 
 
 @main_bp.route("/social/uploads/<path:filename>")

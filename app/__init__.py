@@ -318,6 +318,36 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "marathon_event" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS marathon_event (
+                            id INTEGER PRIMARY KEY,
+                            name VARCHAR(128) NOT NULL,
+                            safe_name VARCHAR(128) NOT NULL,
+                            start_time DATETIME NOT NULL,
+                            end_time DATETIME NOT NULL,
+                            chunk_hours INTEGER NOT NULL DEFAULT 2,
+                            status VARCHAR(32) NOT NULL DEFAULT 'pending',
+                            job_ids TEXT,
+                            created_at DATETIME NOT NULL,
+                            canceled_at DATETIME
+                        )
+                        """
+                    ))
+                if "hosted_audio" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS hosted_audio (
+                            id INTEGER PRIMARY KEY,
+                            title VARCHAR(255) NOT NULL,
+                            description TEXT,
+                            file_url VARCHAR(512) NOT NULL,
+                            backdrop_url VARCHAR(512),
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
                 if "saved_search" not in insp.get_table_names():
                     conn.execute(text(
                         """
@@ -359,8 +389,31 @@ def create_app(config_class=Config):
                 os.makedirs(os.path.dirname(news_config_path), exist_ok=True)
                 with open(news_config_path, "w") as f:
                     json.dump([
-                        {"key": "news", "label": "News", "filename": "wlmc_news.mp3", "frequency": "daily"},
-                        {"key": "community_calendar", "label": "Community Calendar", "filename": "wlmc_comm_calendar.mp3", "frequency": "weekly", "rotation_day": 0},
+                        {
+                            "key": "news",
+                            "label": "News",
+                            "filename": "wlmc_news.mp3",
+                            "frequency": "daily",
+                            "metadata": {
+                                "artist": "WLMC News",
+                                "album": "WLMC News",
+                                "title": "WLMC News {date}",
+                                "date_format": "%Y-%m-%d",
+                            },
+                        },
+                        {
+                            "key": "community_calendar",
+                            "label": "Community Calendar",
+                            "filename": "wlmc_comm_calendar.mp3",
+                            "frequency": "weekly",
+                            "rotation_day": 0,
+                            "metadata": {
+                                "artist": "Community Calendar",
+                                "album": "Community Calendar",
+                                "title": "Community Calendar {date}",
+                                "date_format": "%Y-%m-%d",
+                            },
+                        },
                     ], f, indent=2)
 
             # Ensure social upload directory exists for uploaded post images

@@ -106,6 +106,10 @@
     function startFrom(idx) {
         const item = queue[idx];
         if (!item) return;
+        if (idx > 0) {
+            queue.splice(0, idx);
+            renderQueue();
+        }
         audioEl.src = item.url;
         audioEl.play();
     }
@@ -118,7 +122,14 @@
     });
     document.getElementById('playNext').addEventListener('click', () => {
         if (!queue.length) return;
-        startFrom(0);
+        queue.shift();
+        if (queue.length) {
+            startFrom(0);
+        } else {
+            audioEl.pause();
+            audioEl.removeAttribute('src');
+            renderQueue();
+        }
     });
     audioEl.addEventListener('ended', () => {
         queue.shift();

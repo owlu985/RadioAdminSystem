@@ -22,7 +22,7 @@ class Config:
     # Silence / automation detection
     DEAD_AIR_DB = -72
     DEAD_AIR_SOFT_DB = -60
-    SILENCE_RATIO_DEAD_AIR = 0.5
+    SILENCE_RATIO_DEAD_AIR = 0.35
     AUTOMATION_MIN_DB = -12
     AUTOMATION_MAX_DB = -2
     AUTOMATION_AVG_MIN_DB = -18
@@ -31,7 +31,7 @@ class Config:
     AUTOMATION_RATIO_THRESHOLD = 0.65
     SILENCE_CHUNK_MS = 500
     STREAM_PROBE_SECONDS = 8
-    STREAM_PROBE_INTERVAL_MINUTES = 5
+    STREAM_PROBE_INTERVAL_MINUTES = 1
 
     # REST/API defaults
     DEFAULT_OFF_AIR_MESSAGE = "WLMC is currently off-air"

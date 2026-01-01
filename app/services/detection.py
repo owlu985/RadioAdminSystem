@@ -115,7 +115,7 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
 
     sample = _sample_path()
     if sample:
-        logger.info("Using test sample audio for probe: %s", sample)
+        logger.debug("Using test sample audio for probe: %s", sample)
         return analyze_audio(str(sample), config)
 
     tmp = NamedTemporaryFile(suffix=".mp3", delete=False)

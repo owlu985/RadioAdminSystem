@@ -275,7 +275,7 @@
                 currentWindow.textContent = '';
             } else if (data.show) {
                 const hostLabel = data.absence && data.absence.replacement ? `${data.absence.replacement} (cover)` : data.show.host;
-                currentElem.textContent = `${data.show.name} (${hostLabel})`;
+                currentElem.innerHTML = `${data.show.name}<br><span class="small text-muted">${hostLabel}</span>`;
                 currentElem.classList.remove('text-neon-blue');
                 currentWindow.textContent = `${data.show.window.start_time} - ${data.show.window.end_time}`;
             } else {
@@ -289,7 +289,7 @@
             const nextWindow = document.getElementById('nextWindow');
             if (nextShow) {
                 const nextHost = nextShow.absence && nextShow.absence.replacement ? `${nextShow.absence.replacement} (cover)` : nextShow.host;
-                nextElem.textContent = `${nextShow.name} (${nextHost})`;
+                nextElem.innerHTML = `${nextShow.name}<br><span class="small text-muted">${nextHost}</span>`;
                 nextWindow.textContent = `${nextShow.window.start_time} - ${nextShow.window.end_time}`;
             } else {
                 nextElem.textContent = '—';

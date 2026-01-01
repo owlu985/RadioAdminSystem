@@ -89,6 +89,21 @@ class Show(db.Model):
 
     djs = db.relationship("DJ", secondary=show_dj, back_populates="shows")
 
+
+class MarathonEvent(db.Model):
+    __tablename__ = "marathon_event"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(128), nullable=False)
+    safe_name = db.Column(db.String(128), nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False)
+    end_time = db.Column(db.DateTime, nullable=False)
+    chunk_hours = db.Column(db.Integer, default=2, nullable=False)
+    status = db.Column(db.String(32), default="pending", nullable=False)
+    job_ids = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    canceled_at = db.Column(db.DateTime, nullable=True)
+
 class ShowRun(db.Model):
     __tablename__ = "show_run"
 
@@ -320,4 +335,15 @@ class PodcastEpisode(db.Model):
     title = db.Column(db.String(255), nullable=False)
     description = db.Column(db.Text, nullable=True)
     embed_code = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class HostedAudio(db.Model):
+    __tablename__ = "hosted_audio"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    description = db.Column(db.Text, nullable=True)
+    file_url = db.Column(db.String(512), nullable=False)
+    backdrop_url = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

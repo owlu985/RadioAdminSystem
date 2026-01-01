@@ -4,12 +4,13 @@ import time
 from sqlalchemy import inspect
 from flask import current_app
 from .logger import init_logger
-from .models import db, Show
+from .models import db, Show, MarathonEvent
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
+from app.services import api_cache
 from .utils import update_user_config, show_display_title, show_primary_host
 from datetime import date as date_cls
 import ffmpeg
@@ -48,6 +49,12 @@ def refresh_schedule():
                 schedule_recording(show)
             logger.info("Schedule refreshed with latest shows.")
             schedule_stream_probe()
+            now = datetime.utcnow()
+            for event in MarathonEvent.query.filter(
+                MarathonEvent.end_time >= now, MarathonEvent.canceled_at.is_(None)
+            ).all():
+                _schedule_marathon_jobs(event)
+            api_cache.invalidate("schedule")
     except Exception as e:
         logger.error(f"Error refreshing schedule: {e}")
 
@@ -64,7 +71,29 @@ def pause_shows_until(date):
     except Exception as e:
         logger.error(f"Error adding resume jobs: {e}")
 
-def record_stream(stream_url, duration, output_file, config_file_path):
+def _active_marathon():
+    now = datetime.utcnow()
+    return MarathonEvent.query.filter(
+        MarathonEvent.status.in_(["pending", "running"]),
+        MarathonEvent.start_time <= now,
+        MarathonEvent.end_time > now,
+        MarathonEvent.canceled_at.is_(None),
+    ).first()
+
+
+def _update_marathon_status(event_id: int, status: str, job_ids=None, canceled=False):
+    event = MarathonEvent.query.get(event_id)
+    if not event:
+        return
+    event.status = status
+    if job_ids is not None:
+        event.job_ids = job_ids
+    if canceled:
+        event.canceled_at = datetime.utcnow()
+    db.session.commit()
+
+
+def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None, label=None):
     """Records the stream using FFmpeg."""
 
     ctx = flask_app.app_context() if flask_app else None
@@ -81,10 +110,18 @@ def record_stream(stream_url, duration, output_file, config_file_path):
         logger.info("Recording paused. Skipping recording.")
         return
 
+    if marathon_event_id is None:
+        active_marathon = _active_marathon()
+        if active_marathon:
+            logger.info("Skipping show recording due to active marathon %s", active_marathon.name)
+            return
+
 
     output_file = f"{output_file}_{datetime.now().strftime('%m-%d-%y')}_RAWDATA.mp3"
     start_time = datetime.now().strftime('%H-%M-%S')
     try:
+        if marathon_event_id:
+            _update_marathon_status(marathon_event_id, "running")
         for attempt in (1, 2):
             try:
                 (
@@ -112,6 +149,10 @@ def record_stream(stream_url, duration, output_file, config_file_path):
                 time.sleep(1)
                 continue
             break
+        if marathon_event_id:
+            event = _active_marathon()
+            if event and chunk_end and chunk_end >= event.end_time:
+                _update_marathon_status(marathon_event_id, "completed")
     finally:
         if ctx:
             ctx.pop()
@@ -175,6 +216,46 @@ def schedule_recording(show):
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
 
 
+def _schedule_marathon_jobs(event: MarathonEvent):
+    stream_url = flask_app.config["STREAM_URL"]
+    base_folder = os.path.join(flask_app.config["OUTPUT_FOLDER"], "Marathons", event.safe_name)
+    os.makedirs(base_folder, exist_ok=True)
+    user_config_path = os.path.join(flask_app.instance_path, "user_config.json")
+
+    # Clear existing jobs for this event before rescheduling
+    for job_id in (event.job_ids or "").split(','):
+        if job_id:
+            try:
+                scheduler.remove_job(job_id)
+            except Exception:
+                pass
+
+    job_ids: list[str] = []
+    current = event.start_time
+    while current < event.end_time:
+        chunk_end = min(current + timedelta(hours=event.chunk_hours), event.end_time)
+        label = f"{event.safe_name}_{current.strftime('%a_%I%p').lstrip('0')}_{chunk_end.strftime('%I%p').lstrip('0')}"
+        output_file = os.path.join(base_folder, label)
+        job_id = f"marathon_{event.id}_{int(current.timestamp())}"
+        try:
+            scheduler.add_job(
+                record_stream,
+                "date",
+                id=job_id,
+                run_date=current,
+                args=[stream_url, (chunk_end - current).total_seconds(), output_file, user_config_path, event.id, chunk_end],
+                replace_existing=True,
+            )
+            job_ids.append(job_id)
+            logger.info("Scheduled marathon chunk %s from %s to %s", job_id, current, chunk_end)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("Failed to schedule marathon chunk %s: %s", job_id, exc)
+        current = chunk_end
+
+    event.job_ids = ",".join(job_ids)
+    db.session.commit()
+
+
 def schedule_marathon_event(name: str, start_dt: datetime, end_dt: datetime, chunk_hours: int = 2):
     """
     Schedule a temporary marathon recording window in fixed-size chunks.
@@ -184,31 +265,36 @@ def schedule_marathon_event(name: str, start_dt: datetime, end_dt: datetime, chu
         return
     if end_dt <= start_dt:
         return
-    stream_url = flask_app.config["STREAM_URL"]
     safe_name = name.replace(" ", "_")
-    base_folder = os.path.join(flask_app.config["OUTPUT_FOLDER"], "Marathons", safe_name)
-    os.makedirs(base_folder, exist_ok=True)
-    user_config_path = os.path.join(flask_app.instance_path, "user_config.json")
 
-    current = start_dt
-    while current < end_dt:
-        chunk_end = min(current + timedelta(hours=chunk_hours), end_dt)
-        label = f"{safe_name}_{current.strftime('%a_%I%p').lstrip('0')}_{chunk_end.strftime('%I%p').lstrip('0')}"
-        output_file = os.path.join(base_folder, label)
-        job_id = f"marathon_{safe_name}_{int(current.timestamp())}"
-        try:
-            scheduler.add_job(
-                record_stream,
-                "date",
-                id=job_id,
-                run_date=current,
-                args=[stream_url, (chunk_end - current).total_seconds(), output_file, user_config_path],
-                replace_existing=True,
-            )
-            logger.info("Scheduled marathon chunk %s from %s to %s", job_id, current, chunk_end)
-        except Exception as exc:  # noqa: BLE001
-            logger.error("Failed to schedule marathon chunk %s: %s", job_id, exc)
-        current = chunk_end
+    event = MarathonEvent(
+        name=name,
+        safe_name=safe_name,
+        start_time=start_dt,
+        end_time=end_dt,
+        chunk_hours=chunk_hours,
+        status="pending",
+    )
+    db.session.add(event)
+    db.session.commit()
+
+    _schedule_marathon_jobs(event)
+    api_cache.invalidate("schedule")
+
+
+def cancel_marathon_event(event_id: int):
+    event = MarathonEvent.query.get(event_id)
+    if not event:
+        return False
+    job_ids = (event.job_ids or "").split(',') if event.job_ids else []
+    now = datetime.utcnow()
+    for job_id in job_ids:
+        job = scheduler.get_job(job_id.strip())
+        if job and job.next_run_time and job.next_run_time > now:
+            scheduler.remove_job(job_id)
+    _update_marathon_status(event_id, "cancelled", canceled=True)
+    api_cache.invalidate("schedule")
+    return True
 
 
 def schedule_stream_probe():

@@ -14,6 +14,8 @@ from app.models import (
     WebsiteContent,
     PodcastEpisode,
     DJAbsence,
+    HostedAudio,
+    MarathonEvent,
     db,
 )
 from app.utils import (
@@ -28,6 +30,7 @@ from app.utils import (
 from app.services.show_run_service import get_or_create_active_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
+from app.services import api_cache
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.music_search import (
     search_music,
@@ -513,8 +516,15 @@ def music_cue():
 @api_bp.route("/schedule")
 def schedule_api():
     tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
+    cached = api_cache.get("schedule")
+    if cached:
+        return jsonify(cached)
+
     shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
     now = datetime.utcnow()
+    marathons = MarathonEvent.query.filter(
+        MarathonEvent.end_time >= now, MarathonEvent.canceled_at.is_(None)
+    ).all()
     absences = DJAbsence.query.filter(
         DJAbsence.end_time >= now - timedelta(days=1),
         DJAbsence.status.in_(["approved", "pending"]),
@@ -543,8 +553,26 @@ def schedule_api():
                     "replacement": absence.replacement_name,
                     "dj": absence.dj_name,
                 } if absence else None,
+                "type": "show",
             })
-    return jsonify({"events": events, "timezone": tz})
+    for marathon in marathons:
+        day_label = marathon.start_time.strftime('%a')
+        events.append({
+            "title": marathon.name,
+            "day": day_label,
+            "start_time": marathon.start_time.strftime("%H:%M"),
+            "end_time": marathon.end_time.strftime("%H:%M"),
+            "start_date": marathon.start_time.isoformat(),
+            "end_date": marathon.end_time.isoformat(),
+            "timezone": tz,
+            "description": "Marathon recording window",
+            "genre": "Marathon",
+            "absence": None,
+            "type": "marathon",
+        })
+    payload = {"events": events, "timezone": tz}
+    api_cache.set("schedule", payload, ttl=300)
+    return jsonify(payload)
 
 
 @api_bp.route("/plugins/website/content")
@@ -574,6 +602,12 @@ def website_plugin_content():
             for p in podcasts
         ],
     })
+
+
+@api_bp.route("/plugins/audio/embed/<int:item_id>")
+def audio_embed(item_id: int):
+    item = HostedAudio.query.get_or_404(item_id)
+    return render_template("embed_audio.html", item=item)
 
 
 @api_bp.route("/weather/tempest")
