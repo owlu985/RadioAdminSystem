@@ -12,3 +12,5 @@ instance/
 test files/
 .idea/
 .gitignore
+.log
+ShowRecorder.log
