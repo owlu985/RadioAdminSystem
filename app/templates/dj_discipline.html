@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en" data-bs-theme="light">
+  <head>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <title>DJ Discipline</title>
+  </head>
+  <body>
+    {% include '_nav.html' %}
+    <div class="container my-4">
+      <h2 class="mb-3">Disciplinary Records</h2>
+      <p class="text-muted">Only management can view/add records. Use this to track warnings and resolutions.</p>
+      <form class="card mb-4" method="post">
+        <div class="card-body row g-3 align-items-end">
+          <div class="col-md-3">
+            <label class="form-label">DJ</label>
+            <select name="dj_id" class="form-select" required>
+              <option value="">Select DJ</option>
+              {% for dj in djs %}
+                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+              {% endfor %}
+            </select>
+          </div>
+          <div class="col-md-2">
+            <label class="form-label">Severity</label>
+            <select name="severity" class="form-select">
+              <option value="">Unspecified</option>
+              <option value="info">Info</option>
+              <option value="warning">Warning</option>
+              <option value="critical">Critical</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Notes</label>
+            <input type="text" class="form-control" name="notes" placeholder="Reason/details" required>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Action</label>
+            <input type="text" class="form-control" name="action_taken" placeholder="Follow-up or action">
+          </div>
+          <div class="col-md-1 form-check mt-4">
+            <input class="form-check-input" type="checkbox" name="resolved" id="resolved">
+            <label class="form-check-label" for="resolved">Resolved</label>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-primary">Save Record</button>
+          </div>
+        </div>
+      </form>
+
+      <div class="table-responsive">
+        <table class="table table-striped align-middle">
+          <thead>
+            <tr><th>DJ</th><th>Severity</th><th>Notes</th><th>Action</th><th>Status</th><th>When</th><th>By</th><th></th></tr>
+          </thead>
+          <tbody>
+            {% for rec in records %}
+              <tr>
+                <td>{{ rec.dj.first_name }} {{ rec.dj.last_name }}</td>
+                <td class="text-uppercase small">{{ rec.severity or 'n/a' }}</td>
+                <td>{{ rec.notes }}</td>
+                <td>{{ rec.action_taken or '' }}</td>
+                <td>{% if rec.resolved %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
+                <td>{{ rec.issued_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ rec.created_by or 'system' }}</td>
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm" role="group">
+                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="collapse" data-bs-target="#edit{{ rec.id }}">Edit</button>
+                    <form method="post" class="d-inline">
+                      <input type="hidden" name="action" value="delete">
+                      <input type="hidden" name="record_id" value="{{ rec.id }}">
+                      <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Delete this record?')">Delete</button>
+                    </form>
+                  </div>
+                  <div class="collapse mt-2" id="edit{{ rec.id }}">
+                    <form method="post" class="border rounded p-2 bg-light">
+                      <input type="hidden" name="action" value="update">
+                      <input type="hidden" name="record_id" value="{{ rec.id }}">
+                      <div class="row g-2 align-items-center">
+                        <div class="col-md-3">
+                          <select name="dj_id" class="form-select" required>
+                            {% for dj in djs %}
+                              <option value="{{ dj.id }}" {% if dj.id == rec.dj_id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
+                            {% endfor %}
+                          </select>
+                        </div>
+                        <div class="col-md-2">
+                          <select name="severity" class="form-select">
+                            <option value="" {% if not rec.severity %}selected{% endif %}>Unspecified</option>
+                            <option value="info" {% if rec.severity=='info' %}selected{% endif %}>Info</option>
+                            <option value="warning" {% if rec.severity=='warning' %}selected{% endif %}>Warning</option>
+                            <option value="critical" {% if rec.severity=='critical' %}selected{% endif %}>Critical</option>
+                          </select>
+                        </div>
+                        <div class="col-md-2"><input type="text" class="form-control" name="notes" value="{{ rec.notes }}" required></div>
+                        <div class="col-md-2"><input type="text" class="form-control" name="action_taken" value="{{ rec.action_taken or '' }}"></div>
+                        <div class="col-md-2 form-check ms-2">
+                          <input class="form-check-input" type="checkbox" name="resolved" id="resolved{{ rec.id }}" {% if rec.resolved %}checked{% endif %}>
+                          <label class="form-check-label" for="resolved{{ rec.id }}">Resolved</label>
+                        </div>
+                        <div class="col-md-1 text-end">
+                          <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                        </div>
+                      </div>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+    {% include '_footer.html' %}
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  </body>
+</html>
