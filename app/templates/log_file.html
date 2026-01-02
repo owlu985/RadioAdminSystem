@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>System Log</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+  <style>
+    .log-error { color: #dc3545; }
+    .log-warning { color: #d39e00; }
+    .log-info { color: inherit; }
+    pre { white-space: pre-wrap; font-family: var(--bs-font-monospace); margin: 0; }
+  </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <div>
+      <h2 class="mb-0">System Log</h2>
+      <div class="text-muted">Showing latest entries from {{ log_path }}</div>
+    </div>
+    <div class="d-flex gap-2">
+      <a class="btn btn-outline-secondary" href="{{ url_for('main.settings') }}">Back to Settings</a>
+      <a class="btn btn-outline-primary" href="{{ url_for('main.view_system_log') }}">Refresh</a>
+    </div>
+  </div>
+  {% if log_error %}
+    <div class="alert alert-danger">Unable to read log: {{ log_error }}</div>
+  {% endif %}
+  <div class="card">
+    <div class="card-body" style="max-height:70vh; overflow:auto;">
+      {% if log_entries %}
+        {% for entry in log_entries %}
+          <div class="log-{{ entry.level }}"><pre>{{ entry.text }}</pre></div>
+        {% endfor %}
+      {% else %}
+        <div class="text-muted">No log entries available.</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
