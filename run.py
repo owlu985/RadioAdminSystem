@@ -1,6 +1,7 @@
 import os
 
 from app import create_app
+import os
 
 
 def _env_flag(name: str, default: bool = False) -> bool:
