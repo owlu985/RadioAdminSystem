@@ -6,15 +6,17 @@
     <title>CUE Editor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .wave-container {height:160px; background:rgba(0,0,0,0.05); border-radius:6px; padding:10px; position:relative; overflow:hidden;}
-        .wave-bar {background:#0d6efd; display:inline-block; margin-right:1px; vertical-align:bottom; width:3px;}
-        .wave-bar.right {background:#6610f2;}
+        .wave-container {height:200px; background:rgba(0,0,0,0.05); border-radius:6px; padding:10px; position:relative; overflow-x:auto; overflow-y:hidden;}
+        .wave-inner {position:relative; height:100%; min-width:100%;}
         .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
         .marker-label {font-size:11px; background:rgba(0,0,0,0.75); color:#fff; padding:2px 4px; border-radius:4px; white-space:nowrap;}
         #markers {position:absolute; inset:0; pointer-events:none;}
         #markers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
         .zoom-row {display:flex; align-items:center; gap:8px;}
         .legend span {display:inline-block; padding:4px 6px; border-radius:4px; margin-right:6px; font-size:12px;}
+        .cue-btn {border-width:2px;}
+        .cue-btn.active {box-shadow:0 0 0 2px rgba(13,110,253,0.35);}
+        .control-buttons .btn {min-width:90px;}
     </style>
 </head>
 <body>
@@ -30,35 +32,48 @@
                 <span style="background:#0d6efd;color:#fff;">Left/Mono</span>
                 <span style="background:#6610f2;color:#fff;">Right</span>
             </div>
-            <label class="mb-0">Zoom <input type="range" min="1" max="4" value="1" id="zoom" style="vertical-align:middle"></label>
+            <label class="mb-0">Zoom <input type="range" min="1" max="6" value="1" id="zoom" style="vertical-align:middle"></label>
         </div>
         <div class="mt-2 position-relative wave-container" id="wave">
-            <canvas id="waveCanvas" width="1200" height="140" style="width:100%; height:140px;"></canvas>
-            <div id="needle" class="marker" style="left:0; background:#dc3545;"></div>
-            <div id="markers"></div>
+            <div id="waveInner" class="wave-inner">
+                <canvas id="waveCanvas" height="160" style="width:100%; height:160px;"></canvas>
+                <div id="needle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
+                <div id="markers"></div>
+            </div>
         </div>
     </div>
-    <form method="post" class="row g-3" id="cue-form">
-        {% set fields = {
-            'cue_in':'Cue In',
-            'intro':'Intro',
-            'hook_in':'Hook In',
-            'hook_out':'Hook Out',
-            'start_next':'Start Next',
-            'outro':'Outro',
-            'cue_out':'End/Cue Out',
-            'fade_in':'Fade In',
-            'fade_out':'Fade Out'
-        } %}
+
+    {% set fields = {
+        'cue_in':'Cue In',
+        'intro':'Intro',
+        'hook_in':'Hook In',
+        'hook_out':'Hook Out',
+        'start_next':'Start Next',
+        'outro':'Outro',
+        'cue_out':'End/Cue Out',
+        'fade_in':'Fade In',
+        'fade_out':'Fade Out'
+    } %}
+
+    <div class="mb-3 d-flex flex-wrap gap-2">
         {% for key,label in fields.items() %}
-        <div class="col-md-4">
-            <label class="form-label d-flex justify-content-between align-items-center">
-                <span>{{ label }} (s)</span>
-                <button type="button" class="btn btn-sm btn-outline-primary" onclick="setCue('{{ key }}')">Set</button>
-            </label>
-            <input type="number" step="0.01" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}" class="form-control" onchange="updateMarkers()">
-        </div>
+        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-{{ key }}" data-cue="{{ key }}" onclick="selectCue('{{ key }}')">
+            <span class="fw-semibold cue-swatch" data-cue="{{ key }}">■</span>
+            {{ label }} <span class="text-muted" id="time-{{ key }}"></span>
+        </button>
+        <input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}">
         {% endfor %}
+    </div>
+
+    <div class="mb-3 d-flex flex-wrap gap-2 control-buttons">
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(-STEP)">« Step</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="togglePlay()" id="playToggle">Play/Pause</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(STEP)">Step »</button>
+        <button type="button" class="btn btn-outline-primary" onclick="setCueValue()">Set</button>
+        <button type="button" class="btn btn-outline-danger" onclick="removeCue()">Remove</button>
+    </div>
+
+    <form method="post" class="row g-3" id="cue-form">
         <div class="col-12">
             <button class="btn btn-primary" type="submit">Save CUE</button>
             <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Back</a>
@@ -73,10 +88,12 @@
     const player = document.getElementById('player');
     const needle = document.getElementById('needle');
     const wave = document.getElementById('wave');
+    const waveInner = document.getElementById('waveInner');
     const markersLayer = document.getElementById('markers');
     const zoomControl = document.getElementById('zoom');
     const waveCanvas = document.getElementById('waveCanvas');
     const peaksData = {{ track.peaks|default({})|tojson }};
+    const fields = ['cue_in','intro','hook_in','hook_out','start_next','outro','cue_out','fade_in','fade_out'];
     const colorMap = {
         cue_in: '#0d6efd',
         intro: '#20c997',
@@ -88,16 +105,67 @@
         fade_in: '#198754',
         fade_out: '#ffc107'
     };
+    const STEP = 0.05;
+    let selectedCue = 'cue_in';
+    let baseWidth = 0;
+    let dragField = null;
+    let dragNeedle = false;
 
-    function setCue(field) {
+    function fmt(t) {
+        if (t === '' || t === null || t === undefined || isNaN(t)) return '';
+        const ms = Math.floor((t % 1) * 100);
+        const total = Math.floor(t);
+        const min = Math.floor(total/60).toString().padStart(2,'0');
+        const sec = (total % 60).toString().padStart(2,'0');
+        return `${min}:${sec}.${ms.toString().padStart(2,'0')}`;
+    }
+
+    function selectCue(key) {
+        selectedCue = key;
+        fields.forEach(f => {
+            const btn = document.getElementById(`btn-${f}`);
+            if (btn) btn.classList.toggle('active', f === key);
+        });
+        updateMarkers();
+    }
+
+    function paintSwatches() {
+        document.querySelectorAll('.cue-swatch').forEach(el => {
+            const key = el.dataset.cue;
+            if (key && colorMap[key]) {
+                el.style.color = colorMap[key];
+            }
+        });
+    }
+
+    function setCueValue() {
         if (!player || isNaN(player.currentTime)) return;
-        const input = document.getElementById(field);
+        const input = document.getElementById(selectedCue);
         input.value = player.currentTime.toFixed(2);
         updateMarkers();
     }
 
-    function drawWaveform(scale=1) {
+    function removeCue() {
+        const input = document.getElementById(selectedCue);
+        input.value = '';
+        updateMarkers();
+    }
+
+    function nudge(delta) {
+        if (!player || isNaN(player.currentTime)) return;
+        player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + delta));
+    }
+
+    function togglePlay() {
+        if (!player) return;
+        if (player.paused) player.play(); else player.pause();
+    }
+
+    function drawWaveform() {
         if (!waveCanvas || !peaksData) return;
+        baseWidth = wave.clientWidth || 1200;
+        waveCanvas.width = baseWidth;
+        waveInner.style.width = `${baseWidth}px`;
         const ctx = waveCanvas.getContext('2d');
         const width = waveCanvas.width;
         const height = waveCanvas.height;
@@ -111,24 +179,35 @@
             return;
         }
         const len = data.length;
-        const step = Math.max(1, Math.floor(len / (width/scale)));
+        const step = Math.max(1, Math.floor(len / width));
         const mid = height/2;
-        const gradient = ctx.createLinearGradient(0,0,width,0);
-        gradient.addColorStop(0,'#0d6efd');
-        gradient.addColorStop(1,'#6610f2');
-        ctx.fillStyle = gradient;
+        const leftGrad = ctx.createLinearGradient(0,0,width,0);
+        leftGrad.addColorStop(0,'#0d6efd');
+        leftGrad.addColorStop(1,'#0dcaf0');
+        const rightGrad = ctx.createLinearGradient(0,0,width,0);
+        rightGrad.addColorStop(0,'#6610f2');
+        rightGrad.addColorStop(1,'#d63384');
         for (let i=0,x=0;i<len;i+=step, x++) {
-            const p = data[i] || 0;
+            const p = parseFloat(data[i]) || 0;
             const h = Math.min(mid-4, Math.abs(p)*mid);
+            ctx.fillStyle = leftGrad;
             ctx.fillRect(x, mid-h, 1, h*2);
             if (right.length) {
-                const pr = right[i] || 0;
+                const pr = parseFloat(right[i]) || 0;
                 const hr = Math.min(mid-4, Math.abs(pr)*mid);
-                ctx.fillStyle = '#6610f2';
-                ctx.fillRect(x, mid-hr, 1, hr*2);
-                ctx.fillStyle = gradient;
+                ctx.fillStyle = rightGrad;
+                ctx.fillRect(x+1, mid-hr, 1, hr*2);
             }
         }
+    }
+
+    function applyZoom() {
+        const scale = parseFloat(zoomControl.value || '1');
+        const newWidth = baseWidth * scale;
+        waveCanvas.style.width = `${newWidth}px`;
+        waveInner.style.width = `${newWidth}px`;
+        markersLayer.style.width = `${newWidth}px`;
+        updateMarkers();
     }
 
     function updateNeedle() {
@@ -140,19 +219,23 @@
     function updateMarkers() {
         if (!player || !player.duration || !markersLayer) return;
         markersLayer.innerHTML = '';
-        const fields = ['cue_in','intro','hook_in','hook_out','start_next','outro','cue_out','fade_in','fade_out'];
         fields.forEach(f => {
             const val = parseFloat(document.getElementById(f)?.value || '');
+            const display = document.getElementById(`time-${f}`);
+            if (display) display.textContent = val ? `(${fmt(val)})` : '';
             if (!isNaN(val) && val >= 0 && val <= player.duration) {
                 const pct = (val / player.duration) * 100;
                 const marker = document.createElement('div');
                 marker.className = 'marker';
                 marker.style.left = pct + '%';
                 marker.style.background = colorMap[f] || '#0d6efd';
+                marker.style.pointerEvents = 'none';
 
                 const handle = document.createElement('div');
                 handle.className = 'handle';
                 handle.style.left = pct + '%';
+                handle.style.cursor = f === selectedCue ? 'ew-resize' : 'not-allowed';
+                handle.style.pointerEvents = f === selectedCue ? 'all' : 'none';
                 handle.addEventListener('pointerdown', (ev) => startDrag(ev, f));
 
                 const label = document.createElement('div');
@@ -165,30 +248,51 @@
                 markersLayer.appendChild(handle);
             }
         });
+        selectCue(selectedCue);
     }
 
-    let dragField = null;
     function startDrag(ev, field) {
+        if (field !== selectedCue) return;
         dragField = field;
+        ev.preventDefault();
         document.addEventListener('pointermove', onDrag);
         document.addEventListener('pointerup', endDrag);
     }
 
     function onDrag(ev) {
-        if (!dragField || !wave || !player || !player.duration) return;
-        const rect = wave.getBoundingClientRect();
+        if ((!dragField && !dragNeedle) || !waveInner || !player || !player.duration) return;
+        const rect = waveInner.getBoundingClientRect();
         const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
-        const seconds = (pct * player.duration);
-        const input = document.getElementById(dragField);
-        input.value = seconds.toFixed(2);
-        updateMarkers();
+        const seconds = pct * player.duration;
+        if (dragNeedle) {
+            player.currentTime = seconds;
+        } else if (dragField) {
+            const input = document.getElementById(dragField);
+            input.value = seconds.toFixed(2);
+            updateMarkers();
+        }
     }
 
     function endDrag() {
         dragField = null;
+        dragNeedle = false;
         document.removeEventListener('pointermove', onDrag);
         document.removeEventListener('pointerup', endDrag);
     }
+
+    wave.addEventListener('click', (ev) => {
+        if (!player || !player.duration) return;
+        const rect = waveInner.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        player.currentTime = pct * player.duration;
+    });
+
+    needle.addEventListener('pointerdown', (ev) => {
+        dragNeedle = true;
+        ev.preventDefault();
+        document.addEventListener('pointermove', onDrag);
+        document.addEventListener('pointerup', endDrag);
+    });
 
     if (player) {
         player.addEventListener('timeupdate', updateNeedle);
@@ -198,13 +302,17 @@
         });
     }
     if (zoomControl && waveCanvas) {
-        zoomControl.addEventListener('input', () => {
-            const scale = parseFloat(zoomControl.value || '1');
-            waveCanvas.style.transform = `scaleX(${scale})`;
-            waveCanvas.style.transformOrigin = 'left center';
-        });
+        zoomControl.addEventListener('input', applyZoom);
     }
+    window.addEventListener('resize', () => {
+        drawWaveform();
+        applyZoom();
+    });
+
+    selectCue(selectedCue);
+    paintSwatches();
     drawWaveform();
+    applyZoom();
     updateMarkers();
 </script>
 </body>
