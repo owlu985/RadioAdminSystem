@@ -1,11 +1,33 @@
 import os
 import shutil
 import subprocess
-from typing import Tuple
+from typing import Iterable, Tuple
 
 
 def ensure_dir(path: str) -> None:
     os.makedirs(os.path.dirname(path), exist_ok=True)
+
+
+def _resolve_openssl_bin(openssl_bin: str | None) -> str:
+    """Find an OpenSSL executable, preferring explicit overrides then common Windows paths."""
+
+    candidates: Iterable[str | None] = (
+        openssl_bin,
+        shutil.which("openssl"),
+        # Common Windows locations
+        r"C:\\Program Files\\Git\\usr\\bin\\openssl.exe",
+        r"C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe",
+        r"C:\\Program Files (x86)\\OpenSSL-Win32\\bin\\openssl.exe",
+    )
+
+    for candidate in candidates:
+        if candidate and os.path.exists(candidate):
+            return candidate
+
+    raise FileNotFoundError(
+        "OpenSSL not found. Install OpenSSL (e.g., via Git for Windows) or set DEV_SSL_OPENSSL_BIN / RAMS_DEV_SSL_OPENSSL to the openssl executable, "
+        "such as C:\\Program Files\\Git\\usr\\bin\\openssl.exe."
+    )
 
 
 def ensure_dev_ssl(
@@ -33,11 +55,7 @@ def ensure_dev_ssl(
     ensure_dir(cert_path)
     ensure_dir(key_path)
 
-    openssl_exec = openssl_bin or shutil.which("openssl")
-    if not openssl_exec:
-        raise FileNotFoundError(
-            "OpenSSL not found. Install OpenSSL or set DEV_SSL_OPENSSL_BIN / RAMS_DEV_SSL_OPENSSL to the openssl executable."
-        )
+    openssl_exec = _resolve_openssl_bin(openssl_bin)
 
     cmd = [
         openssl_exec,

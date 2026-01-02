@@ -17,8 +17,13 @@ These steps enable HTTPS locally (useful for testing WebRTC flows like Remote Li
 
 If the cert/key don’t exist, RAMS will call `openssl` to generate a 2048-bit, 1-year self-signed cert for `CN=localhost` under `instance/ssl/` by default.
 
-If `openssl` is not on your PATH (common on Windows), either install it or point RAMS to the executable:
+If `openssl` is not on your PATH (common on Windows), either install it or point RAMS to the executable. Common locations:
+
 ```bash
+RAMS_DEV_SSL_OPENSSL="C:/Program Files/Git/usr/bin/openssl.exe" \
+RAMS_DEV_SSL=1 python run.py
+
+# or, if you installed a standalone OpenSSL build
 RAMS_DEV_SSL_OPENSSL="C:/Program Files/OpenSSL-Win64/bin/openssl.exe" \
 RAMS_DEV_SSL=1 python run.py
 ```
@@ -37,7 +42,10 @@ PowerShell example:
 $env:RAMS_DEV_SSL = "1"
 # optional for LAN testing
 # $env:RAMS_HOST = "0.0.0.0"
-# add this if OpenSSL is not on PATH
+# add one of these if OpenSSL is not on PATH
+# $env:RAMS_DEV_SSL_OPENSSL = "C:\\Program Files\\Git\\usr\\bin\\openssl.exe"
 # $env:RAMS_DEV_SSL_OPENSSL = "C:\\Program Files\\OpenSSL-Win64\\bin\\openssl.exe"
 python run.py
 ```
+
+If you see **“OpenSSL not found”** at startup, set `RAMS_DEV_SSL_OPENSSL` to the path of `openssl.exe` (Git for Windows ships one under `C:\Program Files\Git\usr\bin\openssl.exe`).
