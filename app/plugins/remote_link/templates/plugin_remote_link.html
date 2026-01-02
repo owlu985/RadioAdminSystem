@@ -15,7 +15,10 @@
         <h2 class="mb-0">Remote Studio Link</h2>
         <div class="text-muted">Low-latency send/return with push-to-mute</div>
       </div>
-      <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.plugins_home') }}">Back to Plugins</a>
+      <div class="d-flex gap-2">
+        <a class="btn btn-outline-primary btn-sm" href="{{ url_for('remote_link_plugin.join') }}">Join Session</a>
+        <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.plugins_home') }}">Back to Plugins</a>
+      </div>
     </div>
 
     <form class="card card-body mb-4" method="post">
