@@ -19,9 +19,9 @@
     {% endif %}
     {% endwith %}
 
-    <h2 class="mb-3">Upload Newscast</h2>
+    <h2 class="mb-3">Upload Newscast & Scripts</h2>
     <form method="post" enctype="multipart/form-data">
-        <div class="row mb-3">
+        <div class="row g-3 mb-3">
             <div class="col-md-4">
                 <label class="form-label">Date this newscast airs</label>
                 <input type="date" class="form-control" name="date" value="{{ today }}" required>
@@ -36,13 +36,41 @@
             </div>
             <div class="col-md-4">
                 <label class="form-label">Audio file (mp3)</label>
-                <input type="file" class="form-control" name="file" accept=".mp3" required>
+                <input type="file" class="form-control" name="file" accept=".mp3">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Script (txt/pdf/docx)</label>
+                <input type="file" class="form-control" name="script_file" accept=".txt,.pdf,.doc,.docx">
             </div>
         </div>
         <button type="submit" class="btn btn-primary">Upload</button>
         <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+        <div class="form-text mt-2">Files are stored under NAS/news/&lt;type&gt;/ and copied to the target name when their day arrives. Scripts live in a scripts subfolder.</div>
     </form>
+
+    {% if queue %}
+    <div class="card mt-4">
+        <div class="card-header">Queued & stored casts</div>
+        <div class="card-body table-responsive">
+            <table class="table table-sm align-middle mb-0">
+                <thead>
+                    <tr><th>Type</th><th>Date</th><th>Audio</th><th>Scripts</th></tr>
+                </thead>
+                <tbody>
+                {% for item in queue %}
+                    <tr>
+                        <td>{{ item.label }}</td>
+                        <td>{{ item.date }}</td>
+                        <td>{{ 'Yes' if item.audio else 'No' }}</td>
+                        <td>{% if item.scripts %}{{ item.scripts|length }}{% else %}0{% endif %}</td>
+                    </tr>
+                {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {% endif %}
 </div>
-</body>
 {% include '_footer.html' %}
+</body>
 </html>

@@ -18,6 +18,43 @@ def _news_storage_dir(news_type_key: str):
     return path
 
 
+def _news_scripts_dir(news_type_key: str):
+    base = _news_storage_dir(news_type_key)
+    path = os.path.join(base, "scripts")
+    os.makedirs(path, exist_ok=True)
+    return path
+
+
+def _list_news_queue(news_types):
+    queue = []
+    for nt in news_types:
+        storage_dir = _news_storage_dir(nt["key"])
+        base = nt["filename"].replace(".mp3", "")
+        entries = []
+        for fname in os.listdir(storage_dir):
+            if fname.startswith(base + "_") and fname.endswith(".mp3"):
+                try:
+                    date_str = fname.replace(base + "_", "").replace(".mp3", "")
+                    dt = datetime.strptime(date_str, "%Y-%m-%d").date()
+                except ValueError:
+                    continue
+                script_dir = _news_scripts_dir(nt["key"])
+                scripts = [f for f in os.listdir(script_dir) if f.startswith(base + "_" + date_str)]
+                entries.append(
+                    {
+                        "date": dt,
+                        "audio": os.path.join(storage_dir, fname),
+                        "scripts": [os.path.join(script_dir, s) for s in scripts],
+                        "key": nt["key"],
+                        "label": nt.get("label", nt["key"]),
+                    }
+                )
+        entries.sort(key=lambda e: e["date"])
+        queue.extend(entries)
+    queue.sort(key=lambda e: (e["date"], e["label"]))
+    return queue
+
+
 def activate_news_for_date(target_date: date, news_key: str | None = None) -> bool:
     """
     Copy <base>_<date>.mp3 into its configured destination for RadioDJ consumption.
@@ -78,6 +115,7 @@ def upload_news():
 
     if request.method == "POST":
         file = request.files.get("file")
+        script_file = request.files.get("script_file")
         target_date_str = request.form.get("date") or date.today().isoformat()
         news_key = request.form.get("news_type") or (news_types[0]["key"] if news_types else None)
         nt = get_news_type(news_key) if news_key else None
@@ -90,22 +128,29 @@ def upload_news():
             flash("Invalid date.", "danger")
             return redirect(url_for("news.upload_news"))
 
-        if not file or file.filename == "":
-            flash("Please select a file to upload.", "danger")
+        if not file and not script_file:
+            flash("Please select at least one file to upload.", "danger")
             return redirect(url_for("news.upload_news"))
 
-        storage_dir = _news_storage_dir(nt["key"])
         base = nt["filename"].replace(".mp3", "")
-        filename = f"{base}_{target_date.isoformat()}.mp3"
-        path = os.path.join(storage_dir, secure_filename(filename))
-        file.save(path)
-        flash(f"Uploaded {nt['label']} cast for {target_date}.", "success")
-        logger.info("Uploaded %s file to %s", nt["key"], path)
+        if file and file.filename:
+            storage_dir = _news_storage_dir(nt["key"])
+            filename = f"{base}_{target_date.isoformat()}.mp3"
+            path = os.path.join(storage_dir, secure_filename(filename))
+            file.save(path)
+            flash(f"Uploaded {nt['label']} cast for {target_date}.", "success")
+            logger.info("Uploaded %s file to %s", nt["key"], path)
+            if target_date == date.today():
+                activate_news_for_date(target_date, news_key=nt["key"])
 
-        # If it's for today, immediately activate.
-        if target_date == date.today():
-            activate_news_for_date(target_date, news_key=nt["key"])
+        if script_file and script_file.filename:
+            scripts_dir = _news_scripts_dir(nt["key"])
+            script_name = f"{base}_{target_date.isoformat()}{os.path.splitext(script_file.filename)[1] or '.txt'}"
+            script_path = os.path.join(scripts_dir, secure_filename(script_name))
+            script_file.save(script_path)
+            flash(f"Uploaded script for {nt['label']} ({target_date}).", "success")
 
         return redirect(url_for("news.upload_news"))
 
-    return render_template("news_upload.html", today=date.today(), news_types=news_types)
+    queue = _list_news_queue(news_types)
+    return render_template("news_upload.html", today=date.today(), news_types=news_types, queue=queue)

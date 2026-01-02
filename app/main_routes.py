@@ -653,16 +653,24 @@ def dj_absence_submit():
 @main_bp.route("/absences", methods=["GET", "POST"])
 @admin_required
 def manage_absences():
+        djs = DJ.query.order_by(DJ.first_name.asc().nulls_last(), DJ.last_name.asc().nulls_last()).all()
+
         if request.method == "POST":
                 abs_id = request.form.get("absence_id", type=int)
-                action = request.form.get("action", "approve")
+                status_choice = request.form.get("status") or "approved"
+                replacement_id = request.form.get("replacement_id", type=int)
                 absence = DJAbsence.query.get_or_404(abs_id)
-                if action == "approve":
-                        absence.status = "approved"
-                elif action == "reject":
-                        absence.status = "rejected"
-                elif action == "resolve":
-                        absence.status = "resolved"
+
+                if status_choice in {"pending", "approved", "rejected", "resolved"}:
+                        absence.status = status_choice
+
+                if replacement_id:
+                        sub = DJ.query.get(replacement_id)
+                        if sub:
+                                absence.replacement_name = f"{sub.first_name or ''} {sub.last_name or ''}".strip()
+                elif request.form.get("replacement_clear"):
+                        absence.replacement_name = None
+
                 db.session.commit()
                 flash("Absence updated.", "success")
                 return redirect(url_for("main.manage_absences"))
@@ -681,7 +689,9 @@ def manage_absences():
                 "rejected": DJAbsence.query.filter_by(status="rejected").count(),
                 "resolved": DJAbsence.query.filter_by(status="resolved").count(),
         }
-        return render_template("absence_manage.html", absences=absences, status_filter=status_filter, counts=counts)
+        return render_template(
+                "absence_manage.html", absences=absences, status_filter=status_filter, counts=counts, djs=djs
+        )
 
 
 @main_bp.route("/music/search")
@@ -771,7 +781,11 @@ def music_edit_page():
             audio = search_music.__globals__["mutagen"].File(path, easy=True)
             if not audio:
                 return render_template("music_edit.html", track=track, error="Unsupported file format.")
-            key_map = {"year": "date"}
+            key_map = {
+                "year": "date",
+                "track": "tracknumber",
+                "disc": "discnumber",
+            }
             for field in ["title","artist","album","composer","isrc","year","track","disc","copyright"]:
                 tag_key = key_map.get(field, field)
                 val = request.form.get(field) or None

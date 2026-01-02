@@ -391,33 +391,37 @@ def create_app(config_class=Config):
             if not os.path.exists(news_config_path):
                 os.makedirs(os.path.dirname(news_config_path), exist_ok=True)
                 with open(news_config_path, "w") as f:
-                    json.dump([
-                        {
-                            "key": "news",
-                            "label": "News",
-                            "filename": "wlmc_news.mp3",
-                            "frequency": "daily",
-                            "metadata": {
-                                "artist": "WLMC News",
-                                "album": "WLMC News",
-                                "title": "WLMC News {date}",
-                                "date_format": "%Y-%m-%d",
+                    json.dump(
+                        [
+                            {
+                                "key": "news",
+                                "label": "News",
+                                "filename": "wlmc_news.mp3",
+                                "frequency": "daily",
+                                "metadata": {
+                                    "artist": "WLMC Radio",
+                                    "album": "WLMC News",
+                                    "title_template": "WLMC NEWS {date}",
+                                    "date_format": "%m-%d-%Y",
+                                },
                             },
-                        },
-                        {
-                            "key": "community_calendar",
-                            "label": "Community Calendar",
-                            "filename": "wlmc_comm_calendar.mp3",
-                            "frequency": "weekly",
-                            "rotation_day": 0,
-                            "metadata": {
-                                "artist": "Community Calendar",
-                                "album": "Community Calendar",
-                                "title": "Community Calendar {date}",
-                                "date_format": "%Y-%m-%d",
+                            {
+                                "key": "community_calendar",
+                                "label": "Community Calendar",
+                                "filename": "wlmc_comm_calendar.mp3",
+                                "frequency": "weekly",
+                                "rotation_day": 0,
+                                "metadata": {
+                                    "artist": "WLMC Radio",
+                                    "album": "WLMC Community Calendar",
+                                    "title_template": "WLMC COMM CAL {date}",
+                                    "date_format": "%m-%d-%Y",
+                                },
                             },
-                        },
-                    ], f, indent=2)
+                        ],
+                        f,
+                        indent=2,
+                    )
 
             # Ensure social upload directory exists for uploaded post images
             os.makedirs(app.config.get("SOCIAL_UPLOAD_DIR", os.path.join(app.instance_path, "social_uploads")), exist_ok=True)

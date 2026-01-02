@@ -30,7 +30,7 @@
             {% endfor %}
         </div>
     </div>
-    <table class="table table-striped">
+    <table class="table table-striped align-middle">
         <thead>
         <tr>
             <th>DJ</th><th>Show</th><th>Start</th><th>End</th><th>Replacement</th><th>Status</th><th>Notes</th><th>Actions</th>
@@ -47,11 +47,30 @@
                 <td>{{ a.status }}</td>
                 <td>{{ a.notes or '' }}</td>
                 <td>
-                    <form method="post" class="d-inline">
+                    <form method="post" class="row g-2 align-items-center">
                         <input type="hidden" name="absence_id" value="{{ a.id }}">
-                        <button class="btn btn-sm btn-success" name="action" value="approve">Approve</button>
-                        <button class="btn btn-sm btn-warning" name="action" value="resolve">Resolve</button>
-                        <button class="btn btn-sm btn-danger" name="action" value="reject">Reject</button>
+                        <div class="col-lg-5 col-md-6">
+                            <select name="status" class="form-select form-select-sm">
+                                {% for key,label in [('pending','Pending'),('approved','Approved'),('rejected','Rejected'),('resolved','Resolved')] %}
+                                    <option value="{{ key }}" {% if a.status==key %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-5 col-md-6">
+                            <div class="input-group input-group-sm">
+                                <select name="replacement_id" class="form-select form-select-sm">
+                                    <option value="">-- Substitute --</option>
+                                    {% for dj in djs %}
+                                        {% set dj_name = (dj.first_name ~ ' ' ~ dj.last_name).strip() %}
+                                        <option value="{{ dj.id }}" {% if a.replacement_name and a.replacement_name.strip()==dj_name %}selected{% endif %}>{{ dj_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-outline-secondary" type="submit" name="replacement_clear" value="1">Clear</button>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-md-12 text-end">
+                            <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                        </div>
                     </form>
                 </td>
             </tr>

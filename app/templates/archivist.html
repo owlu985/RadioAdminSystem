@@ -43,6 +43,9 @@
           </form>
           <div class="form-text">Stored temporarily; cleared after analysis, tab close, or ~15 minutes.</div>
           <div id="upload-status" class="small text-muted mt-2"></div>
+          <div class="progress mt-2 d-none" id="rip-progress">
+            <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:25%">Working…</div>
+          </div>
           <div class="row mt-2 g-2">
             <div class="col-4">
               <label class="form-label">Silence dB</label>
@@ -80,6 +83,7 @@
           <select id="mb-releases" class="form-select mb-2" onchange="renderMBTracks()">
             <option value="">Select a release variant…</option>
           </select>
+          <div class="small text-muted" id="mb-status"></div>
           <div id="mb-tracks" class="small" style="max-height:180px; overflow:auto"></div>
         </div>
       </div>
@@ -149,10 +153,12 @@ async function uploadRip(evt) {
   evt.preventDefault();
   const fileInput = document.getElementById('rip-file');
   const statusEl = document.getElementById('upload-status');
+  const bar = document.getElementById('rip-progress');
   if (!fileInput.files.length) return;
   const form = new FormData();
   form.append('rip_file', fileInput.files[0]);
   statusEl.textContent = 'Uploading…';
+  bar?.classList.remove('d-none');
   const res = await fetch('/api/archivist/album-rip/upload', { method: 'POST', body: form });
   const data = await res.json();
   if (data.status === 'ok') {
@@ -160,12 +166,17 @@ async function uploadRip(evt) {
   } else {
     statusEl.textContent = data.message || 'Upload failed';
   }
+  bar?.classList.add('d-none');
 }
 
 async function analyzeRip() {
+  const statusEl = document.getElementById('upload-status');
+  const bar = document.getElementById('rip-progress');
   const silence_thresh_db = parseInt(document.getElementById('silence-thresh').value || '-38');
   const min_gap_ms = parseInt(document.getElementById('gap-ms').value || '1200');
   const min_track_ms = parseInt(document.getElementById('track-ms').value || '60000');
+  statusEl.textContent = 'Analyzing…';
+  bar?.classList.remove('d-none');
   const res = await fetch('/api/archivist/album-rip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -175,9 +186,14 @@ async function analyzeRip() {
   const target = document.getElementById('rip-results');
   if (data.status !== 'ok') {
     target.innerText = data.message || 'Analysis unavailable (check pydub/ffmpeg or upload a file).';
+    statusEl.textContent = 'Analysis failed.';
+    bar?.classList.add('d-none');
     return;
   }
-  target.innerText = JSON.stringify(data, null, 2);
+  const lines = data.segments?.map((s, idx) => `Track ${idx+1}: ${s.start_ms}–${s.end_ms} ms`).join('\n') || 'No segments detected.';
+  target.innerText = lines;
+  statusEl.textContent = `Duration ${data.duration_ms} ms`;
+  bar?.classList.add('d-none');
 }
 
 async function cleanupRip() {
@@ -193,7 +209,9 @@ window.addEventListener('beforeunload', cleanupRip);
 async function lookupMB() {
   const title = document.getElementById('mb-title').value.trim();
   const artist = document.getElementById('mb-artist').value.trim();
+  const status = document.getElementById('mb-status');
   if (!title && !artist) return;
+  status.textContent = 'Searching…';
   const res = await fetch(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
   const data = await res.json();
   const select = document.getElementById('mb-releases');
@@ -208,6 +226,7 @@ async function lookupMB() {
       select.appendChild(opt);
     });
   });
+  status.textContent = data.length ? `${data.length} release set(s) found.` : 'No results.';
 }
 
 function renderMBTracks() {
