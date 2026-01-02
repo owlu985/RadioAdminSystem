@@ -144,6 +144,7 @@ class Config:
     DEV_SSL_ENABLED = False
     DEV_SSL_CERT_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "ssl", "rams_dev_cert.pem")
     DEV_SSL_KEY_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "ssl", "rams_dev_key.pem")
+    DEV_SSL_OPENSSL_BIN = None  # Optional override to the openssl executable
 
     # OAuth
     OAUTH_CLIENT_ID = None
