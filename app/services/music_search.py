@@ -252,7 +252,14 @@ def _read_tags(path: str) -> Dict:
         return data
 
 
-def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[List[float]]]:
+def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[float], Optional[Dict]]:
+    """Return duration/peak/rms plus mono+stereo-friendly peaks.
+
+    The waveform preview now returns a dict that can contain mono-only data
+    (``{"mono": [...]}``) or stereo channels (``{"left": [...], "right": [...], "mono": [...]}``).
+    Existing callers that stored a flat list will continue to work because we
+    keep the mono key and front-end code gracefully handles legacy list data.
+    """
     if not AudioSegment:
         return None, None, None, None
     try:
@@ -261,19 +268,34 @@ def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[
         rms_db = audio.rms if hasattr(audio, "rms") else None
         peak_db = audio.max_dBFS if hasattr(audio, "max_dBFS") else None
         samples = audio.get_array_of_samples()
+        channels = audio.channels or 1
         if not samples:
             return duration_seconds, peak_db, rms_db, None
-        # downsample to ~120 points for waveform preview
-        step = max(1, int(len(samples) / 120))
-        peaks = []
-        max_val = max(abs(int(s)) for s in samples) or 1
-        for i in range(0, len(samples), step):
-            window = samples[i:i + step]
-            if not window:
-                continue
-            local_peak = max(abs(int(s)) for s in window) / max_val
-            peaks.append(round(local_peak, 4))
-        return duration_seconds, peak_db, rms_db, peaks
+
+        def _peaks_for_channel(channel_samples: List[int]) -> List[float]:
+            step = max(1, int(len(channel_samples) / 180))
+            peaks_local: List[float] = []
+            max_val = max(abs(int(s)) for s in channel_samples) or 1
+            for i in range(0, len(channel_samples), step):
+                window = channel_samples[i : i + step]
+                if not window:
+                    continue
+                local_peak = max(abs(int(s)) for s in window) / max_val
+                peaks_local.append(round(local_peak, 4))
+            return peaks_local
+
+        peaks_payload: Dict[str, List[float]] = {}
+        if channels >= 2:
+            left = samples[0::channels]
+            right = samples[1::channels]
+            peaks_payload["left"] = _peaks_for_channel(left)
+            peaks_payload["right"] = _peaks_for_channel(right)
+            # mono mix for compatibility/needle math
+            mono_mix = [int((l + r) / 2) for l, r in zip(left, right)]
+            peaks_payload["mono"] = _peaks_for_channel(mono_mix)
+        else:
+            peaks_payload["mono"] = _peaks_for_channel(list(samples))
+        return duration_seconds, peak_db, rms_db, peaks_payload
     except Exception:
         return None, None, None, None
 
@@ -384,10 +406,14 @@ def lookup_musicbrainz(
 
         release_title = None
         release_date = None
+        release_format = None
         releases = rec.get("releases") or []
         if releases:
             release_title = releases[0].get("title")
             release_date = releases[0].get("date") or releases[0].get("first-release-date")
+            media = releases[0].get("media") or releases[0].get("mediums") or []
+            if media:
+                release_format = media[0].get("format")
 
         year = None
         if release_date:
@@ -403,6 +429,7 @@ def lookup_musicbrainz(
             "year": year,
             "isrc": isrc,
             "musicbrainz_id": rec.get("id"),
+            "format": release_format,
         }
 
         if include_releases:
@@ -594,6 +621,108 @@ def harvest_cover_art(path: str, tags: Optional[Dict] = None) -> Dict:
             pass
 
     return {"status": "ok", "art_path": dest}
+
+
+def cover_art_candidates(path: str, tags: Optional[Dict] = None, limit: int = 6) -> Dict:
+    """Return multiple cover-art options (high-res first) from public sources."""
+    tags = tags or _read_tags(path)
+    title = tags.get("title") or os.path.splitext(os.path.basename(path))[0]
+    artist = tags.get("artist") or ""
+    query = f"{title} {artist}".strip()
+    if not query:
+        return {"status": "error", "message": "no_query"}
+
+    options: List[Dict] = []
+    # iTunes search results
+    try:
+        resp = requests.get(
+            "https://itunes.apple.com/search",
+            params={"term": query, "media": "music", "limit": limit},
+            timeout=8,
+        )
+        resp.raise_for_status()
+        payload = resp.json() or {}
+        for item in payload.get("results", [])[:limit]:
+            art_url = item.get("artworkUrl100") or item.get("artworkUrl60")
+            if not art_url:
+                continue
+            # upgrade to 1200 where available
+            art_url = art_url.replace("100x100", "1200x1200")
+            options.append(
+                {
+                    "source": "itunes",
+                    "label": item.get("collectionName") or item.get("trackName") or "iTunes",
+                    "url": art_url,
+                    "resolution": "1200x1200",
+                }
+            )
+    except Exception:
+        pass
+
+    # CoverArtArchive if we have a MusicBrainz release id
+    mbid = tags.get("musicbrainz_albumid") or tags.get("musicbrainz_releasegroupid")
+    if mbid:
+        try:
+            resp = requests.get(f"https://coverartarchive.org/release/{mbid}", timeout=8)
+            if resp.status_code == 404:
+                resp = requests.get(f"https://coverartarchive.org/release-group/{mbid}", timeout=8)
+            resp.raise_for_status()
+            payload = resp.json() or {}
+            images = payload.get("images") or []
+            for img in images:
+                if not img.get("image"):
+                    continue
+                options.append(
+                    {
+                        "source": "coverartarchive",
+                        "label": img.get("comment") or img.get("types", ["Front"])[0],
+                        "url": img.get("image"),
+                        "resolution": img.get("thumbnails", {}).get("large") and "large" or "full",
+                    }
+                )
+        except Exception:
+            pass
+
+    if not options:
+        return {"status": "error", "message": "no_candidates"}
+    return {"status": "ok", "options": options}
+
+
+def enrich_metadata_external(tags: Dict) -> Dict:
+    """Fetch genre/mood/BPM/key suggestions from open services (AudioDB/AcoustID optional)."""
+    artist = tags.get("artist") or ""
+    title = tags.get("title") or ""
+    suggestions: Dict[str, Optional[str]] = {}
+
+    # AudioDB track lookup (open, no key required for basic fields)
+    if artist and title:
+        try:
+            resp = requests.get(
+                "https://theaudiodb.com/api/v1/json/2/searchtrack.php",
+                params={"s": artist, "t": title},
+                timeout=8,
+            )
+            resp.raise_for_status()
+            payload = resp.json() or {}
+            tracks = payload.get("track") or []
+            if tracks:
+                t = tracks[0]
+                suggestions["genre"] = t.get("strGenre")
+                suggestions["mood"] = t.get("strMood")
+                suggestions["bpm"] = t.get("intTempo")
+                suggestions["key"] = t.get("strMusicVidDirector") or t.get("strStyle")
+        except Exception:
+            pass
+
+    # Placeholder for AcoustID / other services; only used if key configured
+    acoustid_key = current_app.config.get("ACOUSTID_API_KEY")
+    if acoustid_key and tags.get("path"):
+        # For simplicity, just flag that enrichment is available; full fingerprinting is heavier.
+        suggestions.setdefault("note", "AcoustID enrichment available when fingerprinting is enabled")
+
+    if not suggestions:
+        return {"status": "error", "message": "no_suggestions"}
+    return {"status": "ok", "suggestions": suggestions}
 
 
 def queues_snapshot():

@@ -4,6 +4,7 @@ from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template
 import os
 import shutil
+import json
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -44,6 +45,8 @@ from app.services.music_search import (
     find_duplicates_and_quality,
     lookup_musicbrainz,
     harvest_cover_art,
+    cover_art_candidates,
+    enrich_metadata_external,
 )
 from app.services.archivist_db import (
     lookup_album,
@@ -434,7 +437,29 @@ def music_cover_art():
     path = payload.get("path")
     if not path:
         return jsonify({"status": "error", "message": "path required"}), 400
-    result = harvest_cover_art(path, get_track(path))
+    if payload.get("art_url"):
+        # Download explicit selection
+        try:
+            resp = requests.get(payload["art_url"], timeout=10)
+            resp.raise_for_status()
+            dest = os.path.splitext(path)[0] + ".jpg"
+            with open(dest, "wb") as fh:
+                fh.write(resp.content)
+            result = {"status": "ok", "art_path": dest}
+        except Exception as exc:  # noqa: BLE001
+            result = {"status": "error", "message": str(exc)}
+    else:
+        result = harvest_cover_art(path, get_track(path))
+    code = 200 if result.get("status") == "ok" else 400
+    return jsonify(result), code
+
+
+@api_bp.route("/music/cover-art/options")
+def music_cover_art_options():
+    path = request.args.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    result = cover_art_candidates(path, get_track(path))
     code = 200 if result.get("status") == "ok" else 400
     return jsonify(result), code
 
@@ -448,6 +473,17 @@ def music_musicbrainz():
         return jsonify({"status": "error", "message": "title_or_artist_required"}), 400
     results = lookup_musicbrainz(title=title or None, artist=artist or None, limit=limit)
     return jsonify({"status": "ok", "results": results})
+
+
+@api_bp.route("/music/enrich")
+def music_enrich():
+    path = request.args.get("path")
+    tags = get_track(path) if path else {}
+    if not tags:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    result = enrich_metadata_external(tags)
+    code = 200 if result.get("status") == "ok" else 400
+    return jsonify(result), code
 
 
 @api_bp.route("/archivist/musicbrainz-releases")
@@ -483,23 +519,42 @@ def music_bulk_update():
 def psa_library():
     root = _psa_root()
     entries = []
-    for fname in sorted(os.listdir(root)):
-        if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
-            continue
-        duration = None
-        full = os.path.join(root, fname)
-        try:
-            import mutagen  # type: ignore
-            audio = mutagen.File(full)
-            if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
-                duration = round(audio.info.length, 1)
-        except Exception:
+
+    def _meta_for(path: str) -> dict:
+        meta_path = os.path.splitext(path)[0] + ".json"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, "r", encoding="utf-8") as fh:
+                    return json.load(fh)
+            except Exception:
+                return {}
+        return {}
+
+    for base, dirs, files in os.walk(root):
+        category = os.path.relpath(base, root)
+        if category == ".":
+            category = "PSA"
+        for fname in sorted(files):
+            if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
+                continue
             duration = None
-        entries.append({
-            "name": fname,
-            "url": url_for("main.psa_file", filename=fname),
-            "duration": duration,
-        })
+            full = os.path.join(base, fname)
+            try:
+                import mutagen  # type: ignore
+                audio = mutagen.File(full)
+                if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
+                    duration = round(audio.info.length, 2)
+            except Exception:
+                duration = None
+            meta = _meta_for(full)
+            entries.append({
+                "name": fname,
+                "url": url_for("main.psa_file", filename=os.path.relpath(full, root)),
+                "duration": duration,
+                "category": category.replace(os.sep, "/"),
+                "loop": bool(meta.get("loop")),
+                "cues": {k: meta.get(k) for k in ["cue_in", "cue_out", "intro", "outro"] if meta.get(k) is not None},
+            })
     return jsonify(entries)
 
 

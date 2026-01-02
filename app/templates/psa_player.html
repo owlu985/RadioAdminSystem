@@ -25,6 +25,7 @@
                     <span>Available PSAs</span>
                     <div class="d-flex gap-2 align-items-center">
                         <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
                         <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
                     </div>
                 </div>
@@ -35,12 +36,16 @@
         </div>
         <div class="col-lg-6">
             <div class="card h-100">
-                <div class="card-header">Queue</div>
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Queue</span>
+                    <div class="text-muted small">Timer: <span id="timer">00:00.00</span></div>
+                </div>
                 <div class="card-body">
                     <audio id="psaAudio" controls class="w-100 mb-2"></audio>
                     <div class="d-flex gap-2 mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
                     </div>
                     <ol class="mb-0" id="queueList"></ol>
                 </div>
@@ -54,27 +59,45 @@
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
     const audioEl = document.getElementById('psaAudio');
+    const timerEl = document.getElementById('timer');
+    const categoryFilter = document.getElementById('categoryFilter');
     const queue = [];
+    let fadeTimer = null;
+
+    function renderCategories() {
+        const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
+        categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
 
     function renderLibrary(filter = '') {
         psaList.innerHTML = '';
         const term = filter.toLowerCase();
-        library.filter(item => item.name.toLowerCase().includes(term)).forEach(item => {
+        const cat = categoryFilter.value;
+        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
             const li = document.createElement('li');
-            li.className = 'list-group-item d-flex justify-content-between align-items-center';
+            li.className = 'list-group-item';
             li.dataset.name = item.name.toLowerCase();
-            li.innerHTML = `<span>${item.name}${item.duration ? ` <small class='text-muted'>(${item.duration}s)</small>` : ''}</span>`;
-            const btn = document.createElement('button');
-            btn.className = 'btn btn-sm btn-outline-primary';
-            btn.textContent = 'Add to queue';
-            btn.addEventListener('click', () => addToQueue(item));
-            li.appendChild(btn);
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.loop) meta.push('loop');
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${item.name}</strong><br>
+                    ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
+                </div>
+            </div>`;
+            li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
             psaList.appendChild(li);
         });
         if (!psaList.children.length) {
             const li = document.createElement('li');
             li.className = 'list-group-item text-muted';
-            li.textContent = 'No PSAs found.';
+            li.textContent = 'No items found.';
             psaList.appendChild(li);
         }
     }
@@ -119,6 +142,7 @@
 
     document.getElementById('clearQueue').addEventListener('click', () => {
         queue.length = 0;
+        stopFade();
         audioEl.pause();
         audioEl.removeAttribute('src');
         renderQueue();
@@ -126,6 +150,7 @@
     document.getElementById('playNext').addEventListener('click', () => {
         if (!queue.length) return;
         queue.shift();
+        stopFade();
         if (queue.length) {
             renderQueue();
             startFrom(0);
@@ -134,7 +159,23 @@
             audioEl.removeAttribute('src');
             renderQueue();
         }
-        loadPSAs();
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
+    document.getElementById('fadeOut').addEventListener('click', () => {
+        if (audioEl.paused) {
+            document.getElementById('playNext').click();
+            return;
+        }
+        let level = audioEl.volume;
+        stopFade();
+        fadeTimer = setInterval(() => {
+            level = Math.max(0, level - 0.08);
+            audioEl.volume = level;
+            if (level <= 0.02) {
+                stopFade();
+                document.getElementById('playNext').click();
+            }
+        }, 80);
     });
     audioEl.addEventListener('ended', () => {
         queue.shift();
@@ -145,6 +186,9 @@
     document.getElementById('psaSearch').addEventListener('input', (e) => {
         renderLibrary(e.target.value || '');
     });
+    categoryFilter.addEventListener('change', () => {
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
 
     document.getElementById('refreshPsa').addEventListener('click', () => {
         loadPSAs();
@@ -154,12 +198,38 @@
         try {
             const res = await fetch('/api/psa/library');
             library = await res.json();
+            renderCategories();
             renderLibrary();
         } catch (e) {
             psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load PSAs.</li>';
         }
     }
     loadPSAs();
+
+    function stopFade() {
+        if (fadeTimer) {
+            clearInterval(fadeTimer);
+            fadeTimer = null;
+            audioEl.volume = 1;
+        }
+    }
+
+    audioEl.addEventListener('timeupdate', () => {
+        if (!audioEl.duration || isNaN(audioEl.duration)) return;
+        const remaining = audioEl.duration - audioEl.currentTime;
+        const pct = remaining / audioEl.duration;
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+        const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
+        timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+        timerEl.style.color = pct <= 0.15 ? '#dc3545' : '';
+        timerEl.style.fontWeight = pct <= 0.15 ? '700' : '400';
+        timerEl.style.animation = pct <= 0.15 ? 'blink 0.8s steps(2,start) infinite' : 'none';
+    });
+
+    const style = document.createElement('style');
+    style.innerHTML = '@keyframes blink { to { visibility:hidden; } }';
+    document.head.appendChild(style);
 </script>
 </body>
 </html>

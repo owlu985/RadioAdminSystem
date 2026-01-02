@@ -32,6 +32,15 @@
                 <ul class="dropdown-menu" id="savedList"></ul>
             </div>
         </div>
+        <div class="col-12 col-lg-4">
+            <label class="form-label">Sort mode</label>
+            <select id="sortMode" class="form-select">
+                <option value="title">Title</option>
+                <option value="artist">Artist → Album → Title</option>
+                <option value="album">Album → Track</option>
+                <option value="duration_seconds">Length</option>
+            </select>
+        </div>
     </form>
 
     <div class="row">
@@ -145,6 +154,12 @@
         const sorted = resultsData.slice().sort((a, b) => {
             const av = a[key] || '';
             const bv = b[key] || '';
+            if (key === 'artist') {
+                return (a.artist || '').localeCompare(b.artist || '') || (a.album || '').localeCompare(b.album || '') || (a.title || '').localeCompare(b.title || '');
+            }
+            if (key === 'album') {
+                return (a.album || '').localeCompare(b.album || '') || ((a.track || 0) - (b.track || 0));
+            }
             if (typeof av === 'number' && typeof bv === 'number') {
                 return (av - bv) * sortState.dir;
             }
@@ -162,6 +177,11 @@
             }
         });
         th.tabIndex = 0;
+    });
+
+    document.getElementById('sortMode').addEventListener('change', (e) => {
+        const key = e.target.value;
+        applySort(key);
     });
 
     document.getElementById('savedList').addEventListener('click', async (e) => {
