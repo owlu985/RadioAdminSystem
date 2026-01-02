@@ -140,6 +140,11 @@ class Config:
     RATE_LIMIT_WINDOW_SECONDS = 60
     RATE_LIMIT_TRUSTED_IPS = ["127.0.0.1", "::1"]
 
+    # Local SSL for testing
+    DEV_SSL_ENABLED = False
+    DEV_SSL_CERT_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "ssl", "rams_dev_cert.pem")
+    DEV_SSL_KEY_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "ssl", "rams_dev_key.pem")
+
     # OAuth
     OAUTH_CLIENT_ID = None
     OAUTH_CLIENT_SECRET = None
