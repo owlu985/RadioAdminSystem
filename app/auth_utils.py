@@ -1,0 +1,96 @@
+from functools import wraps
+from flask import session, abort
+
+
+ALLOWED_ADMIN_ROLES = {"admin", "manager", "ops"}
+
+ROLE_PERMISSIONS = {
+    "admin": {"*"},
+    "manager": {"schedule:edit", "music:edit", "logs:view", "users:read", "news:edit", "audit:run", "plugins:automation", "plugins:remote"},
+    "ops": {"schedule:edit", "logs:view", "news:edit", "audit:run", "plugins:automation", "plugins:remote"},
+    "viewer": {"logs:view"},
+}
+
+
+def _permissions_from_session():
+    perms = set(session.get("permissions") or [])
+    role = session.get("role")
+    perms |= ROLE_PERMISSIONS.get(role, set())
+    return perms
+
+
+def _has_role(roles):
+    if not session.get("authenticated"):
+        return False
+    if roles is None:
+        return True
+    current_role = session.get("role")
+    return current_role in roles
+
+
+def _has_permission(required):
+    perms = _permissions_from_session()
+    if "*" in perms:
+        return True
+    return bool(perms.intersection(set(required)))
+
+
+def admin_required(f):
+    """Decorator to require elevated authentication."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("authenticated"):
+            abort(403, description="Requires login")
+        if not (_has_role(ALLOWED_ADMIN_ROLES) or _has_permission({"admin"})):
+            required_roles = ", ".join(sorted(ALLOWED_ADMIN_ROLES))
+            abort(403, description=f"Access required: role in [{required_roles}] or permission: admin")
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def login_required(f):
+    """Require an authenticated session without enforcing role."""
+
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session.get("authenticated"):
+            abort(403, description="Requires login")
+        return f(*args, **kwargs)
+
+    return decorated_function
+
+
+def role_required(roles):
+    """Decorator for explicit role checks."""
+
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if not session.get("authenticated"):
+                abort(403, description="Requires login")
+            if not _has_role(set(roles)):
+                role_list = ", ".join(sorted(set(roles)))
+                abort(403, description=f"Access required: role in [{role_list}]")
+            return f(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
+
+
+def permission_required(perms):
+    def decorator(f):
+        @wraps(f)
+        def wrapped(*args, **kwargs):
+            if not session.get("authenticated"):
+                abort(403, description="Requires login")
+            if not _has_permission(perms):
+                perm_list = ", ".join(sorted(perms))
+                abort(403, description=f"Access required: permission(s) [{perm_list}]")
+            return f(*args, **kwargs)
+
+        return wrapped
+
+    return decorator
