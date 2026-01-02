@@ -730,6 +730,28 @@ def music_stream():
 def music_detail_page():
     path = request.args.get("path")
     track = get_track(path) if path else None
+    if track:
+        peaks = track.get("peaks")
+        preview_peaks: list = []
+        if isinstance(peaks, dict):
+            preview_source = (
+                peaks.get("mono")
+                or peaks.get("left")
+                or peaks.get("right")
+                or []
+            )
+            if isinstance(preview_source, list):
+                preview_peaks = preview_source
+        elif isinstance(peaks, list):
+            preview_peaks = peaks
+
+        numeric_peaks: list = []
+        for val in preview_peaks:
+            try:
+                numeric_peaks.append(float(val))
+            except (TypeError, ValueError):
+                continue
+        track["peaks_preview"] = numeric_peaks
     return render_template("music_detail.html", track=track)
 
 

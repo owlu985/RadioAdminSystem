@@ -37,12 +37,13 @@
             <dt class="col-sm-3">Peak / RMS</dt><dd class="col-sm-9">{{ track.peak_db }} / {{ track.rms_db }}</dd>
             <dt class="col-sm-3">Bitrate</dt><dd class="col-sm-9">{{ track.bitrate }}</dd>
         </dl>
-        {% if track.peaks %}
+        {% set preview = track.peaks_preview if track.peaks_preview is defined else None %}
+        {% if preview %}
         <div class="mb-3">
             <div class="fw-bold">Waveform preview</div>
             <div class="d-flex align-items-end" style="gap:2px; height:80px;">
-                {% for p in track.peaks %}
-                <div style="width:3px; background:#0d6efd; height:{{ (p*80)|round(0,'floor') }}px"></div>
+                {% for p in preview %}
+                <div style="width:3px; background:#0d6efd; height:{{ (p|float * 80)|round(0,'floor') }}px"></div>
                 {% endfor %}
             </div>
         </div>
