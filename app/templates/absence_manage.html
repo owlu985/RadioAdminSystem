@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Absence Queue</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h2>DJ Absences</h2>
+    <div class="mb-3">
+        {% set statuses = [
+            ('pending', 'Pending'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+            ('resolved', 'Resolved'),
+            ('all', 'All')
+        ] %}
+        <div class="btn-group" role="group">
+            {% for key, label in statuses %}
+                <a class="btn btn-outline-primary {% if status_filter==key %}active{% endif %}"
+                   href="{{ url_for('main.manage_absences', status=key) }}">
+                    {{ label }}
+                    {% if counts and key != 'all' %}
+                        <span class="badge bg-secondary ms-1">{{ counts.get(key, 0) }}</span>
+                    {% endif %}
+                </a>
+            {% endfor %}
+        </div>
+    </div>
+    <table class="table table-striped align-middle">
+        <thead>
+        <tr>
+            <th>DJ</th><th>Show</th><th>Start</th><th>End</th><th>Replacement</th><th>Status</th><th>Notes</th><th>Actions</th>
+        </tr>
+        </thead>
+        <tbody>
+        {% for a in absences %}
+            <tr>
+                <td>{{ a.dj_name }}</td>
+                <td>{{ a.show_name }}</td>
+                <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ a.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ a.replacement_name or '' }}</td>
+                <td>{{ a.status }}</td>
+                <td>{{ a.notes or '' }}</td>
+                <td>
+                    <form method="post" class="row g-2 align-items-center">
+                        <input type="hidden" name="absence_id" value="{{ a.id }}">
+                        <div class="col-lg-5 col-md-6">
+                            <select name="status" class="form-select form-select-sm">
+                                {% for key,label in [('pending','Pending'),('approved','Approved'),('rejected','Rejected'),('resolved','Resolved')] %}
+                                    <option value="{{ key }}" {% if a.status==key %}selected{% endif %}>{{ label }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-lg-5 col-md-6">
+                            <div class="input-group input-group-sm">
+                                <select name="replacement_id" class="form-select form-select-sm">
+                                    <option value="">-- Substitute --</option>
+                                    {% for dj in djs %}
+                                        {% set dj_name = (dj.first_name ~ ' ' ~ dj.last_name).strip() %}
+                                        <option value="{{ dj.id }}" {% if a.replacement_name and a.replacement_name.strip()==dj_name %}selected{% endif %}>{{ dj_name }}</option>
+                                    {% endfor %}
+                                </select>
+                                <button class="btn btn-outline-secondary" type="submit" name="replacement_clear" value="1">Clear</button>
+                            </div>
+                        </div>
+                        <div class="col-lg-2 col-md-12 text-end">
+                            <button class="btn btn-primary btn-sm" type="submit">Save</button>
+                        </div>
+                    </form>
+                </td>
+            </tr>
+        {% else %}
+            <tr><td colspan="8" class="text-center text-muted">No absences found for this filter.</td></tr>
+        {% endfor %}
+        </tbody>
+    </table>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
