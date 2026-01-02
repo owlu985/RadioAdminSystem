@@ -27,6 +27,14 @@ def _env_flag(name: str, default: bool = False) -> bool:
     return val.strip().lower() in {"1", "true", "yes", "on"}
 
 
+
+def _env_flag(name: str, default: bool = False) -> bool:
+    val = os.environ.get(name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
 if __name__ == "__main__":
     app = create_app()
     host = os.environ.get("RAMS_HOST") or app.config.get("BIND_HOST", "127.0.0.1")
@@ -42,7 +50,13 @@ if __name__ == "__main__":
         try:
             from app.services.ssl_utils import ensure_dev_ssl
 
-            cert_path, key_path = ensure_dev_ssl(cert_path, key_path, openssl_bin=openssl_bin)
+            alt_hosts = []
+            if host and host not in {"0.0.0.0", "::"}:
+                alt_hosts.append(host)
+
+            cert_path, key_path = ensure_dev_ssl(
+                cert_path, key_path, openssl_bin=openssl_bin, hosts=alt_hosts or None
+            )
             ssl_context = (cert_path, key_path)
             print(f"[RAMS] Dev SSL enabled using cert={cert_path} key={key_path}")
         except Exception as exc:  # pragma: no cover - best effort for local dev

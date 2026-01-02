@@ -1,6 +1,6 @@
 # Local self-signed SSL for RAMS testing
 
-These steps enable HTTPS locally (useful for testing WebRTC flows like Remote Link on mobile devices). The certificate is self-signed and intended **only** for development.
+These steps enable HTTPS locally (useful for testing WebRTC flows like Remote Link on mobile devices). The certificate is signed by a RAMS-dev CA and intended **only** for development.
 
 ## How to enable
 1) Set the environment flag when running RAMS:
@@ -15,7 +15,11 @@ These steps enable HTTPS locally (useful for testing WebRTC flows like Remote Li
  RAMS_DEV_SSL=1 python run.py
   ```
 
-If the cert/key don’t exist, RAMS will call `openssl` to generate a 2048-bit, 1-year self-signed cert for `CN=localhost` under `instance/ssl/` by default.
+If the cert/key don’t exist, RAMS will call `openssl` to generate:
+- a RAMS dev CA (`instance/ssl/rams_dev_ca.pem`)
+- a server cert signed by that CA with SubjectAltName entries for `localhost`, `127.0.0.1`, and your bind host (when set)
+
+For a trusted experience in browsers, import `instance/ssl/rams_dev_ca.pem` into your local trust store after the first run. Without trust, you can still proceed past the warning for local testing.
 
 If `openssl` is not on your PATH (common on Windows), either install it or point RAMS to the executable. Common locations:
 
