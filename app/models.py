@@ -375,3 +375,17 @@ class RemoteLinkSession(db.Model):
     passcode = db.Column(db.String(64), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RemoteLinkSignal(db.Model):
+    __tablename__ = "remote_link_signal"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("remote_link_session.id"), nullable=False, index=True)
+    sender_id = db.Column(db.String(64), nullable=False)
+    sender_label = db.Column(db.String(255), nullable=True)
+    signal_type = db.Column(db.String(32), nullable=False)
+    payload = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+
+    session = db.relationship("RemoteLinkSession", backref="signals")

@@ -1,0 +1,146 @@
+{% include '_nav.html' %}
+<div class="container-fluid mt-3">
+  <div class="d-flex justify-content-between align-items-center">
+    <div>
+      <h4 class="mb-0">Remote Studio Link</h4>
+      <div class="text-muted">Session: {{ session_row.label }} · Code: {{ session_row.passcode }}</div>
+    </div>
+    <div class="badge bg-secondary">You: {{ display_name }}</div>
+  </div>
+  <div class="row mt-3">
+    <div class="col-lg-6 mb-3">
+      <div class="card p-3">
+        <div class="d-flex align-items-center mb-2">
+          <div class="me-2 small text-muted">Local</div>
+          <span class="badge bg-info" id="local-state">Ready</span>
+        </div>
+        <audio id="localAudio" autoplay muted playsinline class="w-100"></audio>
+        <div class="mt-3 d-flex gap-2 flex-wrap">
+          <button class="btn btn-primary btn-sm" id="btn-start">Start Link</button>
+          <button class="btn btn-outline-secondary btn-sm" id="btn-mute">Mute</button>
+          <button class="btn btn-outline-danger btn-sm" id="btn-reset">Reset</button>
+        </div>
+      </div>
+    </div>
+    <div class="col-lg-6 mb-3">
+      <div class="card p-3">
+        <div class="d-flex align-items-center mb-2">
+          <div class="me-2 small text-muted">Remote</div>
+          <span class="badge bg-warning" id="remote-state">Waiting</span>
+        </div>
+        <audio id="remoteAudio" autoplay playsinline controls class="w-100"></audio>
+        <div class="small text-muted mt-2">If you and the remote party both press Start Link, the call will connect. If you see stalls, press Reset and start again.</div>
+      </div>
+    </div>
+  </div>
+</div>
+{% include '_footer.html' %}
+<script>
+const sessionId = {{ session_row.id }};
+const displayName = {{ display_name|tojson }};
+const selfId = crypto.randomUUID();
+let pc = null;
+let localStream = null;
+let pollTimer = null;
+let lastId = 0;
+let muted = false;
+
+const localState = document.getElementById('local-state');
+const remoteState = document.getElementById('remote-state');
+
+async function sendSignal(type, payload) {
+  const resp = await fetch('/plugins/remote-link/api/signals', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({session_id: sessionId, sender_id: selfId, sender_label: displayName, type, payload})
+  });
+  if (!resp.ok) {
+    console.error('signal send failed', await resp.text());
+  }
+}
+
+async function pollSignals() {
+  const resp = await fetch(`/plugins/remote-link/api/signals?session_id=${sessionId}&since_id=${lastId}&self_id=${selfId}`);
+  if (!resp.ok) return;
+  const data = await resp.json();
+  for (const sig of data.signals) {
+    lastId = Math.max(lastId, sig.id);
+    if (!pc) continue;
+    if (sig.type === 'offer') {
+      await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      await sendSignal('answer', answer);
+      remoteState.textContent = 'Answering';
+      remoteState.className = 'badge bg-info';
+    } else if (sig.type === 'answer') {
+      if (!pc.currentRemoteDescription) {
+        await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+        remoteState.textContent = 'Linked';
+        remoteState.className = 'badge bg-success';
+      }
+    } else if (sig.type === 'ice' && sig.payload) {
+      try {
+        await pc.addIceCandidate(new RTCIceCandidate(sig.payload));
+      } catch (e) {
+        console.warn('ice add failed', e);
+      }
+    }
+  }
+}
+
+function startPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(pollSignals, 1500);
+}
+
+async function startLink() {
+  if (pc) pc.close();
+  pc = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.l.google.com:19302'}]});
+  pc.onicecandidate = (e) => { if (e.candidate) sendSignal('ice', e.candidate); };
+  pc.ontrack = (e) => {
+    const remote = document.getElementById('remoteAudio');
+    remote.srcObject = e.streams[0];
+    remoteState.textContent = 'Receiving';
+    remoteState.className = 'badge bg-success';
+  };
+
+  localStream = await navigator.mediaDevices.getUserMedia({audio: true});
+  document.getElementById('localAudio').srcObject = localStream;
+  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+  if (muted) localStream.getAudioTracks().forEach(t => t.enabled = false);
+
+  const offer = await pc.createOffer();
+  await pc.setLocalDescription(offer);
+  await sendSignal('offer', offer);
+  localState.textContent = 'Calling';
+  localState.className = 'badge bg-primary';
+  startPolling();
+}
+
+function muteToggle() {
+  muted = !muted;
+  if (localStream) {
+    localStream.getAudioTracks().forEach(t => t.enabled = !muted);
+  }
+  document.getElementById('btn-mute').textContent = muted ? 'Unmute' : 'Mute';
+}
+
+function resetLink() {
+  if (pc) pc.close();
+  pc = null;
+  if (localStream) {
+    localStream.getTracks().forEach(t => t.stop());
+  }
+  localState.textContent = 'Ready';
+  localState.className = 'badge bg-info';
+  remoteState.textContent = 'Waiting';
+  remoteState.className = 'badge bg-warning';
+}
+
+document.getElementById('btn-start').onclick = startLink;
+document.getElementById('btn-mute').onclick = muteToggle;
+document.getElementById('btn-reset').onclick = resetLink;
+
+startPolling();
+</script>
