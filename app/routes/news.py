@@ -47,6 +47,7 @@ def _list_news_queue(news_types):
                         "scripts": [os.path.join(script_dir, s) for s in scripts],
                         "key": nt["key"],
                         "label": nt.get("label", nt["key"]),
+                        "base": base,
                     }
                 )
         entries.sort(key=lambda e: e["date"])
@@ -105,6 +106,34 @@ def activate_news_for_date(target_date: date, news_key: str | None = None) -> bo
     return activated
 
 
+def _build_news_entry_urls(entries):
+    """Attach preview/download URLs for audio/scripts if they exist."""
+    enhanced = []
+    for item in entries:
+        date_str = item["date"].isoformat()
+        audio_url = None
+        if item.get("audio") and os.path.exists(item["audio"]):
+            audio_url = url_for("news.get_audio", news_key=item["key"], date_str=date_str)
+
+        scripts = []
+        for script_path in item.get("scripts", []):
+            if os.path.exists(script_path):
+                scripts.append(
+                    {
+                        "name": os.path.basename(script_path),
+                        "url": url_for(
+                            "news.get_script",
+                            news_key=item["key"],
+                            date_str=date_str,
+                            filename=os.path.basename(script_path),
+                        ),
+                    }
+                )
+
+        enhanced.append({**item, "audio_url": audio_url, "scripts": scripts})
+    return enhanced
+
+
 @news_bp.route("/upload", methods=["GET", "POST"])
 @admin_required
 def upload_news():
@@ -153,4 +182,55 @@ def upload_news():
         return redirect(url_for("news.upload_news"))
 
     queue = _list_news_queue(news_types)
+    queue = _build_news_entry_urls(queue)
     return render_template("news_upload.html", today=date.today(), news_types=news_types, queue=queue)
+
+
+@news_bp.route("/dashboard")
+@admin_required
+def news_dashboard():
+    """Dashboard overview for upcoming and archived newscasts with previews."""
+    news_types = load_news_types()
+    entries = _build_news_entry_urls(_list_news_queue(news_types))
+    today = date.today()
+    upcoming = [e for e in entries if e["date"] >= today]
+    archive = [e for e in entries if e["date"] < today]
+    return render_template(
+        "news_dashboard.html",
+        upcoming=upcoming,
+        archive=archive,
+        news_types=news_types,
+    )
+
+
+@news_bp.route("/audio/<news_key>/<date_str>")
+@admin_required
+def get_audio(news_key, date_str):
+    nt = get_news_type(news_key)
+    if not nt:
+        flash("Invalid news type.", "danger")
+        return redirect(url_for("news.news_dashboard"))
+    base = nt["filename"].replace(".mp3", "")
+    storage_dir = _news_storage_dir(news_key)
+    filename = f"{base}_{date_str}.mp3"
+    path = os.path.join(storage_dir, filename)
+    if not os.path.exists(path):
+        flash("Audio not found.", "warning")
+        return redirect(url_for("news.news_dashboard"))
+    return current_app.send_file(path)
+
+
+@news_bp.route("/script/<news_key>/<date_str>/<path:filename>")
+@admin_required
+def get_script(news_key, date_str, filename):
+    nt = get_news_type(news_key)
+    if not nt:
+        flash("Invalid news type.", "danger")
+        return redirect(url_for("news.news_dashboard"))
+    scripts_dir = _news_scripts_dir(news_key)
+    safe_name = secure_filename(filename)
+    path = os.path.join(scripts_dir, safe_name)
+    if not os.path.exists(path):
+        flash("Script not found.", "warning")
+        return redirect(url_for("news.news_dashboard"))
+    return current_app.send_file(path)

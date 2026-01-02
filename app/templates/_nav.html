@@ -37,6 +37,7 @@
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
             <ul class="dropdown-menu">
               <li><h6 class="dropdown-header">Broadcast</h6></li>
+              <li><a class="dropdown-item" href="{{ url_for('news.news_dashboard') }}">News Dashboard</a></li>
               <li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>
