@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CUE Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .wave-container {height:160px; background:rgba(0,0,0,0.05); border-radius:6px; padding:10px; position:relative; overflow:hidden;}
+        .wave-bar {background:#0d6efd; display:inline-block; margin-right:1px; vertical-align:bottom; width:3px;}
+        .wave-bar.right {background:#6610f2;}
+        .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
+        .marker-label {font-size:11px; background:rgba(0,0,0,0.75); color:#fff; padding:2px 4px; border-radius:4px; white-space:nowrap;}
+        #markers {position:absolute; inset:0; pointer-events:none;}
+        #markers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
+        .zoom-row {display:flex; align-items:center; gap:8px;}
+        .legend span {display:inline-block; padding:4px 6px; border-radius:4px; margin-right:6px; font-size:12px;}
+    </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h3>CUE Editor</h3>
+    {% if track %}
+    <p class="text-muted">{{ track.title }} — {{ track.artist }}</p>
+    <div class="mb-3">
+        <audio id="player" controls preload="metadata" style="width:100%;" src="/music/stream?path={{ track.path|urlencode }}"></audio>
+        <div class="zoom-row mt-2">
+            <div class="legend">
+                <span style="background:#0d6efd;color:#fff;">Left/Mono</span>
+                <span style="background:#6610f2;color:#fff;">Right</span>
+            </div>
+            <label class="mb-0">Zoom <input type="range" min="1" max="4" value="1" id="zoom" style="vertical-align:middle"></label>
+        </div>
+        <div class="mt-2 position-relative wave-container" id="wave">
+            <div id="waveInner" style="position:absolute; inset:10px; overflow:hidden;">
+                {% if track.peaks %}
+                    {% set peaks_data = track.peaks %}
+                    {% if peaks_data.mono is defined or peaks_data.left is defined %}
+                        {% set mono = peaks_data.mono or [] %}
+                        {% set right = peaks_data.right or [] %}
+                        {% for p in mono %}
+                            <div class="wave-bar" style="height:{{ (p*100)|round(0,'floor') }}px"></div>
+                        {% endfor %}
+                        {% if right %}
+                            <br>
+                            {% for p in right %}
+                                <div class="wave-bar right" style="height:{{ (p*100)|round(0,'floor') }}px"></div>
+                            {% endfor %}
+                        {% endif %}
+                    {% else %}
+                        {% for p in peaks_data %}
+                            <div class="wave-bar" style="height:{{ (p*100)|round(0,'floor') }}px"></div>
+                        {% endfor %}
+                    {% endif %}
+                {% else %}
+                    <div class="text-muted">Waveform preview unavailable.</div>
+                {% endif %}
+            </div>
+            <div id="needle" class="marker" style="left:0; background:#dc3545;"></div>
+            <div id="markers"></div>
+        </div>
+    </div>
+    <form method="post" class="row g-3" id="cue-form">
+        {% set fields = {
+            'cue_in':'Cue In',
+            'intro':'Intro',
+            'hook_in':'Hook In',
+            'hook_out':'Hook Out',
+            'start_next':'Start Next',
+            'outro':'Outro',
+            'cue_out':'End/Cue Out',
+            'fade_in':'Fade In',
+            'fade_out':'Fade Out'
+        } %}
+        {% for key,label in fields.items() %}
+        <div class="col-md-4">
+            <label class="form-label d-flex justify-content-between align-items-center">
+                <span>{{ label }} (s)</span>
+                <button type="button" class="btn btn-sm btn-outline-primary" onclick="setCue('{{ key }}')">Set</button>
+            </label>
+            <input type="number" step="0.01" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}" class="form-control" onchange="updateMarkers()">
+        </div>
+        {% endfor %}
+        <div class="col-12">
+            <button class="btn btn-primary" type="submit">Save CUE</button>
+            <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Back</a>
+        </div>
+    </form>
+    {% else %}
+    <p>Track not found.</p>
+    {% endif %}
+</div>
+{% include '_footer.html' %}
+<script>
+    const player = document.getElementById('player');
+    const needle = document.getElementById('needle');
+    const wave = document.getElementById('wave');
+    const markersLayer = document.getElementById('markers');
+    const waveInner = document.getElementById('waveInner');
+    const zoomControl = document.getElementById('zoom');
+    const colorMap = {
+        cue_in: '#0d6efd',
+        intro: '#20c997',
+        hook_in: '#6f42c1',
+        hook_out: '#d63384',
+        start_next: '#fd7e14',
+        outro: '#0dcaf0',
+        cue_out: '#dc3545',
+        fade_in: '#198754',
+        fade_out: '#ffc107'
+    };
+
+    function setCue(field) {
+        if (!player || isNaN(player.currentTime)) return;
+        const input = document.getElementById(field);
+        input.value = player.currentTime.toFixed(2);
+        updateMarkers();
+    }
+
+    function updateNeedle() {
+        if (!player || !player.duration || !needle) return;
+        const pct = (player.currentTime / player.duration) * 100;
+        needle.style.left = pct + '%';
+    }
+
+    function updateMarkers() {
+        if (!player || !player.duration || !markersLayer) return;
+        markersLayer.innerHTML = '';
+        const fields = ['cue_in','intro','hook_in','hook_out','start_next','outro','cue_out','fade_in','fade_out'];
+        fields.forEach(f => {
+            const val = parseFloat(document.getElementById(f)?.value || '');
+            if (!isNaN(val) && val >= 0 && val <= player.duration) {
+                const pct = (val / player.duration) * 100;
+                const marker = document.createElement('div');
+                marker.className = 'marker';
+                marker.style.left = pct + '%';
+                marker.style.background = colorMap[f] || '#0d6efd';
+
+                const handle = document.createElement('div');
+                handle.className = 'handle';
+                handle.style.left = pct + '%';
+                handle.addEventListener('pointerdown', (ev) => startDrag(ev, f));
+
+                const label = document.createElement('div');
+                label.className = 'marker-label position-absolute';
+                label.style.left = pct + '%';
+                label.style.transform = 'translateX(-50%) translateY(-100%)';
+                label.textContent = f.replace('_', ' ');
+                markersLayer.appendChild(marker);
+                markersLayer.appendChild(label);
+                markersLayer.appendChild(handle);
+            }
+        });
+    }
+
+    let dragField = null;
+    function startDrag(ev, field) {
+        dragField = field;
+        document.addEventListener('pointermove', onDrag);
+        document.addEventListener('pointerup', endDrag);
+    }
+
+    function onDrag(ev) {
+        if (!dragField || !wave || !player || !player.duration) return;
+        const rect = wave.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const seconds = (pct * player.duration);
+        const input = document.getElementById(dragField);
+        input.value = seconds.toFixed(2);
+        updateMarkers();
+    }
+
+    function endDrag() {
+        dragField = null;
+        document.removeEventListener('pointermove', onDrag);
+        document.removeEventListener('pointerup', endDrag);
+    }
+
+    if (player) {
+        player.addEventListener('timeupdate', updateNeedle);
+        player.addEventListener('loadedmetadata', () => {
+            updateNeedle();
+            updateMarkers();
+        });
+    }
+    if (zoomControl && waveInner) {
+        zoomControl.addEventListener('input', () => {
+            const scale = parseFloat(zoomControl.value || '1');
+            waveInner.style.transform = `scaleX(${scale})`;
+            waveInner.style.transformOrigin = 'left center';
+        });
+    }
+    updateMarkers();
+</script>
+</body>
+</html>
