@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>PSA Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">PSA Player</h2>
+            <div class="text-muted">Build a quick queue and play PSAs directly in the browser.</div>
+            <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
+        </div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Available PSAs</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:60vh; overflow:auto;">
+                    <ul class="list-group" id="psaList"></ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Queue</span>
+                    <div class="text-muted small">Timer: <span id="timer">00:00.00</span></div>
+                </div>
+                <div class="card-body">
+                    <audio id="psaAudio" controls class="w-100 mb-2"></audio>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                    </div>
+                    <ol class="mb-0" id="queueList"></ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+<script>
+    let library = [];
+    const psaList = document.getElementById('psaList');
+    const queueList = document.getElementById('queueList');
+    const audioEl = document.getElementById('psaAudio');
+    const timerEl = document.getElementById('timer');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const queue = [];
+    let fadeTimer = null;
+
+    function renderCategories() {
+        const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
+        categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function renderLibrary(filter = '') {
+        psaList.innerHTML = '';
+        const term = filter.toLowerCase();
+        const cat = categoryFilter.value;
+        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            li.dataset.name = item.name.toLowerCase();
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.loop) meta.push('loop');
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${item.name}</strong><br>
+                    ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
+                </div>
+            </div>`;
+            li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
+            psaList.appendChild(li);
+        });
+        if (!psaList.children.length) {
+            const li = document.createElement('li');
+            li.className = 'list-group-item text-muted';
+            li.textContent = 'No items found.';
+            psaList.appendChild(li);
+        }
+    }
+
+    function renderQueue() {
+        queueList.innerHTML = '';
+        if (!queue.length) {
+            queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
+            return;
+        }
+        queue.forEach((item, idx) => {
+            const li = document.createElement('li');
+            li.innerHTML = `${item.name} <small class="text-muted">${item.duration ? '('+item.duration+'s)' : ''}</small>`;
+            li.dataset.index = idx;
+            li.tabIndex = 0;
+            li.addEventListener('click', () => startFrom(idx));
+            li.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') startFrom(idx);
+            });
+            queueList.appendChild(li);
+        });
+    }
+
+    function addToQueue(item) {
+        queue.push(item);
+        if (queue.length === 1 && audioEl.paused) {
+            startFrom(0);
+        }
+        renderQueue();
+    }
+
+    function startFrom(idx) {
+        const item = queue[idx];
+        if (!item) return;
+        if (idx > 0) {
+            queue.splice(0, idx);
+            renderQueue();
+        }
+        audioEl.src = item.url;
+        audioEl.play();
+    }
+
+    document.getElementById('clearQueue').addEventListener('click', () => {
+        queue.length = 0;
+        stopFade();
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+        renderQueue();
+    });
+    document.getElementById('playNext').addEventListener('click', () => {
+        if (!queue.length) return;
+        queue.shift();
+        stopFade();
+        if (queue.length) {
+            renderQueue();
+            startFrom(0);
+        } else {
+            audioEl.pause();
+            audioEl.removeAttribute('src');
+            renderQueue();
+        }
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
+    document.getElementById('fadeOut').addEventListener('click', () => {
+        if (audioEl.paused) {
+            document.getElementById('playNext').click();
+            return;
+        }
+        let level = audioEl.volume;
+        stopFade();
+        fadeTimer = setInterval(() => {
+            level = Math.max(0, level - 0.08);
+            audioEl.volume = level;
+            if (level <= 0.02) {
+                stopFade();
+                document.getElementById('playNext').click();
+            }
+        }, 80);
+    });
+    audioEl.addEventListener('ended', () => {
+        queue.shift();
+        renderQueue();
+        if (queue.length) startFrom(0);
+    });
+
+    document.getElementById('psaSearch').addEventListener('input', (e) => {
+        renderLibrary(e.target.value || '');
+    });
+    categoryFilter.addEventListener('change', () => {
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
+
+    document.getElementById('refreshPsa').addEventListener('click', () => {
+        loadPSAs();
+    });
+
+    async function loadPSAs() {
+        try {
+            const res = await fetch('/api/psa/library');
+            library = await res.json();
+            renderCategories();
+            renderLibrary();
+        } catch (e) {
+            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load PSAs.</li>';
+        }
+    }
+    loadPSAs();
+
+    function stopFade() {
+        if (fadeTimer) {
+            clearInterval(fadeTimer);
+            fadeTimer = null;
+            audioEl.volume = 1;
+        }
+    }
+
+    audioEl.addEventListener('timeupdate', () => {
+        if (!audioEl.duration || isNaN(audioEl.duration)) return;
+        const remaining = audioEl.duration - audioEl.currentTime;
+        const pct = remaining / audioEl.duration;
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+        const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
+        timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+        timerEl.style.color = pct <= 0.15 ? '#dc3545' : '';
+        timerEl.style.fontWeight = pct <= 0.15 ? '700' : '400';
+        timerEl.style.animation = pct <= 0.15 ? 'blink 0.8s steps(2,start) infinite' : 'none';
+    });
+
+    const style = document.createElement('style');
+    style.innerHTML = '@keyframes blink { to { visibility:hidden; } }';
+    document.head.appendChild(style);
+</script>
+</body>
+</html>
