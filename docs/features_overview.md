@@ -42,6 +42,8 @@ This document summarizes the major features available in RAMS, with links to key
 - Social posting console to draft/queue multi-network posts (simulated by default until enabled in Settings).
 - Archivist catalog import/search from CSV/TSV to speed cross-referencing against external music databases.
 - Hosted audio plugin for slim iframe embeds, upload/URL support, and configurable backdrops for posting interviews or long-form audio externally.
+- Automation Bridge plugin to manage rule-based inserts and RadioDJ playlist drops for urgent cuts/marathons.
+- Remote Studio Link plugin to track low-latency send/return coordination sessions with passcodes/notes.
 
 ## Music Library and Metadata
 - NAS search UI/API with detail and edit pages (mutagen-enabled writes), cover art preview, audio preview stream, and RadioDJ-style visual CUE editor with waveform markers.

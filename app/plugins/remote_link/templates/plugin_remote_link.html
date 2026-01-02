@@ -1,0 +1,55 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="container py-4">
+  <div class="d-flex justify-content-between align-items-center mb-3">
+    <h2>Remote Studio Link</h2>
+    <div class="text-muted">Low-latency send/return with push-to-mute</div>
+  </div>
+
+  <form class="card card-body mb-4" method="post">
+    <h5 class="mb-3">Create session</h5>
+    <div class="row g-3">
+      <div class="col-md-6">
+        <label class="form-label">Label</label>
+        <input class="form-control" name="label" required placeholder="Remote broadcast, Studio A ↔ Field">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Passcode (optional)</label>
+        <input class="form-control" name="passcode" placeholder="auto if blank">
+      </div>
+      <div class="col-md-3">
+        <label class="form-label">Notes</label>
+        <input class="form-control" name="notes" placeholder="e.g. host + reporter">
+      </div>
+    </div>
+    <p class="text-muted mt-2 mb-0">This is a coordination record; WebRTC/link delivery can be layered on deployment.</p>
+    <button class="btn btn-primary mt-3" type="submit">Create session</button>
+  </form>
+
+  <div class="card">
+    <div class="card-header">Sessions</div>
+    <div class="table-responsive">
+      <table class="table align-middle mb-0">
+        <thead><tr><th>Label</th><th>Passcode</th><th>Notes</th><th>Created</th><th></th></tr></thead>
+        <tbody>
+        {% for s in sessions %}
+          <tr>
+            <td>{{ s.label }}</td>
+            <td><code>{{ s.passcode }}</code></td>
+            <td>{{ s.notes or '—' }}</td>
+            <td>{{ s.created_at.strftime('%Y-%m-%d %H:%M') }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('remote_link_plugin.delete_session', session_id=s.id) }}" onsubmit="return confirm('Delete session?');">
+                <button class="btn btn-sm btn-outline-danger">Delete</button>
+              </form>
+            </td>
+          </tr>
+        {% else %}
+          <tr><td colspan="5" class="text-center text-muted py-3">No remote sessions yet.</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

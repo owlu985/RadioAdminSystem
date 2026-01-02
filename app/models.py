@@ -349,3 +349,29 @@ class HostedAudio(db.Model):
     file_url = db.Column(db.String(512), nullable=False)
     backdrop_url = db.Column(db.String(512), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class AutomationRule(db.Model):
+    __tablename__ = "automation_rule"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    match_tag = db.Column(db.String(255), nullable=True)
+    days_of_week = db.Column(db.String(32), nullable=True)  # csv of mon,tue,wed,thu,fri,sat,sun
+    start_time = db.Column(db.Time, nullable=True)
+    end_time = db.Column(db.Time, nullable=True)
+    action = db.Column(db.String(64), nullable=False, default="insert_top")
+    radiodj_id = db.Column(db.String(64), nullable=True)
+    radiodj_title = db.Column(db.String(255), nullable=True)
+    enabled = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class RemoteLinkSession(db.Model):
+    __tablename__ = "remote_link_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+    label = db.Column(db.String(255), nullable=False)
+    passcode = db.Column(db.String(64), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

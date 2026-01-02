@@ -6,8 +6,8 @@ This table summarizes the built-in roles and the permission scopes that can be g
 | Role | Default scopes |
 | --- | --- |
 | admin | `*` (all scopes) |
-| manager | `schedule:edit`, `music:edit`, `logs:view`, `users:read`, `news:edit`, `audit:run` |
-| ops | `schedule:edit`, `logs:view`, `news:edit`, `audit:run` |
+| manager | `schedule:edit`, `music:edit`, `logs:view`, `users:read`, `news:edit`, `audit:run`, `plugins:automation`, `plugins:remote` |
+| ops | `schedule:edit`, `logs:view`, `news:edit`, `audit:run`, `plugins:automation`, `plugins:remote` |
 | viewer | `logs:view` |
 
 ## Scope-to-feature guide
@@ -19,7 +19,9 @@ This table summarizes the built-in roles and the permission scopes that can be g
 | logs:view | Admin log manager (HTML/CSV/DOCX), log exports, compliance views. |
 | users:read | User approval/management pages, role assignments, linked OAuth identity management. |
 | news:edit | News/PSA uploads, rotation schedules, and news-type configuration. |
-| audit:run | Audit tools: recording classification, explicit-content checks, stream/recorder health audits, and related dashboards.
+| audit:run | Audit tools: recording classification, explicit-content checks, stream/recorder health audits, and related dashboards. |
+| plugins:automation | Automation Bridge plugin (rule management, RadioDJ inserts). |
+| plugins:remote | Remote Studio Link plugin (session setup/removal). |
 
 ## Notes
 - Admin-only routes currently accept users in roles `admin`, `manager`, or `ops`, or any user who has the `admin` scope explicitly assigned.

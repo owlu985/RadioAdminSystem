@@ -73,6 +73,51 @@ class RadioDJClient:
         resp.raise_for_status()
         return resp.json()
 
+    def search_tracks(self, keyword: str) -> list:
+        if not self.enabled:
+            logger.warning("RadioDJ API disabled; track search skipped")
+            return []
+        try:
+            resp = requests.get(
+                f"{self.base_url}/tracks/search",
+                headers=self._headers(),
+                params={"q": keyword},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return resp.json() or []
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ search failed: %s", exc)
+            return []
+
+    def insert_track_top(self, track_id: str) -> None:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        # Try modern endpoint first
+        try:
+            resp = requests.post(
+                f"{self.base_url}/playlist/insert-top",
+                headers=self._headers(),
+                json={"track_id": track_id},
+                timeout=10,
+            )
+            if resp.status_code == 404:
+                raise RuntimeError("legacy fallback")
+            resp.raise_for_status()
+            return
+        except Exception:
+            # Fallback to SetItem command style
+            try:
+                resp = requests.get(
+                    f"{self.base_url}/SetItem",
+                    params={"auth": self.api_key, "command": "LoadTrackToTop", "arg": track_id},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("RadioDJ insert fallback failed: %s", exc)
+                raise
+
     def now_playing(self) -> Optional[dict]:
         """
         Fetch the current on-air metadata from RadioDJ (if enabled).
@@ -125,3 +170,13 @@ def import_news_or_calendar(kind: str) -> Path:
         raise ValueError(f"Unknown import kind: {kind}")
 
     return client.import_file(source, target_name=target_name)
+
+
+def search_track_by_term(term: str) -> list:
+    client = RadioDJClient()
+    return client.search_tracks(term)
+
+
+def insert_track_top(track_id: str) -> None:
+    client = RadioDJClient()
+    client.insert_track_top(track_id)

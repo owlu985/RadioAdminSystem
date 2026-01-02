@@ -6,8 +6,8 @@ ALLOWED_ADMIN_ROLES = {"admin", "manager", "ops"}
 
 ROLE_PERMISSIONS = {
     "admin": {"*"},
-    "manager": {"schedule:edit", "music:edit", "logs:view", "users:read", "news:edit", "audit:run"},
-    "ops": {"schedule:edit", "logs:view", "news:edit", "audit:run"},
+    "manager": {"schedule:edit", "music:edit", "logs:view", "users:read", "news:edit", "audit:run", "plugins:automation", "plugins:remote"},
+    "ops": {"schedule:edit", "logs:view", "news:edit", "audit:run", "plugins:automation", "plugins:remote"},
     "viewer": {"logs:view"},
 }
 
