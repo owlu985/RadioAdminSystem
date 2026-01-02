@@ -47,7 +47,7 @@
 <script>
 const sessionId = {{ session_row.id }};
 const displayName = {{ display_name|tojson }};
-const selfId = crypto.randomUUID();
+const selfId = (crypto && crypto.randomUUID) ? crypto.randomUUID() : Math.random().toString(36).slice(2);
 let pc = null;
 let localStream = null;
 let pollTimer = null;
@@ -56,45 +56,62 @@ let muted = false;
 
 const localState = document.getElementById('local-state');
 const remoteState = document.getElementById('remote-state');
+const errorBox = document.createElement('div');
+errorBox.className = 'alert alert-danger mt-3 d-none';
+errorBox.role = 'alert';
+document.querySelector('.container-fluid').prepend(errorBox);
+
+function showError(msg) {
+  errorBox.textContent = msg;
+  errorBox.classList.remove('d-none');
+}
 
 async function sendSignal(type, payload) {
-  const resp = await fetch('/plugins/remote-link/api/signals', {
-    method: 'POST',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({session_id: sessionId, sender_id: selfId, sender_label: displayName, type, payload})
-  });
-  if (!resp.ok) {
-    console.error('signal send failed', await resp.text());
+  try {
+    const resp = await fetch('/plugins/remote-link/api/signals', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({session_id: sessionId, sender_id: selfId, sender_label: displayName, type, payload})
+    });
+    if (!resp.ok) {
+      console.error('signal send failed', await resp.text());
+    }
+  } catch (err) {
+    console.error('signal send error', err);
   }
 }
 
 async function pollSignals() {
-  const resp = await fetch(`/plugins/remote-link/api/signals?session_id=${sessionId}&since_id=${lastId}&self_id=${selfId}`);
-  if (!resp.ok) return;
-  const data = await resp.json();
-  for (const sig of data.signals) {
-    lastId = Math.max(lastId, sig.id);
-    if (!pc) continue;
-    if (sig.type === 'offer') {
-      await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      await sendSignal('answer', answer);
-      remoteState.textContent = 'Answering';
-      remoteState.className = 'badge bg-info';
-    } else if (sig.type === 'answer') {
-      if (!pc.currentRemoteDescription) {
+  try {
+    const resp = await fetch(`/plugins/remote-link/api/signals?session_id=${sessionId}&since_id=${lastId}&self_id=${selfId}`);
+    if (!resp.ok) return;
+    const data = await resp.json();
+    for (const sig of data.signals) {
+      lastId = Math.max(lastId, sig.id);
+      if (!pc) continue;
+      if (sig.type === 'offer') {
         await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
-        remoteState.textContent = 'Linked';
-        remoteState.className = 'badge bg-success';
-      }
-    } else if (sig.type === 'ice' && sig.payload) {
-      try {
-        await pc.addIceCandidate(new RTCIceCandidate(sig.payload));
-      } catch (e) {
-        console.warn('ice add failed', e);
+        const answer = await pc.createAnswer();
+        await pc.setLocalDescription(answer);
+        await sendSignal('answer', answer);
+        remoteState.textContent = 'Answering';
+        remoteState.className = 'badge bg-info';
+      } else if (sig.type === 'answer') {
+        if (!pc.currentRemoteDescription) {
+          await pc.setRemoteDescription(new RTCSessionDescription(sig.payload));
+          remoteState.textContent = 'Linked';
+          remoteState.className = 'badge bg-success';
+        }
+      } else if (sig.type === 'ice' && sig.payload) {
+        try {
+          await pc.addIceCandidate(new RTCIceCandidate(sig.payload));
+        } catch (e) {
+          console.warn('ice add failed', e);
+        }
       }
     }
+  } catch (err) {
+    console.error('signal poll failed', err);
   }
 }
 
@@ -104,27 +121,38 @@ function startPolling() {
 }
 
 async function startLink() {
-  if (pc) pc.close();
-  pc = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.l.google.com:19302'}]});
-  pc.onicecandidate = (e) => { if (e.candidate) sendSignal('ice', e.candidate); };
-  pc.ontrack = (e) => {
-    const remote = document.getElementById('remoteAudio');
-    remote.srcObject = e.streams[0];
-    remoteState.textContent = 'Receiving';
-    remoteState.className = 'badge bg-success';
-  };
+  errorBox.classList.add('d-none');
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
+    showError('Browser does not support audio capture (https/secure context required).');
+    return;
+  }
+  try {
+    if (pc) pc.close();
+    pc = new RTCPeerConnection({iceServers: [{urls: 'stun:stun.l.google.com:19302'}]});
+    pc.onicecandidate = (e) => { if (e.candidate) sendSignal('ice', e.candidate); };
+    pc.ontrack = (e) => {
+      const remote = document.getElementById('remoteAudio');
+      remote.srcObject = e.streams[0];
+      remoteState.textContent = 'Receiving';
+      remoteState.className = 'badge bg-success';
+    };
 
-  localStream = await navigator.mediaDevices.getUserMedia({audio: true});
-  document.getElementById('localAudio').srcObject = localStream;
-  localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
-  if (muted) localStream.getAudioTracks().forEach(t => t.enabled = false);
+    localStream = await navigator.mediaDevices.getUserMedia({audio: true});
+    document.getElementById('localAudio').srcObject = localStream;
+    localStream.getTracks().forEach(t => pc.addTrack(t, localStream));
+    if (muted) localStream.getAudioTracks().forEach(t => t.enabled = false);
 
-  const offer = await pc.createOffer();
-  await pc.setLocalDescription(offer);
-  await sendSignal('offer', offer);
-  localState.textContent = 'Calling';
-  localState.className = 'badge bg-primary';
-  startPolling();
+    const offer = await pc.createOffer();
+    await pc.setLocalDescription(offer);
+    await sendSignal('offer', offer);
+    localState.textContent = 'Calling';
+    localState.className = 'badge bg-primary';
+    startPolling();
+  } catch (err) {
+    console.error('start link failed', err);
+    showError('Unable to start link: ' + (err && err.message ? err.message : err));
+    resetLink();
+  }
 }
 
 function muteToggle() {
@@ -147,9 +175,9 @@ function resetLink() {
   remoteState.className = 'badge bg-warning';
 }
 
-document.getElementById('btn-start').onclick = startLink;
-document.getElementById('btn-mute').onclick = muteToggle;
-document.getElementById('btn-reset').onclick = resetLink;
+document.getElementById('btn-start').addEventListener('click', startLink);
+document.getElementById('btn-mute').addEventListener('click', muteToggle);
+document.getElementById('btn-reset').addEventListener('click', resetLink);
 
 startPolling();
 </script>
