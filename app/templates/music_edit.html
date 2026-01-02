@@ -163,7 +163,7 @@ document.addEventListener('DOMContentLoaded', () => {
                     const res = await fetch('/api/music/cover-art', {
                         method: 'POST',
                         headers: {'Content-Type':'application/json'},
-                        body: JSON.stringify({path: '{{ track.path|escapejs }}', art_url: url})
+                        body: JSON.stringify({path: {{ track.path|tojson }}, art_url: url})
                     });
                     const payload = await res.json();
                     if (payload.status === 'ok') {
