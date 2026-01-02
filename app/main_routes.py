@@ -771,12 +771,14 @@ def music_edit_page():
             audio = search_music.__globals__["mutagen"].File(path, easy=True)
             if not audio:
                 return render_template("music_edit.html", track=track, error="Unsupported file format.")
+            key_map = {"year": "date"}
             for field in ["title","artist","album","composer","isrc","year","track","disc","copyright"]:
+                tag_key = key_map.get(field, field)
                 val = request.form.get(field) or None
                 if val:
-                    audio[field] = [val]
-                elif field in audio:
-                    del audio[field]
+                    audio[tag_key] = [val]
+                elif tag_key in audio:
+                    del audio[tag_key]
             audio.save()
             track = get_track(path)
             flash("Metadata updated.", "success")
