@@ -32,6 +32,8 @@ Below are suggestions for modular plugins and broader feature expansions that ca
 - **Encoder/Stream Watchdog**: Monitor multiple mounts/encoders, simulate failover, and push alerts to Discord/Email.
 - **Disk/Retention Monitor**: Track NAS usage, enforce per-show retention, and forecast capacity with alert thresholds.
 - **Job Healthboard**: Visualize scheduled job success/failure/self-heal counts and expose a health API for external monitors.
+- **Automation Bridge + RadioDJ inserts**: Rule-based ingest to playout (tags/time-based) with the ability to search RadioDJ by ID/name and inject items at the top of the playlist for urgent cuts or marathons.
+- **Low-latency remote studio link**: Browser-based send/return with push-to-mute for field/studio coordination, targeting sub-Discord latency.
 
 ## Scheduling & DJ Experience Plugins
 - **Sub/Replacement Marketplace**: DJs can claim unstaffed shifts; managers approve and auto-update the schedule/log expectations.

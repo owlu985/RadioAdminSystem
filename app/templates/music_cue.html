@@ -44,15 +44,15 @@
     </div>
 
     {% set fields = {
-        'cue_in':'Cue In',
+        'cue_in':'Start',
         'intro':'Intro',
+        'loop_in':'Loop In',
+        'loop_out':'Loop Out',
         'hook_in':'Hook In',
         'hook_out':'Hook Out',
-        'start_next':'Start Next',
+        'start_next':'Next',
         'outro':'Outro',
-        'cue_out':'End/Cue Out',
-        'fade_in':'Fade In',
-        'fade_out':'Fade Out'
+        'cue_out':'End'
     } %}
 
     <div class="mb-3 d-flex flex-wrap gap-2">
@@ -93,17 +93,17 @@
     const zoomControl = document.getElementById('zoom');
     const waveCanvas = document.getElementById('waveCanvas');
     const peaksData = {{ track.peaks|default({})|tojson }};
-    const fields = ['cue_in','intro','hook_in','hook_out','start_next','outro','cue_out','fade_in','fade_out'];
+    const fields = ['cue_in','intro','loop_in','loop_out','hook_in','hook_out','start_next','outro','cue_out'];
     const colorMap = {
         cue_in: '#0d6efd',
         intro: '#20c997',
+        loop_in: '#198754',
+        loop_out: '#0dcaf0',
         hook_in: '#6f42c1',
         hook_out: '#d63384',
         start_next: '#fd7e14',
         outro: '#0dcaf0',
-        cue_out: '#dc3545',
-        fade_in: '#198754',
-        fade_out: '#ffc107'
+        cue_out: '#dc3545'
     };
     const STEP = 0.05;
     let selectedCue = 'cue_in';
@@ -163,9 +163,13 @@
 
     function drawWaveform() {
         if (!waveCanvas || !peaksData) return;
-        baseWidth = wave.clientWidth || 1200;
+        const peakLen = (peaksData.mono?.length || peaksData.left?.length || peaksData.right?.length || 0);
+        baseWidth = Math.max(wave.clientWidth || 1200, peakLen ? Math.min(peakLen, 8000) : 1200);
         waveCanvas.width = baseWidth;
+        waveCanvas.style.width = `${baseWidth}px`;
         waveInner.style.width = `${baseWidth}px`;
+        markersLayer.style.width = `${baseWidth}px`;
+        markersLayer.style.minWidth = `${baseWidth}px`;
         const ctx = waveCanvas.getContext('2d');
         const width = waveCanvas.width;
         const height = waveCanvas.height;
@@ -230,7 +234,7 @@
                 marker.style.left = pct + '%';
                 marker.style.background = colorMap[f] || '#0d6efd';
                 marker.style.pointerEvents = 'none';
-
+                
                 const handle = document.createElement('div');
                 handle.className = 'handle';
                 handle.style.left = pct + '%';
@@ -248,7 +252,6 @@
                 markersLayer.appendChild(handle);
             }
         });
-        selectCue(selectedCue);
     }
 
     function startDrag(ev, field) {

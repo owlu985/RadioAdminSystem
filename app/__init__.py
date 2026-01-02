@@ -198,6 +198,8 @@ def create_app(config_class=Config):
                             intro FLOAT,
                             outro FLOAT,
                             cue_out FLOAT,
+                            loop_in FLOAT,
+                            loop_out FLOAT,
                             hook_in FLOAT,
                             hook_out FLOAT,
                             start_next FLOAT,
@@ -209,7 +211,7 @@ def create_app(config_class=Config):
                     ))
                 else:
                     cols = {c['name'] for c in insp.get_columns('music_cue')}
-                    for name in ["cue_out", "hook_in", "hook_out", "start_next"]:
+                    for name in ["cue_out", "hook_in", "hook_out", "start_next", "loop_in", "loop_out"]:
                         if name not in cols:
                             conn.execute(text(f"ALTER TABLE music_cue ADD COLUMN {name} FLOAT"))
                 if "job_health" not in insp.get_table_names():

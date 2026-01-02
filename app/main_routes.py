@@ -813,17 +813,17 @@ def music_cue_page():
     cue = {
         "cue_in": cue_obj.cue_in if cue_obj else None,
         "intro": cue_obj.intro if cue_obj else None,
-        "outro": cue_obj.outro if cue_obj else None,
-        "cue_out": cue_obj.cue_out if cue_obj else None,
+        "loop_in": cue_obj.loop_in if cue_obj else None,
+        "loop_out": cue_obj.loop_out if cue_obj else None,
         "hook_in": cue_obj.hook_in if cue_obj else None,
         "hook_out": cue_obj.hook_out if cue_obj else None,
         "start_next": cue_obj.start_next if cue_obj else None,
-        "fade_in": cue_obj.fade_in if cue_obj else None,
-        "fade_out": cue_obj.fade_out if cue_obj else None,
+        "outro": cue_obj.outro if cue_obj else None,
+        "cue_out": cue_obj.cue_out if cue_obj else None,
     }
     if request.method == "POST":
         payload = {}
-        for field in ["cue_in", "intro", "outro", "cue_out", "hook_in", "hook_out", "start_next", "fade_in", "fade_out"]:
+        for field in ["cue_in", "intro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next", "outro", "cue_out"]:
             val = request.form.get(field)
             payload[field] = float(val) if val else None
         cue_obj = save_cue(path, payload)

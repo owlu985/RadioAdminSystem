@@ -741,6 +741,8 @@ def save_cue(path: str, payload: Dict) -> MusicCue:
     cue.intro = payload.get("intro")
     cue.outro = payload.get("outro")
     cue.cue_out = payload.get("cue_out")
+    cue.loop_in = payload.get("loop_in")
+    cue.loop_out = payload.get("loop_out")
     cue.hook_in = payload.get("hook_in")
     cue.hook_out = payload.get("hook_out")
     cue.start_next = payload.get("start_next")

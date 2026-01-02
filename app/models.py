@@ -238,6 +238,8 @@ class MusicCue(db.Model):
     intro = db.Column(db.Float, nullable=True)
     outro = db.Column(db.Float, nullable=True)
     cue_out = db.Column(db.Float, nullable=True)
+    loop_in = db.Column(db.Float, nullable=True)
+    loop_out = db.Column(db.Float, nullable=True)
     hook_in = db.Column(db.Float, nullable=True)
     hook_out = db.Column(db.Float, nullable=True)
     start_next = db.Column(db.Float, nullable=True)

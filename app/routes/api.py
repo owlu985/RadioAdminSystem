@@ -553,7 +553,7 @@ def psa_library():
                 "duration": duration,
                 "category": category.replace(os.sep, "/"),
                 "loop": bool(meta.get("loop")),
-                "cues": {k: meta.get(k) for k in ["cue_in", "cue_out", "intro", "outro"] if meta.get(k) is not None},
+                "cues": {k: meta.get(k) for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"] if meta.get(k) is not None},
             })
     return jsonify(entries)
 
@@ -578,6 +578,8 @@ def music_cue():
                 "intro": cue.intro if cue else None,
                 "outro": cue.outro if cue else None,
                 "cue_out": cue.cue_out if cue else None,
+                "loop_in": cue.loop_in if cue else None,
+                "loop_out": cue.loop_out if cue else None,
                 "hook_in": cue.hook_in if cue else None,
                 "hook_out": cue.hook_out if cue else None,
                 "start_next": cue.start_next if cue else None,
@@ -590,6 +592,8 @@ def music_cue():
     return jsonify({"status": "ok", "cue": {
         "cue_in": cue.cue_in,
         "intro": cue.intro,
+        "loop_in": cue.loop_in,
+        "loop_out": cue.loop_out,
         "outro": cue.outro,
         "cue_out": cue.cue_out,
         "hook_in": cue.hook_in,
