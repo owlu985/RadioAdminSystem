@@ -41,7 +41,16 @@ from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func
 from functools import wraps
 from .logger import init_logger
-from app.auth_utils import admin_required, login_required, ROLE_PERMISSIONS, ALLOWED_ADMIN_ROLES
+from app.auth_utils import (
+    admin_required,
+    login_required,
+    permission_required,
+    ROLE_PERMISSIONS,
+    ALLOWED_ADMIN_ROLES,
+    PERMISSION_GROUPS,
+    PERMISSION_LOOKUP,
+    effective_permissions,
+)
 from app.routes.logging_api import logs_bp
 from app.services.music_search import search_music, get_track, load_cue, save_cue
 from app.services.audit import audit_recordings, audit_explicit_music
@@ -202,6 +211,8 @@ def inject_branding():
         "inline_help_enabled": current_app.config.get("INLINE_HELP_ENABLED", True),
         "high_contrast_default": current_app.config.get("HIGH_CONTRAST_DEFAULT", False),
         "font_scale_percent": current_app.config.get("FONT_SCALE_PERCENT", 100),
+        "session_permissions": effective_permissions(),
+        "can": lambda perm: (perm == "*" or ("*" in effective_permissions()) or (perm in effective_permissions())),
     }
 
 @main_bp.route('/')
@@ -216,7 +227,7 @@ def index():
 
 # noinspection PyTypeChecker
 @main_bp.route('/shows')
-@admin_required
+@permission_required({"schedule:view", "schedule:edit"})
 def shows():
     """Render the shows database page sorted and paginated."""
 
@@ -369,7 +380,7 @@ def dj_profile(dj_id: int):
         full_name = f"{dj.first_name} {dj.last_name}".strip()
         perms = set(session.get("permissions") or []) | ROLE_PERMISSIONS.get(session.get("role"), set())
         role = session.get("role")
-        can_view_discipline = role in ALLOWED_ADMIN_ROLES or "discipline:view" in perms or "*" in perms
+        can_view_discipline = role in ALLOWED_ADMIN_ROLES or "dj:discipline" in perms or "*" in perms
 
         disciplinary = dj.disciplinary_records if can_view_discipline else []
         absences = DJAbsence.query.filter_by(dj_name=full_name).order_by(DJAbsence.start_time.desc()).all()
@@ -394,7 +405,7 @@ def dj_profile(dj_id: int):
 
 
 @main_bp.route("/djs/discipline", methods=["GET", "POST"])
-@admin_required
+@permission_required({"dj:discipline"})
 def manage_dj_discipline():
         djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
         if request.method == "POST":
@@ -447,7 +458,7 @@ def manage_dj_discipline():
 
 
 @main_bp.route('/users', methods=['GET', 'POST'])
-@admin_required
+@permission_required({"users:manage"})
 def manage_users():
         if request.method == 'POST':
                 action = request.form.get('action', 'update')
@@ -470,7 +481,9 @@ def manage_users():
                 user.display_name = request.form.get('display_name') or user.display_name
                 user.role = request.form.get('role') or None
                 user.custom_role = request.form.get('custom_role') or None
-                user.permissions = request.form.get('permissions') or None
+                selected_perms = {p for p in request.form.getlist('permissions') if p}
+                user.permissions = ",".join(sorted(selected_perms)) if selected_perms else None
+                user.notification_email = request.form.get('notification_email') or None
 
                 status = request.form.get('approval_status') or 'pending'
                 if status == 'approved':
@@ -494,16 +507,27 @@ def manage_users():
                 return redirect(url_for('main.manage_users'))
 
         users = User.query.order_by(User.requested_at.desc()).all()
-        return render_template("users_manage.html", users=users, role_choices=_role_choices())
+        return render_template(
+                "users_manage.html",
+                users=users,
+                role_choices=_role_choices(),
+                permission_groups=PERMISSION_GROUPS,
+        )
 
 
-@main_bp.route('/profile')
+@main_bp.route('/profile', methods=['GET', 'POST'])
 @login_required
 def profile():
         user_id = session.get("user_id")
         user = User.query.get(user_id) if user_id else None
         if not user:
                 abort(403, description="Requires login")
+
+        if request.method == 'POST':
+                user.notification_email = request.form.get('notification_email') or None
+                db.session.commit()
+                flash("Profile updated.", "success")
+                return redirect(url_for('main.profile'))
 
         role = user.custom_role or user.role or "viewer"
         perms = set()
@@ -651,7 +675,7 @@ def dj_absence_submit():
 
 
 @main_bp.route("/absences", methods=["GET", "POST"])
-@admin_required
+@permission_required({"dj:absence"})
 def manage_absences():
         djs = DJ.query.order_by(DJ.first_name.asc().nulls_last(), DJ.last_name.asc().nulls_last()).all()
 
@@ -695,7 +719,7 @@ def manage_absences():
 
 
 @main_bp.route("/music/search")
-@admin_required
+@permission_required({"music:view"})
 def music_search_page():
     email = session.get("user_email") or None
     saved = []
@@ -726,7 +750,7 @@ def _safe_music_path(path: str) -> str:
 
 
 @main_bp.route("/music/stream")
-@admin_required
+@permission_required({"music:view"})
 def music_stream():
     path = request.args.get("path")
     if not path:
@@ -736,7 +760,7 @@ def music_stream():
 
 
 @main_bp.route("/music/detail")
-@admin_required
+@permission_required({"music:view"})
 def music_detail_page():
     path = request.args.get("path")
     track = get_track(path) if path else None
@@ -766,7 +790,7 @@ def music_detail_page():
 
 
 @main_bp.route("/music/edit", methods=["GET", "POST"])
-@admin_required
+@permission_required({"music:edit"})
 def music_edit_page():
     path = request.values.get("path")
     if not path:
@@ -803,7 +827,7 @@ def music_edit_page():
 
 
 @main_bp.route("/music/cue", methods=["GET", "POST"])
-@admin_required
+@permission_required({"music:edit"})
 def music_cue_page():
     path = request.values.get("path")
     if not path:
@@ -834,7 +858,7 @@ def music_cue_page():
 
 
 @main_bp.route("/audit", methods=["GET", "POST"])
-@admin_required
+@permission_required({"audit:run"})
 def audit_page():
     recordings_results = None
     explicit_results = None
@@ -857,7 +881,7 @@ def audit_page():
 
 
 @main_bp.route("/production/live-reads", methods=["GET", "POST"])
-@admin_required
+@permission_required({"news:edit"})
 def live_read_cards():
     """Create and manage live read cards for printing."""
 
@@ -878,7 +902,7 @@ def live_read_cards():
 
 
 @main_bp.route("/production/live-reads/print")
-@admin_required
+@permission_required({"news:edit"})
 def live_read_cards_print():
     include_expired = request.args.get("include_expired") == "1"
     cards = card_query(include_expired=include_expired).all()
@@ -902,7 +926,7 @@ def delete_live_read(card_id: int):
 
 
 @main_bp.route("/archivist", methods=["GET", "POST"])
-@admin_required
+@permission_required({"music:view"})
 def archivist_page():
     import_count = None
     if request.method == "POST":
@@ -942,7 +966,7 @@ def archivist_page():
 
 
 @main_bp.route("/marathon", methods=["GET", "POST"])
-@admin_required
+@permission_required({"schedule:marathon"})
 def marathon_page():
     if request.method == "POST":
         name = (request.form.get("name") or "").strip()
@@ -995,7 +1019,7 @@ def dj_photo(filename: str):
 
 
 @main_bp.route("/social/post", methods=["GET", "POST"])
-@admin_required
+@permission_required({"social:post"})
 def social_post_page():
     upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
     os.makedirs(upload_dir, exist_ok=True)
@@ -1488,7 +1512,7 @@ def oauth_pending():
         return render_template("oauth_pending.html", user=user)
 
 @main_bp.route('/show/add', methods=['GET', 'POST'])
-@admin_required
+@permission_required({"schedule:edit"})
 def add_show():
     """Route to add a new show."""
 
@@ -1544,7 +1568,7 @@ def add_show():
         return redirect(url_for('main.shows'))
 
 @main_bp.route('/show/edit/<int:id>', methods=['GET', 'POST'])
-@admin_required
+@permission_required({"schedule:edit"})
 def edit_show(id):
     """Route to edit an existing show."""
 
@@ -1587,7 +1611,7 @@ def edit_show(id):
 
 
 @main_bp.route('/plugins')
-@admin_required
+@permission_required({"plugins:manage"})
 def plugins_home():
     ensure_plugin_record("website_content")
     plugins = Plugin.query.order_by(Plugin.name.asc()).all()
@@ -1637,7 +1661,7 @@ def _clean_optional(value):
 
 
 @main_bp.route('/settings', methods=['GET', 'POST'])
-@admin_required
+@permission_required({"settings:edit"})
 def settings():
     """Route to update the application settings."""
 

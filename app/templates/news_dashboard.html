@@ -29,7 +29,7 @@
             <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0 align-middle table-fixed">
                     <thead class="table-light">
-                        <tr><th style="width: 15%">Date</th><th style="width: 20%">Type</th><th style="width: 25%">Audio</th><th style="width: 25%">Scripts</th><th style="width: 15%">Preview</th></tr>
+                        <tr><th style="width: 15%">Date</th><th style="width: 18%">Type</th><th style="width: 20%">Audio</th><th style="width: 22%">Scripts</th><th style="width: 25%">Preview</th></tr>
                     </thead>
                     <tbody>
                     {% if upcoming %}
@@ -48,6 +48,14 @@
                                 {% else %}
                                     <span class="text-muted">No scripts</span>
                                 {% endif %}
+                                <form class="mt-2" method="post" action="{{ url_for('news.upload_script_only') }}" enctype="multipart/form-data">
+                                    <input type="hidden" name="news_type" value="{{ item.key }}">
+                                    <input type="hidden" name="date" value="{{ item.date }}">
+                                    <div class="input-group input-group-sm">
+                                        <input type="file" name="script_file" class="form-control" accept=".txt,.doc,.pdf,.docx">
+                                        <button class="btn btn-outline-primary" type="submit">Attach script</button>
+                                    </div>
+                                </form>
                             </td>
                             <td>
                                 {% if item.audio_url %}

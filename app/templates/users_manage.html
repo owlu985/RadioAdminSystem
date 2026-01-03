@@ -35,6 +35,7 @@
             <form class="d-flex flex-column gap-1" method="post">
               <input type="hidden" name="user_id" value="{{ user.id }}">
               <input type="text" class="form-control form-control-sm" name="display_name" value="{{ user.display_name or '' }}" placeholder="Display name">
+              <input type="email" class="form-control form-control-sm" name="notification_email" value="{{ user.notification_email or '' }}" placeholder="Notification email (optional)">
           </td>
           <td class="small">{{ user.email }}</td>
           <td class="small text-muted">{{ user.provider|capitalize }}</td>
@@ -46,7 +47,22 @@
                 {% endfor %}
               </select>
               <input type="text" class="form-control form-control-sm mt-1" name="custom_role" placeholder="Custom role" value="{{ user.custom_role or '' }}">
-              <textarea class="form-control form-control-sm mt-1" name="permissions" placeholder="Comma-separated permissions">{{ user.permissions or '' }}</textarea>
+              {% set user_perms = (user.permissions.split(',') if user.permissions else []) %}
+              <div class="border rounded mt-2 p-2" style="max-height:260px; overflow-y:auto;">
+                {% for group, items in permission_groups %}
+                  <div class="fw-semibold small text-uppercase text-muted">{{ group }}</div>
+                  {% for item in items %}
+                    <div class="form-check small ms-2">
+                      <input class="form-check-input" type="checkbox" name="permissions" value="{{ item.key }}" id="perm-{{ user.id }}-{{ item.key }}" {% if item.key in user_perms %}checked{% endif %}>
+                      <label class="form-check-label" for="perm-{{ user.id }}-{{ item.key }}">
+                        <span class="fw-semibold">{{ item.label }}</span>
+                        <div class="text-muted">{{ item.description }}</div>
+                      </label>
+                    </div>
+                  {% endfor %}
+                  <hr class="my-2">
+                {% endfor %}
+              </div>
           </td>
           <td>
             <select name="approval_status" class="form-select form-select-sm">

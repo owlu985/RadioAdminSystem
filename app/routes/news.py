@@ -3,7 +3,7 @@ import shutil
 from datetime import datetime, date
 from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app
 from werkzeug.utils import secure_filename
-from app.auth_utils import admin_required
+from app.auth_utils import admin_required, permission_required
 from app.logger import init_logger
 from app.services.news_config import load_news_types, get_news_type
 
@@ -135,7 +135,7 @@ def _build_news_entry_urls(entries):
 
 
 @news_bp.route("/upload", methods=["GET", "POST"])
-@admin_required
+@permission_required({"news:edit"})
 def upload_news():
     """
     Admin panel to upload dated newscasts.
@@ -186,8 +186,37 @@ def upload_news():
     return render_template("news_upload.html", today=date.today(), news_types=news_types, queue=queue)
 
 
+@news_bp.route("/upload_script_only", methods=["POST"])
+@permission_required({"news:edit"})
+def upload_script_only():
+    news_key = request.form.get("news_type")
+    target_date_str = request.form.get("date")
+    script_file = request.files.get("script_file")
+    news_types = load_news_types()
+    nt = get_news_type(news_key) if news_key else None
+    if not nt:
+        flash("Invalid news type.", "danger")
+        return redirect(url_for("news.news_dashboard"))
+    if not script_file or not script_file.filename:
+        flash("No script selected.", "danger")
+        return redirect(url_for("news.news_dashboard"))
+    try:
+        target_date = datetime.strptime(target_date_str, "%Y-%m-%d").date()
+    except Exception:  # noqa: BLE001
+        flash("Invalid date for script upload.", "danger")
+        return redirect(url_for("news.news_dashboard"))
+
+    base = nt["filename"].replace(".mp3", "")
+    scripts_dir = _news_scripts_dir(nt["key"])
+    script_name = f"{base}_{target_date.isoformat()}{os.path.splitext(script_file.filename)[1] or '.txt'}"
+    script_path = os.path.join(scripts_dir, secure_filename(script_name))
+    script_file.save(script_path)
+    flash(f"Uploaded script for {nt['label']} ({target_date}).", "success")
+    return redirect(url_for("news.news_dashboard"))
+
+
 @news_bp.route("/dashboard")
-@admin_required
+@permission_required({"news:view"})
 def news_dashboard():
     """Dashboard overview for upcoming and archived newscasts with previews."""
     news_types = load_news_types()

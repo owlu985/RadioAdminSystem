@@ -18,6 +18,7 @@ class User(db.Model):
     permissions = db.Column(db.Text, nullable=True)
     identities = db.Column(db.Text, nullable=True)
     approval_status = db.Column(db.String(32), default="pending", nullable=False)
+    notification_email = db.Column(db.String(255), nullable=True)
     rejected = db.Column(db.Boolean, default=False, nullable=False)
     approved = db.Column(db.Boolean, default=False, nullable=False)
     requested_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)

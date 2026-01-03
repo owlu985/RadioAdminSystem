@@ -12,46 +12,58 @@
     </button>
     <div class="collapse navbar-collapse" id="ramsNav">
       {% set is_auth = session.get('authenticated') %}
+      {% set can_view = can if can else (lambda x: False) %}
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         {% if is_auth %}
+          {% if can_view('dashboard:view') %}
           <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+          {% endif %}
+          {% set show_menu = can_view('schedule:view') or can_view('logs:view') or can_view('dj:absence') %}
+          {% if show_menu %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
               <ul class="dropdown-menu">
-                <li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>
+                {% if can_view('schedule:view') %}<li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>{% endif %}
                 <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
-                <li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>
+                {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>{% endif %}
+              {% if can_view('dj:absence') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>{% endif %}
             </ul>
           </li>
+          {% endif %}
+          {% set lib_menu = can_view('music:view') or can_view('dj:manage') or can_view('dj:discipline') %}
+          {% if lib_menu %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
             <ul class="dropdown-menu">
-              <li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.archivist_page') }}">Archivist DB</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.manage_dj_discipline') }}">Disciplinary</a></li>
+              {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>{% endif %}
+              {% if can_view('dj:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>{% endif %}
+              {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.archivist_page') }}">Archivist DB</a></li>{% endif %}
+              {% if can_view('dj:discipline') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_dj_discipline') }}">Disciplinary</a></li>{% endif %}
             </ul>
           </li>
+          {% endif %}
+          {% set ops_menu = can_view('news:view') or can_view('news:edit') or can_view('audit:run') or can_view('schedule:marathon') or can_view('social:post') or can_view('plugins:manage') or can_view('settings:edit') or can_view('users:manage') %}
+          {% if ops_menu %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
             <ul class="dropdown-menu">
               <li><h6 class="dropdown-header">Broadcast</h6></li>
-              <li><a class="dropdown-item" href="{{ url_for('news.news_dashboard') }}">News Dashboard</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>
+              {% if can_view('news:view') %}<li><a class="dropdown-item" href="{{ url_for('news.news_dashboard') }}">News Dashboard</a></li>{% endif %}
+              {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>{% endif %}
+              {% if can_view('audit:run') %}<li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>{% endif %}
+              {% if can_view('schedule:marathon') %}<li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>{% endif %}
+              {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>{% endif %}
               <li><hr class="dropdown-divider"></li>
               <li><h6 class="dropdown-header">Digital & Social</h6></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.social_post_page') }}">Social Posting</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.plugins_home') }}">Plugins</a></li>
+              {% if can_view('social:post') %}<li><a class="dropdown-item" href="{{ url_for('main.social_post_page') }}">Social Posting</a></li>{% endif %}
+              {% if can_view('plugins:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.plugins_home') }}">Plugins</a></li>{% endif %}
               <li><hr class="dropdown-divider"></li>
               <li><h6 class="dropdown-header">Admin</h6></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>
-              <li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>
+              {% if can_view('users:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>{% endif %}
+              {% if can_view('settings:edit') %}<li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>{% endif %}
             </ul>
           </li>
+          {% endif %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">DJ Tools</a>
             <ul class="dropdown-menu">
