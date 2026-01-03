@@ -84,8 +84,8 @@
     const outroBadge = document.getElementById('outroBadge');
     const queue = [];
     const players = [
-        { el: document.getElementById('psaAudioA') },
-        { el: document.getElementById('psaAudioB') }
+        { el: document.getElementById('psaAudioA'), item: null },
+        { el: document.getElementById('psaAudioB'), item: null }
     ];
     let currentIdx = 0;
     let currentItem = null;
@@ -169,13 +169,17 @@
 
     function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
 
-    function applyPlaybackRate(player = activePlayer(), item = currentItem) {
+    function computePlaybackRate(item) {
         const boost = Math.pow(2, 0.5 / 12);
         if (top40.checked && item && ((item.kind && item.kind === 'music') || (item.category || '').toLowerCase().includes('music'))) {
-            player.playbackRate = boost;
-        } else {
-            player.playbackRate = 1.0;
+            return boost;
         }
+        return 1.0;
+    }
+
+    function applyPlaybackRate(player = activePlayer(), item = currentItem) {
+        const rate = computePlaybackRate(item);
+        player.playbackRate = rate;
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
@@ -188,13 +192,17 @@
             return;
         }
         stopFade();
-        const player = players[preferredIdx].el;
-        const other = players[1 - preferredIdx].el;
+        const playerObj = players[preferredIdx];
+        const otherObj = players[1 - preferredIdx];
+        const player = playerObj.el;
+        const other = otherObj.el;
         other.pause();
         other.removeAttribute('src');
         other.volume = 1;
+        otherObj.item = null;
         currentIdx = preferredIdx;
         currentItem = item;
+        playerObj.item = item;
         if (idx > 0) queue.splice(0, idx);
         player.src = item.url;
         player.volume = 1;
@@ -230,8 +238,10 @@
         const current = activePlayer();
         const nextIdx = 1 - currentIdx;
         const nextItem = queue[1];
-        const nextPlayer = players[nextIdx].el;
+        const nextPlayerObj = players[nextIdx];
+        const nextPlayer = nextPlayerObj.el;
         stopFade();
+        nextPlayerObj.item = nextItem;
         nextPlayer.src = nextItem.url;
         nextPlayer.volume = 1;
         applyPlaybackRate(nextPlayer, nextItem);
@@ -247,6 +257,8 @@
                 shiftPastStops();
                 currentIdx = nextIdx;
                 currentItem = nextItem;
+                applyPlaybackRate();
+                startTimer();
                 renderQueue();
             }
         }, 80);
@@ -310,10 +322,17 @@
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
     categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
     document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
-    top40.addEventListener('change', () => applyPlaybackRate());
+    top40.addEventListener('change', () => {
+        players.forEach((p) => {
+            if (p.item) {
+                p.el.playbackRate = computePlaybackRate(p.item);
+            }
+        });
+    });
 
     players.forEach((p, idx) => {
-        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(); } });
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); } });
+        p.el.addEventListener('loadedmetadata', () => { if (p.item) { p.el.playbackRate = computePlaybackRate(p.item); } });
         p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });

@@ -27,8 +27,9 @@
                         <button type="submit" class="btn btn-primary">Run</button>
                     </form>
                     <div class="progress mt-2" style="height: 8px; display:none;" id="recProgressWrap">
-                        <div class="progress-bar" id="recProgress" role="progressbar" style="width: 0%;"></div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="recProgress" role="progressbar" style="width: 0%;"></div>
                     </div>
+                    <div class="small text-muted" id="recStatus"></div>
                 </div>
             </div>
         </div>
@@ -46,8 +47,9 @@
                         <button type="submit" class="btn btn-primary">Run</button>
                     </form>
                     <div class="progress mt-2" style="height: 8px; display:none;" id="expProgressWrap">
-                        <div class="progress-bar" id="expProgress" role="progressbar" style="width: 0%;"></div>
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="expProgress" role="progressbar" style="width: 0%;"></div>
                     </div>
+                    <div class="small text-muted" id="expStatus"></div>
                 </div>
             </div>
         </div>
@@ -60,11 +62,13 @@
     <div class="table-responsive" id="expResults"></div>
 </div>
 <script>
-    async function startAudit(action, payload, progressWrapId, progressId, resultsContainerId) {
+    async function startAudit(action, payload, progressWrapId, progressId, resultsContainerId, statusId) {
         const wrap = document.getElementById(progressWrapId);
         const bar = document.getElementById(progressId);
+        const status = document.getElementById(statusId);
         wrap.style.display = 'block';
         bar.style.width = '0%';
+        status.textContent = 'Starting...';
         const res = await fetch('/api/audit/start', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -82,8 +86,10 @@
             const total = s.total || 1;
             const prog = Math.min(100, Math.floor((s.progress || 0) * 100 / total));
             bar.style.width = `${prog}%`;
+            status.textContent = `${s.status || 'running'} — ${s.progress || 0}/${s.total || '?'} processed`;
             if (s.status === 'completed' || s.status === 'error') {
                 wrap.style.display = 'none';
+                status.textContent = s.status === 'error' ? (s.error || 'error') : 'Completed';
                 renderResults(resultsContainerId, s.results || [], action);
                 return;
             }
@@ -130,13 +136,13 @@
     document.getElementById('recordingsForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const folder = this.recordings_folder.value || null;
-        startAudit('recordings', {folder}, 'recProgressWrap', 'recProgress', 'recResults');
+        startAudit('recordings', {folder}, 'recProgressWrap', 'recProgress', 'recResults', 'recStatus');
     });
 
     document.getElementById('explicitForm').addEventListener('submit', function(e) {
         e.preventDefault();
         const rate_limit = this.rate_limit.value || {{ default_rate }};
-        startAudit('explicit', {rate: rate_limit}, 'expProgressWrap', 'expProgress', 'expResults');
+        startAudit('explicit', {rate: rate_limit}, 'expProgressWrap', 'expProgress', 'expResults', 'expStatus');
     });
 </script>
 </body>
