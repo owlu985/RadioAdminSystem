@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>PSA Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">PSA Player</h2>
+            <div class="text-muted">Build a quick queue and play PSAs directly in the browser.</div>
+            <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
+        </div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Available Media</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:60vh; overflow:auto;">
+                    <ul class="list-group" id="psaList"></ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Queue</span>
+                    <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timer">00:00.00</span></div>
+                </div>
+                <div class="card-body">
+                    <audio id="psaAudio" controls class="w-100 mb-2"></audio>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="top40">
+                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone)</label>
+                        </div>
+                        <div class="d-flex gap-3">
+                            <span class="badge rounded-pill text-bg-secondary" id="introBadge" style="display:none;">Intro</span>
+                            <span class="badge rounded-pill text-bg-secondary" id="outroBadge" style="display:none;">Outro</span>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 mb-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                        <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
+                    </div>
+                    <ol class="mb-0" id="queueList"></ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+<script>
+    let library = [];
+    const psaList = document.getElementById('psaList');
+    const queueList = document.getElementById('queueList');
+    const audioEl = document.getElementById('psaAudio');
+    const timerEl = document.getElementById('timer');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const top40 = document.getElementById('top40');
+    const introBadge = document.getElementById('introBadge');
+    const outroBadge = document.getElementById('outroBadge');
+    const queue = [];
+    let fadeTimer = null;
+    let timerInterval = null;
+    let currentItem = null;
+
+    function renderCategories() {
+        const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
+        categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function renderLibrary(filter = '') {
+        psaList.innerHTML = '';
+        const term = filter.toLowerCase();
+        const cat = categoryFilter.value;
+        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            li.dataset.name = item.name.toLowerCase();
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.loop) meta.push('loop');
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${item.name}</strong><br>
+                    ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
+                </div>
+            </div>`;
+            li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
+            psaList.appendChild(li);
+        });
+        if (!psaList.children.length) {
+            const li = document.createElement('li');
+            li.className = 'list-group-item text-muted';
+            li.textContent = 'No items found.';
+            psaList.appendChild(li);
+        }
+    }
+
+    function renderQueue() {
+        queueList.innerHTML = '';
+        if (!queue.length) {
+            queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
+            return;
+        }
+        queue.forEach((item, idx) => {
+            const li = document.createElement('li');
+            li.innerHTML = `${item.name} <small class="text-muted">${item.duration ? '('+item.duration+'s)' : ''}</small>`;
+            li.dataset.index = idx;
+            li.tabIndex = 0;
+            li.addEventListener('click', () => startFrom(idx));
+            li.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') startFrom(idx);
+            });
+            queueList.appendChild(li);
+        });
+    }
+
+    function addToQueue(item) {
+        queue.push(item);
+        if (queue.length === 1 && audioEl.paused) {
+            startFrom(0);
+        }
+        renderQueue();
+    }
+
+    function addStopCue() {
+        queue.push({name: 'STOP', stop: true});
+        renderQueue();
+    }
+
+    function startFrom(idx) {
+        const item = queue[idx];
+        if (!item) return;
+        if (item.stop) {
+            queue.splice(0, idx + 1);
+            audioEl.pause();
+            audioEl.removeAttribute('src');
+            renderQueue();
+            return;
+        }
+        if (idx > 0) {
+            queue.splice(0, idx);
+            renderQueue();
+        }
+        currentItem = item;
+        audioEl.src = item.url;
+        applyPlaybackRate();
+        audioEl.play();
+    }
+
+    document.getElementById('clearQueue').addEventListener('click', () => {
+        queue.length = 0;
+        stopFade();
+        audioEl.pause();
+        audioEl.removeAttribute('src');
+        currentItem = null;
+        renderQueue();
+    });
+    document.getElementById('playNext').addEventListener('click', () => {
+        if (!queue.length) return;
+        queue.shift();
+        stopFade();
+        if (queue.length) {
+            renderQueue();
+            if (queue[0].stop) {
+                queue.shift();
+                audioEl.pause();
+                audioEl.removeAttribute('src');
+                currentItem = null;
+                renderQueue();
+            } else {
+                startFrom(0);
+            }
+        } else {
+            audioEl.pause();
+            audioEl.removeAttribute('src');
+            currentItem = null;
+            renderQueue();
+        }
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
+    document.getElementById('addStop').addEventListener('click', addStopCue);
+    document.getElementById('fadeOut').addEventListener('click', () => {
+        if (audioEl.paused) {
+            document.getElementById('playNext').click();
+            return;
+        }
+        let level = audioEl.volume;
+        stopFade();
+        fadeTimer = setInterval(() => {
+            level = Math.max(0, level - 0.08);
+            audioEl.volume = level;
+            if (level <= 0.02) {
+                stopFade();
+                document.getElementById('playNext').click();
+            }
+        }, 80);
+    });
+    audioEl.addEventListener('ended', () => {
+        queue.shift();
+        renderQueue();
+        if (queue.length) {
+            if (queue[0].stop) {
+                queue.shift();
+                audioEl.pause();
+                audioEl.removeAttribute('src');
+                currentItem = null;
+                renderQueue();
+            } else {
+                startFrom(0);
+            }
+        }
+        if (!queue.length) {
+            currentItem = null;
+        }
+    });
+
+    document.getElementById('psaSearch').addEventListener('input', (e) => {
+        renderLibrary(e.target.value || '');
+    });
+    categoryFilter.addEventListener('change', () => {
+        renderLibrary(document.getElementById('psaSearch').value || '');
+    });
+
+    document.getElementById('refreshPsa').addEventListener('click', () => {
+        loadPSAs();
+    });
+
+    top40.addEventListener('change', () => {
+        applyPlaybackRate();
+    });
+
+    async function loadPSAs() {
+        try {
+            const res = await fetch('/api/psa/library');
+            library = await res.json();
+            renderCategories();
+            renderLibrary();
+        } catch (e) {
+            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load PSAs.</li>';
+        }
+    }
+    loadPSAs();
+
+    function stopFade() {
+        if (fadeTimer) {
+            clearInterval(fadeTimer);
+            fadeTimer = null;
+            audioEl.volume = 1;
+        }
+    }
+
+    function updateTimer() {
+        if (!audioEl.duration || isNaN(audioEl.duration)) return;
+        const remaining = Math.max(0, audioEl.duration - audioEl.currentTime);
+        const pct = remaining / audioEl.duration;
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+        const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
+        timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+        timerEl.style.color = pct <= 0.15 ? '#dc3545' : '';
+        timerEl.style.fontWeight = pct <= 0.15 ? '700' : '400';
+
+        const cues = currentItem && currentItem.cues ? currentItem.cues : {};
+        if (cues.intro) {
+            const introRem = Math.max(0, cues.intro - audioEl.currentTime);
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
+        } else {
+            introBadge.style.display = 'none';
+        }
+        if (cues.outro) {
+            const outroRem = Math.max(0, cues.outro - audioEl.currentTime);
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
+            outroBadge.style.backgroundColor = pct <= 0.15 ? '#dc3545' : '';
+        } else {
+            outroBadge.style.display = 'none';
+        }
+    }
+
+    function startTimer() {
+        stopTimer();
+        timerInterval = setInterval(updateTimer, 80);
+    }
+
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+    }
+
+    function applyPlaybackRate() {
+        const boost = Math.pow(2, 0.5 / 12);
+        if (top40.checked && currentItem && (currentItem.category || '').toLowerCase().includes('music')) {
+            audioEl.playbackRate = boost;
+        } else {
+            audioEl.playbackRate = 1.0;
+        }
+    }
+
+    audioEl.addEventListener('play', () => { startTimer(); applyPlaybackRate(); });
+    audioEl.addEventListener('pause', stopTimer);
+    audioEl.addEventListener('ended', stopTimer);
+</script>
+</body>
+</html>
