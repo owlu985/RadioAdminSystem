@@ -71,7 +71,8 @@ class Config:
     ICECAST_USERNAME = None
     ICECAST_PASSWORD = None
     ICECAST_MOUNT = None
-    ICECAST_ANALYTICS_INTERVAL_MINUTES = 5
+    ICECAST_ANALYTICS_INTERVAL_MINUTES = 15
+    ICECAST_ANALYTICS_FILE = None  # defaults to instance/analytics/icecast_listener_history.jsonl
     ICECAST_IGNORED_IPS = []
 
     # Self-heal / health reporting defaults

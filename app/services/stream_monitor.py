@@ -8,7 +8,7 @@ import requests
 from flask import current_app
 
 from app.logger import init_logger
-from app.models import IcecastStat, db
+from app.services.listener_analytics import append_listener_sample, load_listener_history
 
 logger = init_logger()
 
@@ -105,20 +105,12 @@ def fetch_icecast_listeners() -> Optional[int]:
     return listeners
 
 
-def record_icecast_stat() -> Optional[IcecastStat]:
+def record_icecast_stat() -> Optional[dict]:
     listeners = fetch_icecast_listeners()
     if listeners is None:
         return None
-    stat = IcecastStat(listeners=listeners, created_at=datetime.utcnow())
-    db.session.add(stat)
-    db.session.commit()
-    return stat
+    return append_listener_sample(listeners)
 
 
-def recent_icecast_stats(hours: int = 24) -> List[IcecastStat]:
-    cutoff = datetime.utcnow() - timedelta(hours=hours)
-    return (
-        IcecastStat.query.filter(IcecastStat.created_at >= cutoff)
-        .order_by(IcecastStat.created_at.asc())
-        .all()
-    )
+def recent_icecast_stats(hours: int = 24) -> List[dict]:
+    return load_listener_history(hours=hours)

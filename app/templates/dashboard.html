@@ -59,6 +59,7 @@
             <p class="mb-1"><strong>Probe:</strong> <span id="probeClass">...</span></p>
             <p class="mb-0 text-muted"><small id="probeDetails"></small></p>
             <div class="small text-muted mt-2" id="listenerHistory"></div>
+            <canvas id="listenerChart" height="120" class="mt-2"></canvas>
             <div class="help-hint mt-2">Need details? See API docs for <code>/api/stream/status</code> and probe history.</div>
         </div>
     </div>
@@ -129,6 +130,7 @@
         </div>
     </div>
 {% include '_footer.html' %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <script>
     async function refreshStatus() {
         try {
@@ -154,13 +156,55 @@
             document.getElementById('probeDetails').textContent = '';
         }
     }
+    let listenerChart;
+    function stateColor(state) {
+        if (state === 'live_show') return '#28a745';
+        if (state === 'automation') return '#0d6efd';
+        if (state === 'dead_air') return '#dc3545';
+        return '#6c757d';
+    }
     async function refreshListeners() {
         try {
-            const res = await fetch('/api/icecast/analytics?hours=3');
+            const res = await fetch('/api/icecast/analytics?hours=24');
             const data = await res.json();
             if (Array.isArray(data) && data.length) {
-                const last = data.slice(-5).map(d => `${new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}: ${d.listeners}`);
+                const last = data.slice(-5).map(d => `${new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}: ${d.listeners} (${d.state || 'n/a'})`);
                 document.getElementById('listenerHistory').textContent = 'Recent: ' + last.join(' • ');
+
+                const labels = data.map(d => new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
+                const values = data.map(d => d.listeners || 0);
+                const pointColors = data.map(d => stateColor(d.state));
+                const ctx = document.getElementById('listenerChart').getContext('2d');
+                if (!listenerChart) {
+                    listenerChart = new Chart(ctx, {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{
+                                label: 'Listeners (15m)',
+                                data: values,
+                                borderColor: '#0d6efd',
+                                backgroundColor: 'rgba(13,110,253,0.1)',
+                                pointBackgroundColor: pointColors,
+                                pointRadius: 3,
+                                tension: 0.2,
+                            }]
+                        },
+                        options: {
+                            responsive: true,
+                            plugins: {legend: {display: false}},
+                            scales: {
+                                x: {title: {display: true, text: 'Time'}},
+                                y: {title: {display: true, text: 'Listeners'}}
+                            }
+                        }
+                    });
+                } else {
+                    listenerChart.data.labels = labels;
+                    listenerChart.data.datasets[0].data = values;
+                    listenerChart.data.datasets[0].pointBackgroundColor = pointColors;
+                    listenerChart.update();
+                }
             }
         } catch (e) {
             document.getElementById('listenerHistory').textContent = '';

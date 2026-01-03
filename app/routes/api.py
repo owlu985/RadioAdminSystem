@@ -916,10 +916,7 @@ def stream_status():
 def icecast_analytics():
     hours = request.args.get("hours", default=24, type=int)
     stats = recent_icecast_stats(hours=hours)
-    return jsonify([
-        {"ts": s.created_at.isoformat(), "listeners": s.listeners}
-        for s in stats
-    ])
+    return jsonify(stats)
 
 
 @api_bp.route("/audit/start", methods=["POST"])
