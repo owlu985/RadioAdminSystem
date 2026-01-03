@@ -87,72 +87,73 @@ def audit_explicit_music(rate_limit_s: float = 0.5) -> List[Dict]:
     return results
 
 
-def _run_job(job_id: str, action: str, params: dict):
+def _run_job(app, job_id: str, action: str, params: dict):
     try:
-        audit_jobs[job_id]["status"] = "running"
-        if action == "recordings":
-            folder = params.get("folder")
-            files = [
-                os.path.join(base, f)
-                for base, _, fs in os.walk(folder or current_app.config["OUTPUT_FOLDER"])
-                for f in fs
-                if f.lower().endswith((".mp3", ".wav", ".flac", ".aac", ".m4a"))
-            ]
-            audit_jobs[job_id]["total"] = len(files)
-            results = []
-            for idx, path in enumerate(files):
-                res = analyze_audio(path, current_app.config)
-                results.append({
-                    "path": path,
-                    "classification": res.classification,
-                    "reason": res.reason,
-                    "avg_db": res.avg_db,
-                    "silence_ratio": res.silence_ratio,
-                    "automation_ratio": res.automation_ratio,
-                })
-                audit_jobs[job_id]["progress"] = idx + 1
-            audit_jobs[job_id]["results"] = results
-        elif action == "explicit":
-            rate = params.get("rate", 0.5)
-            music_files = list(_walk_music())
-            audit_jobs[job_id]["total"] = len(music_files)
-            results = []
-            for idx, path in enumerate(music_files):
-                tags = _read_tags(path)
-                title = tags.get("title") or ""
-                artist = tags.get("artist") or ""
-                if not title or not artist:
+        with app.app_context():
+            audit_jobs[job_id]["status"] = "running"
+            if action == "recordings":
+                folder = params.get("folder")
+                files = [
+                    os.path.join(base, f)
+                    for base, _, fs in os.walk(folder or app.config["OUTPUT_FOLDER"])
+                    for f in fs
+                    if f.lower().endswith((".mp3", ".wav", ".flac", ".aac", ".m4a"))
+                ]
+                audit_jobs[job_id]["total"] = len(files)
+                results = []
+                for idx, path in enumerate(files):
+                    res = analyze_audio(path, app.config)
+                    results.append({
+                        "path": path,
+                        "classification": res.classification,
+                        "reason": res.reason,
+                        "avg_db": res.avg_db,
+                        "silence_ratio": res.silence_ratio,
+                        "automation_ratio": res.automation_ratio,
+                    })
                     audit_jobs[job_id]["progress"] = idx + 1
-                    continue
-                try:
-                    api_results = _itunes_search(title, artist, rate_limit_s=rate)
-                except Exception as exc:  # noqa: BLE001
+                audit_jobs[job_id]["results"] = results
+            elif action == "explicit":
+                rate = params.get("rate", 0.5)
+                music_files = list(_walk_music())
+                audit_jobs[job_id]["total"] = len(music_files)
+                results = []
+                for idx, path in enumerate(music_files):
+                    tags = _read_tags(path)
+                    title = tags.get("title") or ""
+                    artist = tags.get("artist") or ""
+                    if not title or not artist:
+                        audit_jobs[job_id]["progress"] = idx + 1
+                        continue
+                    try:
+                        api_results = _itunes_search(title, artist, rate_limit_s=rate)
+                    except Exception as exc:  # noqa: BLE001
+                        results.append({
+                            "path": path,
+                            "title": title,
+                            "artist": artist,
+                            "error": str(exc),
+                        })
+                        audit_jobs[job_id]["progress"] = idx + 1
+                        continue
+                    explicit_found = None
+                    clean_available = False
+                    for item in api_results:
+                        explicitness = item.get("trackExplicitness")
+                        if explicitness == "explicit":
+                            explicit_found = True
+                        if explicitness == "notExplicit":
+                            clean_available = True
                     results.append({
                         "path": path,
                         "title": title,
                         "artist": artist,
-                        "error": str(exc),
+                        "explicit": bool(explicit_found),
+                        "clean_available": clean_available,
                     })
                     audit_jobs[job_id]["progress"] = idx + 1
-                    continue
-                explicit_found = None
-                clean_available = False
-                for item in api_results:
-                    explicitness = item.get("trackExplicitness")
-                    if explicitness == "explicit":
-                        explicit_found = True
-                    if explicitness == "notExplicit":
-                        clean_available = True
-                results.append({
-                    "path": path,
-                    "title": title,
-                    "artist": artist,
-                    "explicit": bool(explicit_found),
-                    "clean_available": clean_available,
-                })
-                audit_jobs[job_id]["progress"] = idx + 1
-            audit_jobs[job_id]["results"] = results
-        audit_jobs[job_id]["status"] = "completed"
+                audit_jobs[job_id]["results"] = results
+            audit_jobs[job_id]["status"] = "completed"
     except Exception as exc:  # noqa: BLE001
         audit_jobs[job_id]["status"] = "error"
         audit_jobs[job_id]["error"] = str(exc)
@@ -161,7 +162,9 @@ def _run_job(job_id: str, action: str, params: dict):
 def start_audit_job(action: str, params: dict) -> str:
     job_id = str(uuid.uuid4())
     audit_jobs[job_id] = {"status": "queued", "progress": 0, "total": 0, "results": None}
-    thread = threading.Thread(target=_run_job, args=(job_id, action, params), daemon=True)
+    # capture the real Flask app for background work
+    app = current_app._get_current_object()
+    thread = threading.Thread(target=_run_job, args=(app, job_id, action, params), daemon=True)
     thread.start()
     return job_id
 
