@@ -12,7 +12,7 @@
     </button>
     <div class="collapse navbar-collapse" id="ramsNav">
       {% set is_auth = session.get('authenticated') %}
-      {% set can_view = can if can else (lambda x: False) %}
+      {% set can_view = can %}
       <ul class="navbar-nav me-auto mb-2 mb-lg-0">
         {% if is_auth %}
           {% if can_view('dashboard:view') %}
