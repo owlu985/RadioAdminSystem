@@ -169,17 +169,26 @@
 
     function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
 
+    const TOP40_RATE = Math.pow(2, 0.5 / 12);
+
+    function preservesPitchOff(el) {
+        if (!el) return;
+        el.preservesPitch = false;
+        el.mozPreservesPitch = false;
+        el.webkitPreservesPitch = false;
+    }
+
     function computePlaybackRate(item) {
-        const boost = Math.pow(2, 0.5 / 12);
-        if (top40.checked && item && ((item.kind && item.kind === 'music') || (item.category || '').toLowerCase().includes('music'))) {
-            return boost;
+        const isMusic = item && ((item.kind && item.kind === 'music') || (item.category || '').toLowerCase().includes('music'));
+        if (top40.checked && isMusic) {
+            return TOP40_RATE;
         }
         return 1.0;
     }
 
     function applyPlaybackRate(player = activePlayer(), item = currentItem) {
-        const rate = computePlaybackRate(item);
-        player.playbackRate = rate;
+        preservesPitchOff(player);
+        player.playbackRate = computePlaybackRate(item);
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
@@ -324,6 +333,7 @@
     document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
     top40.addEventListener('change', () => {
         players.forEach((p) => {
+            preservesPitchOff(p.el);
             if (p.item) {
                 p.el.playbackRate = computePlaybackRate(p.item);
             }
@@ -331,8 +341,9 @@
     });
 
     players.forEach((p, idx) => {
+        preservesPitchOff(p.el);
         p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); } });
-        p.el.addEventListener('loadedmetadata', () => { if (p.item) { p.el.playbackRate = computePlaybackRate(p.item); } });
+        p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
         p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });
