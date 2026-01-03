@@ -750,4 +750,92 @@ def save_cue(path: str, payload: Dict) -> MusicCue:
     cue.fade_out = payload.get("fade_out")
     db.session.add(cue)
     db.session.commit()
+    _write_radiodj_cue_tag(path, payload)
     return cue
+
+
+def _write_radiodj_cue_tag(path: str, payload: Dict) -> None:
+    """Persist cue points into the "MusicID PUID" tag RadioDJ expects.
+
+    RadioDJ stores cue data as an ampersand-delimited string inside the
+    "MusicID PUID" tag (for MP3 ID3 this is a TXXX frame; for MP4/M4A this is
+    a freeform atom; for other containers we try a generic tag). Example:
+
+    &sta=0.19&int=16.37&pin=0.42&pou=8.76&hin=39.78&hou=54.66&out=218.18&xta=220.07&end=221.30&fin=0&fou=1.22
+    """
+
+    if not mutagen:
+        return
+
+    mapping = [
+        ("sta", "cue_in"),
+        ("int", "intro"),
+        ("pin", "loop_in"),
+        ("pou", "loop_out"),
+        ("hin", "hook_in"),
+        ("hou", "hook_out"),
+        ("out", "outro"),
+        ("xta", "start_next"),
+        ("end", "cue_out"),
+        ("fin", "fade_in"),
+        ("fou", "fade_out"),
+    ]
+
+    parts = []
+    for key, field in mapping:
+        val = payload.get(field)
+        if val is None:
+            continue
+        try:
+            val_num = float(val)
+        except Exception:
+            continue
+        parts.append(f"{key}={val_num}")
+
+    tag_value = "&" + "&".join(parts) if parts else ""
+
+    try:
+        ext = os.path.splitext(path)[1].lower()
+        if ext == ".mp3":
+            try:
+                from mutagen.id3 import ID3, TXXX  # type: ignore
+            except Exception:
+                return
+            id3 = ID3(path)
+            # remove existing MusicID PUID frames
+            for frame_id in list(id3.keys()):
+                if frame_id.startswith("TXXX"):
+                    frame = id3[frame_id]
+                    if getattr(frame, "desc", "") == "MusicID PUID":
+                        del id3[frame_id]
+            if tag_value:
+                id3.add(TXXX(encoding=3, desc="MusicID PUID", text=[tag_value]))
+            id3.save()
+            return
+
+        if ext in {".m4a", ".mp4", ".m4b"}:
+            try:
+                from mutagen.mp4 import MP4, MP4FreeForm  # type: ignore
+            except Exception:
+                return
+            mp4 = MP4(path)
+            key = "----:com.apple.iTunes:MusicID PUID"
+            if tag_value:
+                mp4[key] = [MP4FreeForm(tag_value.encode("utf-8"))]
+            elif key in mp4:
+                mp4.pop(key, None)
+            mp4.save()
+            return
+
+        # Fallback for formats that support simple key/value tagging
+        audio = mutagen.File(path, easy=False)
+        if not audio:
+            return
+        if tag_value:
+            audio["MusicID PUID"] = tag_value
+        elif "MusicID PUID" in audio:
+            del audio["MusicID PUID"]
+        audio.save()
+    except Exception:
+        # Silently ignore tagging errors so cue saving still succeeds in RAMS
+        return
