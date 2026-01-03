@@ -534,27 +534,87 @@ def find_duplicates_and_quality(tracks: List[Dict]):
     }
 
 
-def bulk_update_metadata(paths: List[str], updates: Dict, cover_art_bytes: Optional[bytes] = None) -> Dict:
-    results = []
+def _parse_track_tuple(val: Optional[str]) -> Optional[Tuple[int, int]]:
+    if not val:
+        return None
+    try:
+        if isinstance(val, (list, tuple)):
+            if len(val) == 2 and all(isinstance(v, (int, float)) for v in val):
+                return int(val[0]), int(val[1])
+            if len(val) == 1:
+                return int(val[0]), 0
+        if isinstance(val, str) and "/" in val:
+            parts = val.split("/")
+            return int(parts[0]), int(parts[1] or 0)
+        return int(val), 0
+    except Exception:
+        return None
+
+
+def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] = None) -> Dict:
+    """Update common tags with MP4-safe handling to avoid invalid-key errors."""
     if not mutagen:
         return {"status": "error", "message": "mutagen_required"}
-    for path in paths:
-        outcome = {"path": path, "status": "updated"}
-        try:
-            audio = mutagen.File(path, easy=True)
-            if not audio:
-                outcome["status"] = "unsupported"
-                results.append(outcome)
-                continue
-            for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]:
+
+    ext = os.path.splitext(path)[1].lower()
+    try:
+        if ext in {".m4a", ".mp4", ".m4b"}:
+            from mutagen.mp4 import MP4, MP4FreeForm  # type: ignore
+
+            mp4 = MP4(path)
+            atom_map = {
+                "title": "©nam",
+                "artist": "©ART",
+                "album": "©alb",
+                "composer": "©wrt",
+                "isrc": "----:com.apple.iTunes:ISRC",
+                "year": "©day",
+                "copyright": "cprt",
+            }
+
+            for field, atom in atom_map.items():
                 val = updates.get(field)
                 if val is None:
                     continue
-                if val == "":
-                    if field in audio:
-                        del audio[field]
+                if not val:
+                    mp4.pop(atom, None)
+                    continue
+                if atom.startswith("----"):
+                    mp4[atom] = [MP4FreeForm(str(val).encode("utf-8"))]
                 else:
-                    audio[field] = [val]
+                    mp4[atom] = [str(val)]
+
+            if updates.get("track") is not None:
+                parsed = _parse_track_tuple(updates.get("track"))
+                if parsed:
+                    mp4["trkn"] = [parsed]
+                else:
+                    mp4.pop("trkn", None)
+            if updates.get("disc") is not None:
+                parsed = _parse_track_tuple(updates.get("disc"))
+                if parsed:
+                    mp4["disk"] = [parsed]
+                else:
+                    mp4.pop("disk", None)
+            mp4.save()
+        else:
+            audio = mutagen.File(path, easy=True)
+            if not audio:
+                return {"status": "error", "message": "unsupported"}
+            key_map = {
+                "year": "date",
+                "track": "tracknumber",
+                "disc": "discnumber",
+            }
+            for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]:
+                tag_key = key_map.get(field, field)
+                if updates.get(field) is None:
+                    continue
+                val = updates.get(field)
+                if val:
+                    audio[tag_key] = [val]
+                elif tag_key in audio:
+                    del audio[tag_key]
             audio.save()
             if cover_art_bytes and APIC and path.lower().endswith(".mp3"):
                 id3 = ID3(path)
@@ -566,10 +626,22 @@ def bulk_update_metadata(paths: List[str], updates: Dict, cover_art_bytes: Optio
                     data=cover_art_bytes,
                 ))
                 id3.save()
-            tags = _read_tags(path)
-            _ensure_analysis(path, tags)
-        except Exception as exc:  # noqa: BLE001
-            outcome["status"] = f"error: {exc}"
+
+        tags = _read_tags(path)
+        _ensure_analysis(path, tags)
+        return {"status": "ok"}
+    except Exception as exc:  # noqa: BLE001
+        return {"status": "error", "message": str(exc)}
+
+
+def bulk_update_metadata(paths: List[str], updates: Dict, cover_art_bytes: Optional[bytes] = None) -> Dict:
+    results = []
+    if not mutagen:
+        return {"status": "error", "message": "mutagen_required"}
+    for path in paths:
+        outcome = {"path": path}
+        result = update_metadata(path, updates, cover_art_bytes)
+        outcome.update(result)
         results.append(outcome)
     db.session.commit()
     return {"status": "ok", "results": results}

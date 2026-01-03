@@ -52,7 +52,13 @@ from app.auth_utils import (
     effective_permissions,
 )
 from app.routes.logging_api import logs_bp
-from app.services.music_search import search_music, get_track, load_cue, save_cue
+from app.services.music_search import (
+    search_music,
+    get_track,
+    load_cue,
+    save_cue,
+    update_metadata,
+)
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
@@ -799,30 +805,15 @@ def music_edit_page():
     if request.method == "POST":
         if not track:
             return render_template("music_edit.html", track=None, error="Track not found")
-        if not search_music.__globals__.get("mutagen"):
-            return render_template("music_edit.html", track=track, error="Metadata editing requires mutagen installed.")
-        try:
-            audio = search_music.__globals__["mutagen"].File(path, easy=True)
-            if not audio:
-                return render_template("music_edit.html", track=track, error="Unsupported file format.")
-            key_map = {
-                "year": "date",
-                "track": "tracknumber",
-                "disc": "discnumber",
-            }
-            for field in ["title","artist","album","composer","isrc","year","track","disc","copyright"]:
-                tag_key = key_map.get(field, field)
-                val = request.form.get(field) or None
-                if val:
-                    audio[tag_key] = [val]
-                elif tag_key in audio:
-                    del audio[tag_key]
-            audio.save()
-            track = get_track(path)
-            flash("Metadata updated.", "success")
-            return redirect(url_for("main.music_detail_page", path=path))
-        except Exception as exc:  # noqa: BLE001
-            return render_template("music_edit.html", track=track, error=str(exc))
+        result = update_metadata(
+            path,
+            {field: request.form.get(field) for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]},
+        )
+        if result.get("status") != "ok":
+            return render_template("music_edit.html", track=track, error=result.get("message") or "Unable to save metadata")
+        track = get_track(path)
+        flash("Metadata updated.", "success")
+        return redirect(url_for("main.music_detail_page", path=path))
     return render_template("music_edit.html", track=track, error=None)
 
 

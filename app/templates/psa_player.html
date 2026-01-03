@@ -22,7 +22,7 @@
         <div class="col-lg-6">
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Available PSAs</span>
+                    <span>Available Media</span>
                     <div class="d-flex gap-2 align-items-center">
                         <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
                         <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
@@ -42,6 +42,16 @@
                 </div>
                 <div class="card-body">
                     <audio id="psaAudio" controls class="w-100 mb-2"></audio>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="top40">
+                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone)</label>
+                        </div>
+                        <div class="d-flex gap-3">
+                            <span class="badge rounded-pill text-bg-secondary" id="introBadge" style="display:none;">Intro</span>
+                            <span class="badge rounded-pill text-bg-secondary" id="outroBadge" style="display:none;">Outro</span>
+                        </div>
+                    </div>
                     <div class="d-flex gap-2 mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
@@ -62,9 +72,13 @@
     const audioEl = document.getElementById('psaAudio');
     const timerEl = document.getElementById('timer');
     const categoryFilter = document.getElementById('categoryFilter');
+    const top40 = document.getElementById('top40');
+    const introBadge = document.getElementById('introBadge');
+    const outroBadge = document.getElementById('outroBadge');
     const queue = [];
     let fadeTimer = null;
     let timerInterval = null;
+    let currentItem = null;
 
     function renderCategories() {
         const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
@@ -150,7 +164,9 @@
             queue.splice(0, idx);
             renderQueue();
         }
+        currentItem = item;
         audioEl.src = item.url;
+        applyPlaybackRate();
         audioEl.play();
     }
 
@@ -159,6 +175,7 @@
         stopFade();
         audioEl.pause();
         audioEl.removeAttribute('src');
+        currentItem = null;
         renderQueue();
     });
     document.getElementById('playNext').addEventListener('click', () => {
@@ -171,6 +188,7 @@
                 queue.shift();
                 audioEl.pause();
                 audioEl.removeAttribute('src');
+                currentItem = null;
                 renderQueue();
             } else {
                 startFrom(0);
@@ -178,6 +196,7 @@
         } else {
             audioEl.pause();
             audioEl.removeAttribute('src');
+            currentItem = null;
             renderQueue();
         }
         renderLibrary(document.getElementById('psaSearch').value || '');
@@ -207,10 +226,14 @@
                 queue.shift();
                 audioEl.pause();
                 audioEl.removeAttribute('src');
+                currentItem = null;
                 renderQueue();
             } else {
                 startFrom(0);
             }
+        }
+        if (!queue.length) {
+            currentItem = null;
         }
     });
 
@@ -223,6 +246,10 @@
 
     document.getElementById('refreshPsa').addEventListener('click', () => {
         loadPSAs();
+    });
+
+    top40.addEventListener('change', () => {
+        applyPlaybackRate();
     });
 
     async function loadPSAs() {
@@ -255,6 +282,23 @@
         timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
         timerEl.style.color = pct <= 0.15 ? '#dc3545' : '';
         timerEl.style.fontWeight = pct <= 0.15 ? '700' : '400';
+
+        const cues = currentItem && currentItem.cues ? currentItem.cues : {};
+        if (cues.intro) {
+            const introRem = Math.max(0, cues.intro - audioEl.currentTime);
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
+        } else {
+            introBadge.style.display = 'none';
+        }
+        if (cues.outro) {
+            const outroRem = Math.max(0, cues.outro - audioEl.currentTime);
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
+            outroBadge.style.backgroundColor = pct <= 0.15 ? '#dc3545' : '';
+        } else {
+            outroBadge.style.display = 'none';
+        }
     }
 
     function startTimer() {
@@ -269,7 +313,16 @@
         }
     }
 
-    audioEl.addEventListener('play', startTimer);
+    function applyPlaybackRate() {
+        const boost = Math.pow(2, 0.5 / 12);
+        if (top40.checked && currentItem && (currentItem.category || '').toLowerCase().includes('music')) {
+            audioEl.playbackRate = boost;
+        } else {
+            audioEl.playbackRate = 1.0;
+        }
+    }
+
+    audioEl.addEventListener('play', () => { startTimer(); applyPlaybackRate(); });
     audioEl.addEventListener('pause', stopTimer);
     audioEl.addEventListener('ended', stopTimer);
 </script>
