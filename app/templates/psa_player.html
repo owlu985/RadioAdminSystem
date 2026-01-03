@@ -41,18 +41,26 @@
                     <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timer">00:00.00</span></div>
                 </div>
                 <div class="card-body">
-                    <audio id="psaAudio" controls class="w-100 mb-2"></audio>
-                    <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="top40">
-                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone)</label>
-                        </div>
-                        <div class="d-flex gap-3">
+                    <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                        <div class="fw-semibold" style="font-size:1.6rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="d-flex gap-2 align-items-center">
                             <span class="badge rounded-pill text-bg-secondary" id="introBadge" style="display:none;">Intro</span>
                             <span class="badge rounded-pill text-bg-secondary" id="outroBadge" style="display:none;">Outro</span>
                         </div>
                     </div>
-                    <div class="d-flex gap-2 mb-2">
+                    <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
+                    <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="top40">
+                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
+                            <button class="btn btn-outline-secondary btn-sm" id="stopRecord" disabled>Stop</button>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
@@ -69,16 +77,25 @@
     let library = [];
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
-    const audioEl = document.getElementById('psaAudio');
     const timerEl = document.getElementById('timer');
     const categoryFilter = document.getElementById('categoryFilter');
     const top40 = document.getElementById('top40');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
     const queue = [];
+    const players = [
+        { el: document.getElementById('psaAudioA') },
+        { el: document.getElementById('psaAudioB') }
+    ];
+    let currentIdx = 0;
+    let currentItem = null;
     let fadeTimer = null;
     let timerInterval = null;
-    let currentItem = null;
+    let recorder = null;
+    let recordChunks = [];
+
+    function activePlayer() { return players[currentIdx].el; }
+    function otherPlayer() { return players[1 - currentIdx].el; }
 
     function renderCategories() {
         const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
@@ -92,7 +109,6 @@
         library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
             const li = document.createElement('li');
             li.className = 'list-group-item';
-            li.dataset.name = item.name.toLowerCase();
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.loop) meta.push('loop');
@@ -126,156 +142,123 @@
         }
         queue.forEach((item, idx) => {
             const li = document.createElement('li');
-            li.innerHTML = `${item.name} <small class="text-muted">${item.duration ? '('+item.duration+'s)' : ''}</small>`;
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `${item.name} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}`;
             li.dataset.index = idx;
             li.tabIndex = 0;
             li.addEventListener('click', () => startFrom(idx));
-            li.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter') startFrom(idx);
-            });
+            li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') startFrom(idx); });
             queueList.appendChild(li);
         });
     }
 
+    function stopAllAudio() {
+        players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
+        currentItem = null;
+    }
+
     function addToQueue(item) {
         queue.push(item);
-        if (queue.length === 1 && audioEl.paused) {
+        if (queue.length === 1 && activePlayer().paused) {
             startFrom(0);
         }
         renderQueue();
     }
 
-    function addStopCue() {
-        queue.push({name: 'STOP', stop: true});
-        renderQueue();
+    function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
+
+    function applyPlaybackRate(player = activePlayer(), item = currentItem) {
+        const boost = Math.pow(2, 0.5 / 12);
+        if (top40.checked && item && ((item.kind && item.kind === 'music') || (item.category || '').toLowerCase().includes('music'))) {
+            player.playbackRate = boost;
+        } else {
+            player.playbackRate = 1.0;
+        }
     }
 
-    function startFrom(idx) {
+    function startFrom(idx, preferredIdx = currentIdx) {
         const item = queue[idx];
         if (!item) return;
         if (item.stop) {
             queue.splice(0, idx + 1);
-            audioEl.pause();
-            audioEl.removeAttribute('src');
+            stopAllAudio();
             renderQueue();
             return;
         }
-        if (idx > 0) {
-            queue.splice(0, idx);
-            renderQueue();
-        }
+        stopFade();
+        const player = players[preferredIdx].el;
+        const other = players[1 - preferredIdx].el;
+        other.pause();
+        other.removeAttribute('src');
+        other.volume = 1;
+        currentIdx = preferredIdx;
         currentItem = item;
-        audioEl.src = item.url;
-        applyPlaybackRate();
-        audioEl.play();
+        if (idx > 0) queue.splice(0, idx);
+        player.src = item.url;
+        player.volume = 1;
+        applyPlaybackRate(player, item);
+        player.play();
+        renderQueue();
     }
 
-    document.getElementById('clearQueue').addEventListener('click', () => {
-        queue.length = 0;
-        stopFade();
-        audioEl.pause();
-        audioEl.removeAttribute('src');
-        currentItem = null;
-        renderQueue();
-    });
-    document.getElementById('playNext').addEventListener('click', () => {
+    function shiftPastStops() {
+        while (queue.length && queue[0].stop) {
+            queue.shift();
+        }
+    }
+
+    function playNext() {
         if (!queue.length) return;
         queue.shift();
+        shiftPastStops();
         stopFade();
+        stopAllAudio();
         if (queue.length) {
-            renderQueue();
-            if (queue[0].stop) {
-                queue.shift();
-                audioEl.pause();
-                audioEl.removeAttribute('src');
-                currentItem = null;
-                renderQueue();
-            } else {
-                startFrom(0);
-            }
+            startFrom(0);
         } else {
-            audioEl.pause();
-            audioEl.removeAttribute('src');
-            currentItem = null;
             renderQueue();
         }
-        renderLibrary(document.getElementById('psaSearch').value || '');
-    });
-    document.getElementById('addStop').addEventListener('click', addStopCue);
-    document.getElementById('fadeOut').addEventListener('click', () => {
-        if (audioEl.paused) {
-            document.getElementById('playNext').click();
+    }
+
+    function fadeAndNext() {
+        if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
+            playNext();
             return;
         }
-        let level = audioEl.volume;
+        const current = activePlayer();
+        const nextIdx = 1 - currentIdx;
+        const nextItem = queue[1];
+        const nextPlayer = players[nextIdx].el;
         stopFade();
+        nextPlayer.src = nextItem.url;
+        nextPlayer.volume = 1;
+        applyPlaybackRate(nextPlayer, nextItem);
+        nextPlayer.play();
         fadeTimer = setInterval(() => {
-            level = Math.max(0, level - 0.08);
-            audioEl.volume = level;
-            if (level <= 0.02) {
+            current.volume = Math.max(0, current.volume - 0.06);
+            if (current.volume <= 0.02) {
                 stopFade();
-                document.getElementById('playNext').click();
+                current.pause();
+                current.volume = 1;
+                current.removeAttribute('src');
+                queue.shift();
+                shiftPastStops();
+                currentIdx = nextIdx;
+                currentItem = nextItem;
+                renderQueue();
             }
         }, 80);
-    });
-    audioEl.addEventListener('ended', () => {
-        queue.shift();
-        renderQueue();
-        if (queue.length) {
-            if (queue[0].stop) {
-                queue.shift();
-                audioEl.pause();
-                audioEl.removeAttribute('src');
-                currentItem = null;
-                renderQueue();
-            } else {
-                startFrom(0);
-            }
-        }
-        if (!queue.length) {
-            currentItem = null;
-        }
-    });
-
-    document.getElementById('psaSearch').addEventListener('input', (e) => {
-        renderLibrary(e.target.value || '');
-    });
-    categoryFilter.addEventListener('change', () => {
-        renderLibrary(document.getElementById('psaSearch').value || '');
-    });
-
-    document.getElementById('refreshPsa').addEventListener('click', () => {
-        loadPSAs();
-    });
-
-    top40.addEventListener('change', () => {
-        applyPlaybackRate();
-    });
-
-    async function loadPSAs() {
-        try {
-            const res = await fetch('/api/psa/library');
-            library = await res.json();
-            renderCategories();
-            renderLibrary();
-        } catch (e) {
-            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load PSAs.</li>';
-        }
     }
-    loadPSAs();
 
-    function stopFade() {
-        if (fadeTimer) {
-            clearInterval(fadeTimer);
-            fadeTimer = null;
-            audioEl.volume = 1;
-        }
-    }
+    function stopFade() { if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; } }
 
     function updateTimer() {
-        if (!audioEl.duration || isNaN(audioEl.duration)) return;
-        const remaining = Math.max(0, audioEl.duration - audioEl.currentTime);
-        const pct = remaining / audioEl.duration;
+        const player = activePlayer();
+        if (!player.duration || isNaN(player.duration)) return;
+        const remaining = Math.max(0, player.duration - player.currentTime);
+        const pct = remaining / player.duration;
         const minutes = Math.floor(remaining / 60);
         const seconds = Math.floor(remaining % 60);
         const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
@@ -285,46 +268,95 @@
 
         const cues = currentItem && currentItem.cues ? currentItem.cues : {};
         if (cues.intro) {
-            const introRem = Math.max(0, cues.intro - audioEl.currentTime);
+            const introRem = Math.max(0, cues.intro - player.currentTime);
             introBadge.style.display = 'inline-block';
             introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        } else {
-            introBadge.style.display = 'none';
-        }
+        } else { introBadge.style.display = 'none'; }
+
         if (cues.outro) {
-            const outroRem = Math.max(0, cues.outro - audioEl.currentTime);
+            const outroRem = Math.max(0, cues.outro - player.currentTime);
             outroBadge.style.display = 'inline-block';
             outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
             outroBadge.style.backgroundColor = pct <= 0.15 ? '#dc3545' : '';
-        } else {
-            outroBadge.style.display = 'none';
-        }
+        } else { outroBadge.style.display = 'none'; }
     }
 
-    function startTimer() {
+    function startTimer() { stopTimer(); timerInterval = setInterval(updateTimer, 80); }
+    function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
+
+    function handleEnded(idx) {
+        if (idx !== currentIdx) return;
         stopTimer();
-        timerInterval = setInterval(updateTimer, 80);
-    }
-
-    function stopTimer() {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
-    }
-
-    function applyPlaybackRate() {
-        const boost = Math.pow(2, 0.5 / 12);
-        if (top40.checked && currentItem && (currentItem.category || '').toLowerCase().includes('music')) {
-            audioEl.playbackRate = boost;
+        queue.shift();
+        shiftPastStops();
+        if (queue.length) {
+            startFrom(0);
         } else {
-            audioEl.playbackRate = 1.0;
+            stopAllAudio();
+            renderQueue();
         }
     }
 
-    audioEl.addEventListener('play', () => { startTimer(); applyPlaybackRate(); });
-    audioEl.addEventListener('pause', stopTimer);
-    audioEl.addEventListener('ended', stopTimer);
+    document.getElementById('clearQueue').addEventListener('click', () => {
+        queue.length = 0;
+        stopFade();
+        stopAllAudio();
+        renderQueue();
+    });
+    document.getElementById('playNext').addEventListener('click', playNext);
+    document.getElementById('addStop').addEventListener('click', addStopCue);
+    document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
+
+    document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
+    categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
+    document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
+    top40.addEventListener('change', () => applyPlaybackRate());
+
+    players.forEach((p, idx) => {
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(); } });
+        p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
+        p.el.addEventListener('ended', () => handleEnded(idx));
+    });
+
+    async function loadPSAs() {
+        try {
+            const res = await fetch('/api/psa/library');
+            library = await res.json();
+            renderCategories();
+            renderLibrary();
+        } catch (e) {
+            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
+        }
+    }
+    loadPSAs();
+
+    // Voice track recording
+    const startRecBtn = document.getElementById('startRecord');
+    const stopRecBtn = document.getElementById('stopRecord');
+    startRecBtn.addEventListener('click', async () => {
+        if (recorder) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = new MediaRecorder(stream);
+            recordChunks = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
+            recorder.onstop = () => {
+                const blob = new Blob(recordChunks, { type: 'audio/webm' });
+                const url = URL.createObjectURL(blob);
+                addToQueue({ name: 'Voice Track', url, category: 'Voice Tracks', kind: 'voicetrack' });
+                recorder = null;
+                stopRecBtn.disabled = true;
+                startRecBtn.disabled = false;
+            };
+            recorder.start();
+            startRecBtn.disabled = true;
+            stopRecBtn.disabled = false;
+        } catch (err) {
+            alert('Unable to access microphone for recording.');
+            recorder = null;
+        }
+    });
+    stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
 </script>
 </body>
 </html>

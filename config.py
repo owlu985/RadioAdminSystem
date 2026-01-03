@@ -92,6 +92,8 @@ class Config:
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
     NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
+    MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
+    VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")
     AUDIO_HOST_UPLOAD_DIR = os.path.join(NAS_ROOT, "hosted_audio")
     AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(NAS_ROOT, "hosted_audio_default.jpg")
     RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")

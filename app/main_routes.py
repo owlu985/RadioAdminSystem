@@ -350,6 +350,22 @@ def _psa_library_root():
     return root
 
 
+def _media_roots() -> list[tuple[str, str]]:
+    roots: list[tuple[str, str]] = [("PSA", _psa_library_root())]
+    music_root = current_app.config.get("NAS_MUSIC_ROOT")
+    if music_root:
+        os.makedirs(music_root, exist_ok=True)
+        roots.append(("Music", music_root))
+    assets_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if assets_root:
+        os.makedirs(assets_root, exist_ok=True)
+        roots.append(("Assets", assets_root))
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    os.makedirs(voice_root, exist_ok=True)
+    roots.append(("Voice Tracks", voice_root))
+    return roots
+
+
 @main_bp.route("/psa/player")
 def psa_player():
     psa_root = _psa_library_root()
@@ -358,14 +374,20 @@ def psa_player():
     return resp
 
 
-@main_bp.route("/psa/file/<path:filename>")
-def psa_file(filename: str):
-    root = _psa_library_root()
-    full = os.path.abspath(os.path.join(root, filename))
-    root_abs = os.path.abspath(root)
-    if not full.startswith(root_abs):
+@main_bp.route("/media/file/<path:token>")
+def media_file(token: str):
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
         abort(404)
-    if not os.path.isfile(full):
+    full = os.path.abspath(decoded)
+    allowed = False
+    for _, root in _media_roots():
+        root_abs = os.path.abspath(root)
+        if full.startswith(root_abs):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(full):
         abort(404)
     resp = send_file(full)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"

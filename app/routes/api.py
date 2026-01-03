@@ -5,6 +5,7 @@ from flask import Blueprint, jsonify, current_app, request, session, url_for, re
 import os
 import shutil
 import json
+import base64
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -517,7 +518,6 @@ def music_bulk_update():
 
 @api_bp.route("/psa/library")
 def psa_library():
-    root = _psa_root()
     entries = []
 
     def _meta_for(path: str) -> dict:
@@ -530,31 +530,51 @@ def psa_library():
                 return {}
         return {}
 
-    for base, dirs, files in os.walk(root):
-        category = os.path.relpath(base, root)
-        if category == ".":
-            category = "PSA"
-        for fname in sorted(files):
-            if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
-                continue
-            duration = None
-            full = os.path.join(base, fname)
-            try:
-                import mutagen  # type: ignore
-                audio = mutagen.File(full)
-                if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
-                    duration = round(audio.info.length, 2)
-            except Exception:
+    sources: list[tuple[str, str, str]] = [("PSA", _psa_root(), "psa")]
+    music_root = current_app.config.get("NAS_MUSIC_ROOT")
+    if music_root:
+        sources.append(("Music", music_root, "music"))
+    assets_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if assets_root:
+        sources.append(("Assets", assets_root, "asset"))
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    sources.append(("Voice Tracks", voice_root, "voicetrack"))
+
+    for label, root, kind in sources:
+        if not root:
+            continue
+        os.makedirs(root, exist_ok=True)
+        for base, dirs, files in os.walk(root):
+            category = os.path.relpath(base, root)
+            category_label = label if category == "." else f"{label}/{category.replace(os.sep, '/')}"
+            for fname in sorted(files):
+                if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
+                    continue
                 duration = None
-            meta = _meta_for(full)
-            entries.append({
-                "name": fname,
-                "url": url_for("main.psa_file", filename=os.path.relpath(full, root)),
-                "duration": duration,
-                "category": category.replace(os.sep, "/"),
-                "loop": bool(meta.get("loop")),
-                "cues": {k: meta.get(k) for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"] if meta.get(k) is not None},
-            })
+                full = os.path.join(base, fname)
+                try:
+                    import mutagen  # type: ignore
+
+                    audio = mutagen.File(full)
+                    if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
+                        duration = round(audio.info.length, 2)
+                except Exception:
+                    duration = None
+                meta = _meta_for(full)
+                token = base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8")
+                entries.append({
+                    "name": fname,
+                    "url": url_for("main.media_file", token=token),
+                    "duration": duration,
+                    "category": category_label,
+                    "loop": bool(meta.get("loop")),
+                    "kind": kind,
+                    "cues": {
+                        k: meta.get(k)
+                        for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
+                        if meta.get(k) is not None
+                    },
+                })
     return jsonify(entries)
 
 
