@@ -279,13 +279,13 @@
         const player = activePlayer();
         if (!player.duration || isNaN(player.duration)) return;
         const remaining = Math.max(0, player.duration - player.currentTime);
-        const pct = remaining / player.duration;
         const minutes = Math.floor(remaining / 60);
         const seconds = Math.floor(remaining % 60);
         const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
         timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
-        timerEl.style.color = pct <= 0.15 ? '#dc3545' : '';
-        timerEl.style.fontWeight = pct <= 0.15 ? '700' : '400';
+        const urgent = remaining <= 15;
+        timerEl.style.color = urgent ? '#dc3545' : '';
+        timerEl.style.fontWeight = urgent ? '700' : '400';
 
         const cues = currentItem && currentItem.cues ? currentItem.cues : {};
         if (cues.intro) {
@@ -298,7 +298,7 @@
             const outroRem = Math.max(0, cues.outro - player.currentTime);
             outroBadge.style.display = 'inline-block';
             outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-            outroBadge.style.backgroundColor = pct <= 0.15 ? '#dc3545' : '';
+            outroBadge.style.backgroundColor = outroRem <= 15 ? '#dc3545' : '';
         } else { outroBadge.style.display = 'none'; }
     }
 

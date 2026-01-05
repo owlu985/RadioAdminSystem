@@ -564,6 +564,26 @@ def psa_library():
                 except Exception:
                     duration = None
                 meta = _meta_for(full)
+                cue_obj = load_cue(full)
+                cues: dict[str, float] = {}
+                # Merge cues from DB first, then JSON sidecars.
+                if cue_obj:
+                    cues.update({
+                        "cue_in": cue_obj.cue_in,
+                        "intro": cue_obj.intro,
+                        "outro": cue_obj.outro,
+                        "cue_out": cue_obj.cue_out,
+                        "loop_in": cue_obj.loop_in,
+                        "loop_out": cue_obj.loop_out,
+                        "hook_in": cue_obj.hook_in,
+                        "hook_out": cue_obj.hook_out,
+                        "start_next": cue_obj.start_next,
+                    })
+                cues.update({
+                    k: meta.get(k)
+                    for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
+                    if meta.get(k) is not None
+                })
                 token = base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8")
                 entries.append({
                     "name": fname,
@@ -572,11 +592,7 @@ def psa_library():
                     "category": category_label,
                     "loop": bool(meta.get("loop")),
                     "kind": kind,
-                    "cues": {
-                        k: meta.get(k)
-                        for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
-                        if meta.get(k) is not None
-                    },
+                    "cues": {k: v for k, v in cues.items() if v is not None},
                 })
     return jsonify(entries)
 
