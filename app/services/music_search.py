@@ -300,6 +300,75 @@ def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[
         return None, None, None, None
 
 
+def detect_audio_cues(
+    path: str,
+    start_threshold: float = -25.0,
+    mix_threshold: float = -15.0,
+    end_threshold: float = -28.0,
+    chunk_ms: int = 50,
+) -> Dict[str, float]:
+    """Best-effort cue detection when tags are missing.
+
+    Returns a dict that may include cue_in (start), start_next (mix point), and
+    cue_out (end) using RadioDJ-style defaults. Only returned keys should be
+    merged into existing cues when they are absent.
+    """
+
+    if not AudioSegment:
+        return {}
+
+    try:
+        audio = AudioSegment.from_file(path)
+    except Exception:
+        return {}
+
+    duration_sec = len(audio) / 1000.0 if audio else 0.0
+    start_at: Optional[float] = None
+    mix_at: Optional[float] = None
+    end_at: Optional[float] = None
+
+    # Walk the waveform in fixed windows to approximate cues.
+    for idx, pos in enumerate(range(0, len(audio), chunk_ms)):
+        window = audio[pos : pos + chunk_ms]
+        if not window:
+            continue
+        try:
+            level = window.dBFS if window.rms else -120.0
+        except Exception:
+            level = -120.0
+
+        ts = idx * (chunk_ms / 1000.0)
+
+        if start_at is None and level >= start_threshold:
+            start_at = ts
+
+        if level >= mix_threshold:
+            mix_at = ts
+
+        if level >= end_threshold:
+            end_at = ts + (chunk_ms / 1000.0)
+
+    cues: Dict[str, float] = {}
+    if start_at is not None:
+        cues["cue_in"] = max(0.0, start_at)
+    if end_at is not None:
+        cues["cue_out"] = min(duration_sec, end_at)
+    if mix_at is not None:
+        cues["start_next"] = min(duration_sec, mix_at)
+    return cues
+
+
+def auto_fill_missing_cues(path: str, cues: Dict[str, Optional[float]]) -> Dict[str, Optional[float]]:
+    """Fill missing start/end/mix cues using audio analysis thresholds."""
+
+    detected = detect_audio_cues(path)
+    merged = cues.copy()
+    for key in ("cue_in", "cue_out", "start_next"):
+        if merged.get(key) is None and key in detected:
+            merged[key] = detected[key]
+    return merged
+
+
 def _hash_file(path: str) -> Optional[str]:
     try:
         h = hashlib.md5()

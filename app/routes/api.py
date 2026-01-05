@@ -6,6 +6,7 @@ import os
 import shutil
 import json
 import base64
+from typing import Optional
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -39,6 +40,7 @@ from app.services.detection import probe_stream
 from app.services import api_cache
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.music_search import (
+    auto_fill_missing_cues,
     search_music,
     get_track,
     bulk_update_metadata,
@@ -565,7 +567,7 @@ def psa_library():
                     duration = None
                 meta = _meta_for(full)
                 cue_obj = load_cue(full)
-                cues: dict[str, float] = {}
+                cues: dict[str, Optional[float]] = {}
                 # Merge cues from DB first, then JSON sidecars.
                 if cue_obj:
                     cues.update({
@@ -584,6 +586,7 @@ def psa_library():
                     for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
                     if meta.get(k) is not None
                 })
+                cues = auto_fill_missing_cues(full, cues)
                 token = base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8")
                 entries.append({
                     "name": fname,
@@ -610,22 +613,21 @@ def music_cue():
         return jsonify({"status": "error", "message": "path required"}), 400
     if request.method == "GET":
         cue = load_cue(path)
-        return jsonify({
-            "path": path,
-            "cue": {
-                "cue_in": cue.cue_in if cue else None,
-                "intro": cue.intro if cue else None,
-                "outro": cue.outro if cue else None,
-                "cue_out": cue.cue_out if cue else None,
-                "loop_in": cue.loop_in if cue else None,
-                "loop_out": cue.loop_out if cue else None,
-                "hook_in": cue.hook_in if cue else None,
-                "hook_out": cue.hook_out if cue else None,
-                "start_next": cue.start_next if cue else None,
-                "fade_in": cue.fade_in if cue else None,
-                "fade_out": cue.fade_out if cue else None,
-            },
-        })
+        cue_payload = {
+            "cue_in": cue.cue_in if cue else None,
+            "intro": cue.intro if cue else None,
+            "outro": cue.outro if cue else None,
+            "cue_out": cue.cue_out if cue else None,
+            "loop_in": cue.loop_in if cue else None,
+            "loop_out": cue.loop_out if cue else None,
+            "hook_in": cue.hook_in if cue else None,
+            "hook_out": cue.hook_out if cue else None,
+            "start_next": cue.start_next if cue else None,
+            "fade_in": cue.fade_in if cue else None,
+            "fade_out": cue.fade_out if cue else None,
+        }
+        cue_payload = auto_fill_missing_cues(path, cue_payload)
+        return jsonify({"path": path, "cue": cue_payload})
     payload = request.get_json(force=True, silent=True) or {}
     cue = save_cue(path, payload)
     return jsonify({"status": "ok", "cue": {

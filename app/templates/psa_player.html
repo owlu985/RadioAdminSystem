@@ -219,6 +219,7 @@
     function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
 
     const TOP40_RATE = Math.pow(2, 0.5 / 12);
+    const OVERLAY_KINDS = ['voicetrack', 'overlay'];
 
     function preservesPitchOff(el) {
         if (!el) return;
@@ -238,6 +239,12 @@
     function applyPlaybackRate(player = activePlayer(), item = currentItem) {
         preservesPitchOff(player);
         player.playbackRate = computePlaybackRate(item);
+    }
+
+    function overlayEligible(item) {
+        if (!item) return false;
+        const cat = (item.category || '').toLowerCase();
+        return OVERLAY_KINDS.includes(item.kind) || cat.includes('sweeper') || cat.includes('imaging');
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
@@ -290,6 +297,52 @@
         } else {
             renderQueue();
         }
+    }
+
+    function startNextWithOverlay() {
+        if (queue.length <= 1) {
+            fadeAndNext();
+            return;
+        }
+
+        const current = activePlayer();
+        const currentPlaying = currentItem;
+        const nextItem = queue[1];
+
+        try {
+            overlayPlayer.pause();
+            overlayPlayer.src = current.src || '';
+            overlayPlayer.currentTime = current.currentTime || 0;
+            overlayPlayer.playbackRate = computePlaybackRate(currentPlaying);
+            overlayPlayer.volume = current.volume;
+            if (overlayPlayer.src) {
+                overlayPlayer.play().catch(() => {});
+            }
+        } catch (e) {
+            // ignore overlay errors
+        }
+
+        current.pause();
+        current.removeAttribute('src');
+
+        queue.shift();
+        shiftPastStops();
+
+        const nextIdx = 1 - currentIdx;
+        const nextObj = players[nextIdx];
+        const nextPlayer = nextObj.el;
+        stopFade();
+        nextObj.item = nextItem;
+        nextPlayer.src = nextItem.url;
+        nextPlayer.volume = 1;
+        currentIdx = nextIdx;
+        currentItem = nextItem;
+        prestartedIdx = null;
+        autoNextTriggered = false;
+        applyPlaybackRate(nextPlayer, nextItem);
+        nextPlayer.play();
+        startTimer();
+        renderQueue();
     }
 
     function fadeAndNext() {
@@ -366,7 +419,11 @@
         if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
             if (queue.length > 1) {
-                fadeAndNext();
+                if (overlayEligible(currentItem)) {
+                    startNextWithOverlay();
+                } else {
+                    fadeAndNext();
+                }
             }
         }
 
@@ -448,6 +505,12 @@
         p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
         p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
         p.el.addEventListener('ended', () => handleEnded(idx));
+    });
+
+    overlayPlayer.addEventListener('ended', () => {
+        overlayPlayer.pause();
+        overlayPlayer.removeAttribute('src');
+        overlayPlayer.currentTime = 0;
     });
 
     async function loadPSAs() {
