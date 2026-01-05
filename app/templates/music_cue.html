@@ -62,7 +62,7 @@
             <span class="fw-semibold cue-swatch" data-cue="{{ key }}">■</span>
             {{ label }} <span class="text-muted" id="time-{{ key }}"></span>
         </button>
-        <input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}">
+        <input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}" form="cue-form">
         {% endfor %}
     </div>
 
@@ -154,7 +154,12 @@
 
     function nudge(delta) {
         if (!player || isNaN(player.currentTime)) return;
+        const wasPlaying = !player.paused;
         player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + delta));
+        updateNeedle();
+        if (wasPlaying) {
+            player.play().catch(() => {});
+        }
     }
 
     function togglePlay() {
