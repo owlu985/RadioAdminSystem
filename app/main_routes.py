@@ -860,9 +860,25 @@ def music_cue_page():
     }
     if request.method == "POST":
         payload = {}
-        for field in ["cue_in", "intro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next", "outro", "cue_out"]:
-            val = request.form.get(field)
-            payload[field] = float(val) if val else None
+        for field in [
+            "cue_in",
+            "intro",
+            "loop_in",
+            "loop_out",
+            "hook_in",
+            "hook_out",
+            "start_next",
+            "outro",
+            "cue_out",
+        ]:
+            raw = request.form.get(field)
+            if raw is None or raw == "" or raw.lower() == "none":
+                payload[field] = None
+                continue
+            try:
+                payload[field] = float(raw)
+            except ValueError:
+                payload[field] = None
         cue_obj = save_cue(path, payload)
         cue.update(payload)
         flash("CUE points saved.", "success")
