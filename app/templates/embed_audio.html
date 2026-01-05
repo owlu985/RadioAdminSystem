@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ item.title }}</title>
+  <style>
+    body {
+      margin: 0;
+      font-family: Arial, sans-serif;
+      background: #0b1220;
+      color: #f7f7f7;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 180px;
+    }
+    .card {
+      width: 100%;
+      max-width: 720px;
+      background: rgba(0,0,0,0.6);
+      border-radius: 8px;
+      padding: 16px;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+      backdrop-filter: blur(6px);
+    }
+    .backdrop {
+      width: 72px;
+      height: 72px;
+      border-radius: 6px;
+      background: #1e2b45;
+      background-size: cover;
+      background-position: center;
+      margin-right: 12px;
+    }
+    .row { display: flex; align-items: center; }
+    .title { font-size: 1.1rem; margin: 0; }
+    .desc { margin: 4px 0 0; color: #cbd5e1; font-size: 0.9rem; }
+    audio { width: 100%; margin-top: 8px; }
+  </style>
+</head>
+<body>
+  <div class="card" role="region" aria-label="Hosted audio">
+    <div class="row">
+      <div class="backdrop" style="background-image:url('{{ backdrop_url }}');"></div>
+      <div>
+        <p class="title">{{ item.title }}</p>
+        {% if item.description %}<p class="desc">{{ item.description }}</p>{% endif %}
+      </div>
+    </div>
+    <audio controls preload="metadata" src="{{ item.file_url }}" controlsList="nodownload noplaybackrate"></audio>
+  </div>
+  <script>
+    document.addEventListener('contextmenu', function(e){ e.preventDefault(); });
+    document.addEventListener('keydown', function(e){
+      if ((e.ctrlKey || e.metaKey) && ['s','S','u','U','p','P'].includes(e.key)) {
+        e.preventDefault();
+      }
+    });
+  </script>
+</body>
+</html>
