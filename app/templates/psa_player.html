@@ -69,9 +69,15 @@
                     <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
                     <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="top40">
-                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="top40">
+                                <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="loopBetween" disabled>
+                                <label class="form-check-label" for="loopBetween">Loop between loop-in / loop-out cues</label>
+                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
@@ -89,6 +95,7 @@
                     </div>
                     <div class="d-flex gap-2 flex-wrap mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="togglePause">Pause</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
@@ -114,6 +121,8 @@
     const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const top40 = document.getElementById('top40');
+    const loopBetween = document.getElementById('loopBetween');
+    const togglePauseBtn = document.getElementById('togglePause');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
     const queue = [];
@@ -177,6 +186,7 @@
         queueList.innerHTML = '';
         if (!queue.length) {
             queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
+            resetTimers();
             return;
         }
         queue.forEach((item, idx) => {
@@ -184,8 +194,9 @@
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
+            const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-                <div>${item.name} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+                <div>${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
                 <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
             </div>`;
             li.dataset.index = idx;
@@ -197,9 +208,53 @@
         });
     }
 
+    function resetTimers() {
+        const text = '00:00.00';
+        timerEls.forEach(el => {
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = '';
+            el.style.fontWeight = '400';
+        });
+        introBadge.style.display = 'inline-block';
+        introBadge.textContent = 'Intro: 0.0s';
+        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        outroBadge.style.display = 'inline-block';
+        outroBadge.textContent = 'Outro: 0.0s';
+        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        loopBetween.checked = false;
+        loopBetween.disabled = true;
+        togglePauseBtn.textContent = 'Pause';
+    }
+
+    function previewCues(item) {
+        if (!item) { resetTimers(); return; }
+        const cues = item.cues || {};
+        timerEls.forEach(el => {
+            if (!el) return;
+            el.textContent = '00:00.00';
+            el.style.color = '';
+            el.style.fontWeight = '400';
+        });
+        const introVal = cues.intro ? cues.intro.toFixed(1) : '0.0';
+        introBadge.style.display = 'inline-block';
+        introBadge.textContent = `Intro: ${introVal}s`;
+        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
+
+        const outroVal = cues.outro ? cues.outro.toFixed(1) : '0.0';
+        outroBadge.style.display = 'inline-block';
+        outroBadge.textContent = `Outro: ${outroVal}s`;
+        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+
+        const hasLoop = cues.loop_in != null && cues.loop_out != null;
+        loopBetween.disabled = !hasLoop;
+        if (!hasLoop) loopBetween.checked = false;
+    }
+
     function stopAllAudio() {
         players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
         currentItem = null;
+        resetTimers();
     }
 
     function addToQueue(item) {
@@ -252,8 +307,10 @@
         if (!item) return;
         if (item.stop) {
             queue.splice(0, idx + 1);
+            shiftPastStops();
             stopAllAudio();
             renderQueue();
+            if (queue.length) previewCues(queue[0]);
             return;
         }
         stopFade();
@@ -268,6 +325,10 @@
         currentIdx = preferredIdx;
         currentItem = item;
         playerObj.item = item;
+        const cues = item.cues || {};
+        const hasLoop = cues.loop_in != null && cues.loop_out != null;
+        loopBetween.disabled = !hasLoop;
+        if (!hasLoop) loopBetween.checked = false;
         autoNextTriggered = false;
         prestartedIdx = null;
         if (idx > 0) queue.splice(0, idx);
@@ -275,6 +336,7 @@
         player.volume = 1;
         applyPlaybackRate(player, item);
         player.play();
+        togglePauseBtn.textContent = 'Pause';
         renderQueue();
     }
 
@@ -384,13 +446,22 @@
 
     function updateTimer() {
         const player = activePlayer();
-        if (!player.duration || isNaN(player.duration)) return;
-        const remaining = Math.max(0, player.duration - player.currentTime);
+        if (!currentItem || !player.src || !player.duration || isNaN(player.duration)) {
+            resetTimers();
+            return;
+        }
+
+        const cues = currentItem && currentItem.cues ? currentItem.cues : {};
+        let remaining = Math.max(0, player.duration - player.currentTime);
+        if (queue.length > 1 && cues.start_next) {
+            remaining = Math.max(0, cues.start_next - player.currentTime);
+        }
+
         const minutes = Math.floor(remaining / 60);
         const seconds = Math.floor(remaining % 60);
         const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
         const text = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
-        const urgent = remaining <= 15;
+        const urgent = remaining > 0 && remaining <= 15;
         timerEls.forEach(el => {
             if (!el) return;
             el.textContent = text;
@@ -398,32 +469,51 @@
             el.style.fontWeight = urgent ? '700' : '400';
         });
 
-        const cues = currentItem && currentItem.cues ? currentItem.cues : {};
         if (cues.intro) {
             const introRem = Math.max(0, cues.intro - player.currentTime);
             introBadge.style.display = 'inline-block';
             introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-            introBadge.classList.toggle('countdown-flash', introRem <= 5);
-            introBadge.classList.toggle('text-bg-danger', introRem <= 5);
-        } else { introBadge.style.display = 'none'; introBadge.classList.remove('countdown-flash','text-bg-danger'); }
+            const flash = introRem > 0 && introRem <= 5;
+            introBadge.classList.toggle('countdown-flash', flash);
+            introBadge.classList.toggle('text-bg-danger', flash);
+        } else {
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = 'Intro: 0.0s';
+            introBadge.classList.remove('countdown-flash','text-bg-danger');
+        }
 
         if (cues.outro) {
             const outroRem = Math.max(0, cues.outro - player.currentTime);
             outroBadge.style.display = 'inline-block';
             outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-            outroBadge.classList.toggle('countdown-flash', outroRem <= 5);
-            outroBadge.classList.toggle('text-bg-danger', outroRem <= 5);
-        } else { outroBadge.style.display = 'none'; outroBadge.classList.remove('countdown-flash','text-bg-danger'); }
+            const flash = outroRem > 0 && outroRem <= 5;
+            outroBadge.classList.toggle('countdown-flash', flash);
+            outroBadge.classList.toggle('text-bg-danger', flash);
+        } else {
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = 'Outro: 0.0s';
+            outroBadge.classList.remove('countdown-flash','text-bg-danger');
+        }
 
         // Auto-advance when start_next cue is hit.
         if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
+            resetTimers();
             if (queue.length > 1) {
                 if (overlayEligible(currentItem)) {
                     startNextWithOverlay();
                 } else {
                     fadeAndNext();
                 }
+            }
+        }
+
+        if (loopBetween.checked && cues.loop_in != null && cues.loop_out != null) {
+            const loopIn = cues.loop_in;
+            const loopOut = cues.loop_out;
+            if (player.currentTime >= loopOut - 0.05) {
+                player.currentTime = loopIn;
+                try { player.play(); } catch (e) { /* ignore */ }
             }
         }
 
@@ -477,6 +567,17 @@
         stopAllAudio();
         renderQueue();
     });
+    togglePauseBtn.addEventListener('click', () => {
+        const player = activePlayer();
+        if (!currentItem || !player || !player.src) return;
+        if (player.paused) {
+            player.play();
+            togglePauseBtn.textContent = 'Pause';
+        } else {
+            player.pause();
+            togglePauseBtn.textContent = 'Play';
+        }
+    });
     document.getElementById('playNext').addEventListener('click', playNext);
     document.getElementById('addStop').addEventListener('click', addStopCue);
     document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
@@ -501,9 +602,9 @@
 
     players.forEach((p, idx) => {
         preservesPitchOff(p.el);
-        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); } });
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
         p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-        p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
+        p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });
 
