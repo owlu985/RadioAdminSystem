@@ -6,6 +6,23 @@
     <meta name="robots" content="noindex, nofollow">
     <title>PSA Player</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .countdown-badge {
+            font-size: 1.05rem;
+            min-width: 120px;
+            text-align: center;
+        }
+        .countdown-flash {
+            animation: flash 0.25s steps(1) infinite;
+        }
+        @keyframes flash {
+            50% { opacity: 0.35; }
+        }
+        .cue-btn.active {
+            background: #000;
+            color: #fff !important;
+        }
+    </style>
 </head>
 <body>
 {% include '_nav.html' %}
@@ -38,18 +55,19 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Queue</span>
-                    <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timer">00:00.00</span></div>
+                    <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
                 </div>
                 <div class="card-body">
                     <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
-                        <div class="fw-semibold" style="font-size:1.6rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
                         <div class="d-flex gap-2 align-items-center">
-                            <span class="badge rounded-pill text-bg-secondary" id="introBadge" style="display:none;">Intro</span>
-                            <span class="badge rounded-pill text-bg-secondary" id="outroBadge" style="display:none;">Outro</span>
+                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
+                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
                         </div>
                     </div>
                     <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
                     <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
+                    <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <div class="form-check">
                             <input class="form-check-input" type="checkbox" id="top40">
@@ -60,6 +78,15 @@
                             <button class="btn btn-outline-secondary btn-sm" id="stopRecord" disabled>Stop</button>
                         </div>
                     </div>
+                    <div id="vtPending" class="alert alert-info d-none py-2 px-3 mb-2">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>Pending voice track ready. Add to queue?</div>
+                            <div class="d-flex gap-2">
+                                <button class="btn btn-sm btn-outline-success" id="vtConfirm">Confirm</button>
+                                <button class="btn btn-sm btn-outline-danger" id="vtDelete">Delete</button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="d-flex gap-2 flex-wrap mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
@@ -67,6 +94,13 @@
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
                     </div>
                     <ol class="mb-0" id="queueList"></ol>
+                    <hr>
+                    <div class="mb-2 fw-semibold">Overlay Deck</div>
+                    <div class="input-group mb-2">
+                        <input type="url" class="form-control form-control-sm" id="overlayUrl" placeholder="Paste media URL">
+                        <button class="btn btn-outline-primary btn-sm" id="overlayPlay">Play Overlay</button>
+                    </div>
+                    <div class="text-muted small">Use the overlay deck for ad-hoc beds or carts; it does not affect the queue.</div>
                 </div>
             </div>
         </div>
@@ -77,7 +111,7 @@
     let library = [];
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
-    const timerEl = document.getElementById('timer');
+    const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const top40 = document.getElementById('top40');
     const introBadge = document.getElementById('introBadge');
@@ -87,6 +121,7 @@
         { el: document.getElementById('psaAudioA'), item: null },
         { el: document.getElementById('psaAudioB'), item: null }
     ];
+    const overlayPlayer = document.getElementById('psaAudioOverlay');
     let currentIdx = 0;
     let currentItem = null;
     let fadeTimer = null;
@@ -95,6 +130,8 @@
     let recordChunks = [];
     let autoNextTriggered = false;
     let prestartedIdx = null;
+    let pendingVT = null;
+    let pendingVTUrl = null;
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
@@ -147,11 +184,15 @@
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
-            li.innerHTML = `${item.name} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}`;
+            li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                <div>${item.name} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+                <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
+            </div>`;
             li.dataset.index = idx;
             li.tabIndex = 0;
-            li.addEventListener('click', () => startFrom(idx));
+            li.addEventListener('click', (ev) => { if (!ev.target.dataset.remove) startFrom(idx); });
             li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') startFrom(idx); });
+            li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
             queueList.appendChild(li);
         });
     }
@@ -166,6 +207,12 @@
         if (queue.length === 1 && activePlayer().paused) {
             startFrom(0);
         }
+        renderQueue();
+    }
+
+    function removeFromQueue(idx) {
+        if (idx < 0 || idx >= queue.length) return;
+        queue.splice(idx, 1);
         renderQueue();
     }
 
@@ -289,24 +336,31 @@
         const minutes = Math.floor(remaining / 60);
         const seconds = Math.floor(remaining % 60);
         const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
-        timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+        const text = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
         const urgent = remaining <= 15;
-        timerEl.style.color = urgent ? '#dc3545' : '';
-        timerEl.style.fontWeight = urgent ? '700' : '400';
+        timerEls.forEach(el => {
+            if (!el) return;
+            el.textContent = text;
+            el.style.color = urgent ? '#dc3545' : '';
+            el.style.fontWeight = urgent ? '700' : '400';
+        });
 
         const cues = currentItem && currentItem.cues ? currentItem.cues : {};
         if (cues.intro) {
             const introRem = Math.max(0, cues.intro - player.currentTime);
             introBadge.style.display = 'inline-block';
             introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        } else { introBadge.style.display = 'none'; }
+            introBadge.classList.toggle('countdown-flash', introRem <= 5);
+            introBadge.classList.toggle('text-bg-danger', introRem <= 5);
+        } else { introBadge.style.display = 'none'; introBadge.classList.remove('countdown-flash','text-bg-danger'); }
 
         if (cues.outro) {
             const outroRem = Math.max(0, cues.outro - player.currentTime);
             outroBadge.style.display = 'inline-block';
             outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-            outroBadge.style.backgroundColor = outroRem <= 15 ? '#dc3545' : '';
-        } else { outroBadge.style.display = 'none'; }
+            outroBadge.classList.toggle('countdown-flash', outroRem <= 5);
+            outroBadge.classList.toggle('text-bg-danger', outroRem <= 5);
+        } else { outroBadge.style.display = 'none'; outroBadge.classList.remove('countdown-flash','text-bg-danger'); }
 
         // Auto-advance when start_next cue is hit.
         if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
@@ -369,6 +423,12 @@
     document.getElementById('playNext').addEventListener('click', playNext);
     document.getElementById('addStop').addEventListener('click', addStopCue);
     document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
+    document.getElementById('overlayPlay').addEventListener('click', () => {
+        const url = document.getElementById('overlayUrl').value.trim();
+        if (!url) return;
+        overlayPlayer.src = url;
+        overlayPlayer.play();
+    });
 
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
     categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
@@ -414,8 +474,10 @@
             recorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
             recorder.onstop = () => {
                 const blob = new Blob(recordChunks, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                addToQueue({ name: 'Voice Track', url, category: 'Voice Tracks', kind: 'voicetrack' });
+                if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
+                pendingVTUrl = URL.createObjectURL(blob);
+                pendingVT = { name: 'Voice Track', url: pendingVTUrl, category: 'Voice Tracks', kind: 'voicetrack' };
+                document.getElementById('vtPending').classList.remove('d-none');
                 recorder = null;
                 stopRecBtn.disabled = true;
                 startRecBtn.disabled = false;
@@ -429,6 +491,20 @@
         }
     });
     stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
+
+    document.getElementById('vtConfirm').addEventListener('click', () => {
+        if (pendingVT) {
+            addToQueue(pendingVT);
+        }
+        document.getElementById('vtPending').classList.add('d-none');
+        pendingVT = null;
+    });
+    document.getElementById('vtDelete').addEventListener('click', () => {
+        if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
+        pendingVTUrl = null;
+        pendingVT = null;
+        document.getElementById('vtPending').classList.add('d-none');
+    });
 </script>
 </body>
 </html>
