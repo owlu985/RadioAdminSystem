@@ -69,9 +69,15 @@
                     <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
                     <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
                     <div class="d-flex align-items-center justify-content-between mb-2">
-                        <div class="form-check">
-                            <input class="form-check-input" type="checkbox" id="top40">
-                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="top40">
+                                <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="loopBetween" disabled>
+                                <label class="form-check-label" for="loopBetween">Loop between loop-in / loop-out cues</label>
+                            </div>
                         </div>
                         <div class="d-flex gap-2">
                             <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
@@ -89,6 +95,7 @@
                     </div>
                     <div class="d-flex gap-2 flex-wrap mb-2">
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="togglePause">Pause</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
@@ -114,6 +121,8 @@
     const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const top40 = document.getElementById('top40');
+    const loopBetween = document.getElementById('loopBetween');
+    const togglePauseBtn = document.getElementById('togglePause');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
     const queue = [];
@@ -213,6 +222,9 @@
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = 'Outro: 0.0s';
         outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        loopBetween.checked = false;
+        loopBetween.disabled = true;
+        togglePauseBtn.textContent = 'Pause';
     }
 
     function previewCues(item) {
@@ -233,6 +245,10 @@
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroVal}s`;
         outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+
+        const hasLoop = cues.loop_in != null && cues.loop_out != null;
+        loopBetween.disabled = !hasLoop;
+        if (!hasLoop) loopBetween.checked = false;
     }
 
     function stopAllAudio() {
@@ -309,6 +325,10 @@
         currentIdx = preferredIdx;
         currentItem = item;
         playerObj.item = item;
+        const cues = item.cues || {};
+        const hasLoop = cues.loop_in != null && cues.loop_out != null;
+        loopBetween.disabled = !hasLoop;
+        if (!hasLoop) loopBetween.checked = false;
         autoNextTriggered = false;
         prestartedIdx = null;
         if (idx > 0) queue.splice(0, idx);
@@ -316,6 +336,7 @@
         player.volume = 1;
         applyPlaybackRate(player, item);
         player.play();
+        togglePauseBtn.textContent = 'Pause';
         renderQueue();
     }
 
@@ -487,6 +508,15 @@
             }
         }
 
+        if (loopBetween.checked && cues.loop_in != null && cues.loop_out != null) {
+            const loopIn = cues.loop_in;
+            const loopOut = cues.loop_out;
+            if (player.currentTime >= loopOut - 0.05) {
+                player.currentTime = loopIn;
+                try { player.play(); } catch (e) { /* ignore */ }
+            }
+        }
+
         // Voice track smart start for next track intro/outro.
         if (!prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
             const nextItem = queue[1];
@@ -537,6 +567,17 @@
         stopAllAudio();
         renderQueue();
     });
+    togglePauseBtn.addEventListener('click', () => {
+        const player = activePlayer();
+        if (!currentItem || !player || !player.src) return;
+        if (player.paused) {
+            player.play();
+            togglePauseBtn.textContent = 'Pause';
+        } else {
+            player.pause();
+            togglePauseBtn.textContent = 'Play';
+        }
+    });
     document.getElementById('playNext').addEventListener('click', playNext);
     document.getElementById('addStop').addEventListener('click', addStopCue);
     document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
@@ -561,9 +602,9 @@
 
     players.forEach((p, idx) => {
         preservesPitchOff(p.el);
-        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); } });
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
         p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-        p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
+        p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });
 
