@@ -297,9 +297,9 @@
     }
 
     function overlayEligible(item) {
-        if (!item) return false;
-        const cat = (item.category || '').toLowerCase();
-        return OVERLAY_KINDS.includes(item.kind) || cat.includes('sweeper') || cat.includes('imaging');
+        // Only use the overlay deck for dedicated voice tracks/overlays to avoid
+        // fighting the main deck when rolling into music intros.
+        return item && OVERLAY_KINDS.includes(item.kind);
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
