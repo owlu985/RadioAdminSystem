@@ -1,0 +1,392 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>PSA Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">PSA Player</h2>
+            <div class="text-muted">Build a quick queue and play PSAs directly in the browser.</div>
+            <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
+        </div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+    </div>
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Available Media</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:60vh; overflow:auto;">
+                    <ul class="list-group" id="psaList"></ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Queue</span>
+                    <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timer">00:00.00</span></div>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                        <div class="fw-semibold" style="font-size:1.6rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="badge rounded-pill text-bg-secondary" id="introBadge" style="display:none;">Intro</span>
+                            <span class="badge rounded-pill text-bg-secondary" id="outroBadge" style="display:none;">Outro</span>
+                        </div>
+                    </div>
+                    <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
+                    <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="form-check">
+                            <input class="form-check-input" type="checkbox" id="top40">
+                            <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
+                            <button class="btn btn-outline-secondary btn-sm" id="stopRecord" disabled>Stop</button>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                        <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
+                    </div>
+                    <ol class="mb-0" id="queueList"></ol>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+<script>
+    let library = [];
+    const psaList = document.getElementById('psaList');
+    const queueList = document.getElementById('queueList');
+    const timerEl = document.getElementById('timer');
+    const categoryFilter = document.getElementById('categoryFilter');
+    const top40 = document.getElementById('top40');
+    const introBadge = document.getElementById('introBadge');
+    const outroBadge = document.getElementById('outroBadge');
+    const queue = [];
+    const players = [
+        { el: document.getElementById('psaAudioA'), item: null },
+        { el: document.getElementById('psaAudioB'), item: null }
+    ];
+    let currentIdx = 0;
+    let currentItem = null;
+    let fadeTimer = null;
+    let timerInterval = null;
+    let recorder = null;
+    let recordChunks = [];
+
+    function activePlayer() { return players[currentIdx].el; }
+    function otherPlayer() { return players[1 - currentIdx].el; }
+
+    function renderCategories() {
+        const cats = Array.from(new Set(library.map(i => i.category || 'PSA'))).sort();
+        categoryFilter.innerHTML = '<option value="">All categories</option>' + cats.map(c => `<option value="${c}">${c}</option>`).join('');
+    }
+
+    function renderLibrary(filter = '') {
+        psaList.innerHTML = '';
+        const term = filter.toLowerCase();
+        const cat = categoryFilter.value;
+        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
+            const li = document.createElement('li');
+            li.className = 'list-group-item';
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.loop) meta.push('loop');
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <strong>${item.name}</strong><br>
+                    ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
+                </div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
+                </div>
+            </div>`;
+            li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
+            psaList.appendChild(li);
+        });
+        if (!psaList.children.length) {
+            const li = document.createElement('li');
+            li.className = 'list-group-item text-muted';
+            li.textContent = 'No items found.';
+            psaList.appendChild(li);
+        }
+    }
+
+    function renderQueue() {
+        queueList.innerHTML = '';
+        if (!queue.length) {
+            queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
+            return;
+        }
+        queue.forEach((item, idx) => {
+            const li = document.createElement('li');
+            const meta = [];
+            if (item.duration) meta.push(`${item.duration}s`);
+            if (item.category) meta.push(item.category);
+            li.innerHTML = `${item.name} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}`;
+            li.dataset.index = idx;
+            li.tabIndex = 0;
+            li.addEventListener('click', () => startFrom(idx));
+            li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') startFrom(idx); });
+            queueList.appendChild(li);
+        });
+    }
+
+    function stopAllAudio() {
+        players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
+        currentItem = null;
+    }
+
+    function addToQueue(item) {
+        queue.push(item);
+        if (queue.length === 1 && activePlayer().paused) {
+            startFrom(0);
+        }
+        renderQueue();
+    }
+
+    function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
+
+    const TOP40_RATE = Math.pow(2, 0.5 / 12);
+
+    function preservesPitchOff(el) {
+        if (!el) return;
+        el.preservesPitch = false;
+        el.mozPreservesPitch = false;
+        el.webkitPreservesPitch = false;
+    }
+
+    function computePlaybackRate(item) {
+        const isMusic = item && ((item.kind && item.kind === 'music') || (item.category || '').toLowerCase().includes('music'));
+        if (top40.checked && isMusic) {
+            return TOP40_RATE;
+        }
+        return 1.0;
+    }
+
+    function applyPlaybackRate(player = activePlayer(), item = currentItem) {
+        preservesPitchOff(player);
+        player.playbackRate = computePlaybackRate(item);
+    }
+
+    function startFrom(idx, preferredIdx = currentIdx) {
+        const item = queue[idx];
+        if (!item) return;
+        if (item.stop) {
+            queue.splice(0, idx + 1);
+            stopAllAudio();
+            renderQueue();
+            return;
+        }
+        stopFade();
+        const playerObj = players[preferredIdx];
+        const otherObj = players[1 - preferredIdx];
+        const player = playerObj.el;
+        const other = otherObj.el;
+        other.pause();
+        other.removeAttribute('src');
+        other.volume = 1;
+        otherObj.item = null;
+        currentIdx = preferredIdx;
+        currentItem = item;
+        playerObj.item = item;
+        if (idx > 0) queue.splice(0, idx);
+        player.src = item.url;
+        player.volume = 1;
+        applyPlaybackRate(player, item);
+        player.play();
+        renderQueue();
+    }
+
+    function shiftPastStops() {
+        while (queue.length && queue[0].stop) {
+            queue.shift();
+        }
+    }
+
+    function playNext() {
+        if (!queue.length) return;
+        queue.shift();
+        shiftPastStops();
+        stopFade();
+        stopAllAudio();
+        if (queue.length) {
+            startFrom(0);
+        } else {
+            renderQueue();
+        }
+    }
+
+    function fadeAndNext() {
+        if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
+            playNext();
+            return;
+        }
+        const current = activePlayer();
+        const nextIdx = 1 - currentIdx;
+        const nextItem = queue[1];
+        const nextPlayerObj = players[nextIdx];
+        const nextPlayer = nextPlayerObj.el;
+        stopFade();
+        nextPlayerObj.item = nextItem;
+        nextPlayer.src = nextItem.url;
+        nextPlayer.volume = 1;
+        applyPlaybackRate(nextPlayer, nextItem);
+        nextPlayer.play();
+        fadeTimer = setInterval(() => {
+            current.volume = Math.max(0, current.volume - 0.06);
+            if (current.volume <= 0.02) {
+                stopFade();
+                current.pause();
+                current.volume = 1;
+                current.removeAttribute('src');
+                queue.shift();
+                shiftPastStops();
+                currentIdx = nextIdx;
+                currentItem = nextItem;
+                applyPlaybackRate();
+                startTimer();
+                renderQueue();
+            }
+        }, 80);
+    }
+
+    function stopFade() { if (fadeTimer) { clearInterval(fadeTimer); fadeTimer = null; } }
+
+    function updateTimer() {
+        const player = activePlayer();
+        if (!player.duration || isNaN(player.duration)) return;
+        const remaining = Math.max(0, player.duration - player.currentTime);
+        const minutes = Math.floor(remaining / 60);
+        const seconds = Math.floor(remaining % 60);
+        const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
+        timerEl.textContent = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+        const urgent = remaining <= 15;
+        timerEl.style.color = urgent ? '#dc3545' : '';
+        timerEl.style.fontWeight = urgent ? '700' : '400';
+
+        const cues = currentItem && currentItem.cues ? currentItem.cues : {};
+        if (cues.intro) {
+            const introRem = Math.max(0, cues.intro - player.currentTime);
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
+        } else { introBadge.style.display = 'none'; }
+
+        if (cues.outro) {
+            const outroRem = Math.max(0, cues.outro - player.currentTime);
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
+            outroBadge.style.backgroundColor = outroRem <= 15 ? '#dc3545' : '';
+        } else { outroBadge.style.display = 'none'; }
+    }
+
+    function startTimer() { stopTimer(); timerInterval = setInterval(updateTimer, 80); }
+    function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
+
+    function handleEnded(idx) {
+        if (idx !== currentIdx) return;
+        stopTimer();
+        queue.shift();
+        shiftPastStops();
+        if (queue.length) {
+            startFrom(0);
+        } else {
+            stopAllAudio();
+            renderQueue();
+        }
+    }
+
+    document.getElementById('clearQueue').addEventListener('click', () => {
+        queue.length = 0;
+        stopFade();
+        stopAllAudio();
+        renderQueue();
+    });
+    document.getElementById('playNext').addEventListener('click', playNext);
+    document.getElementById('addStop').addEventListener('click', addStopCue);
+    document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
+
+    document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
+    categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
+    document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
+    top40.addEventListener('change', () => {
+        players.forEach((p) => {
+            preservesPitchOff(p.el);
+            if (p.item) {
+                p.el.playbackRate = computePlaybackRate(p.item);
+            }
+        });
+    });
+
+    players.forEach((p, idx) => {
+        preservesPitchOff(p.el);
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); } });
+        p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
+        p.el.addEventListener('pause', () => { if (idx === currentIdx) stopTimer(); });
+        p.el.addEventListener('ended', () => handleEnded(idx));
+    });
+
+    async function loadPSAs() {
+        try {
+            const res = await fetch('/api/psa/library');
+            library = await res.json();
+            renderCategories();
+            renderLibrary();
+        } catch (e) {
+            psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
+        }
+    }
+    loadPSAs();
+
+    // Voice track recording
+    const startRecBtn = document.getElementById('startRecord');
+    const stopRecBtn = document.getElementById('stopRecord');
+    startRecBtn.addEventListener('click', async () => {
+        if (recorder) return;
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            recorder = new MediaRecorder(stream);
+            recordChunks = [];
+            recorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
+            recorder.onstop = () => {
+                const blob = new Blob(recordChunks, { type: 'audio/webm' });
+                const url = URL.createObjectURL(blob);
+                addToQueue({ name: 'Voice Track', url, category: 'Voice Tracks', kind: 'voicetrack' });
+                recorder = null;
+                stopRecBtn.disabled = true;
+                startRecBtn.disabled = false;
+            };
+            recorder.start();
+            startRecBtn.disabled = true;
+            stopRecBtn.disabled = false;
+        } catch (err) {
+            alert('Unable to access microphone for recording.');
+            recorder = null;
+        }
+    });
+    stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
+</script>
+</body>
+</html>
