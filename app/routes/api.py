@@ -15,6 +15,9 @@ from app.models import (
     SavedSearch,
     Plugin,
     WebsiteContent,
+    WebsiteArticle,
+    PressFeature,
+    WebsiteBanner,
     PodcastEpisode,
     DJAbsence,
     HostedAudio,
@@ -561,6 +564,26 @@ def psa_library():
                 except Exception:
                     duration = None
                 meta = _meta_for(full)
+                cue_obj = load_cue(full)
+                cues: dict[str, float] = {}
+                # Merge cues from DB first, then JSON sidecars.
+                if cue_obj:
+                    cues.update({
+                        "cue_in": cue_obj.cue_in,
+                        "intro": cue_obj.intro,
+                        "outro": cue_obj.outro,
+                        "cue_out": cue_obj.cue_out,
+                        "loop_in": cue_obj.loop_in,
+                        "loop_out": cue_obj.loop_out,
+                        "hook_in": cue_obj.hook_in,
+                        "hook_out": cue_obj.hook_out,
+                        "start_next": cue_obj.start_next,
+                    })
+                cues.update({
+                    k: meta.get(k)
+                    for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
+                    if meta.get(k) is not None
+                })
                 token = base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8")
                 entries.append({
                     "name": fname,
@@ -569,11 +592,7 @@ def psa_library():
                     "category": category_label,
                     "loop": bool(meta.get("loop")),
                     "kind": kind,
-                    "cues": {
-                        k: meta.get(k)
-                        for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
-                        if meta.get(k) is not None
-                    },
+                    "cues": {k: v for k, v in cues.items() if v is not None},
                 })
     return jsonify(entries)
 
@@ -693,15 +712,52 @@ def website_plugin_content():
         return jsonify({"status": "disabled", "message": "website_content plugin disabled"}), 503
 
     content = WebsiteContent.query.first()
+    articles = WebsiteArticle.query.order_by(WebsiteArticle.position, WebsiteArticle.id).all()
     podcasts = PodcastEpisode.query.order_by(PodcastEpisode.created_at.desc()).all()
+    press = PressFeature.query.order_by(PressFeature.position, PressFeature.id).all()
+
+    hero = None
+    if articles:
+        first = articles[0]
+        hero = {
+            "headline": first.title,
+            "body": first.body,
+            "image_url": first.image_url,
+            "updated_at": first.created_at.isoformat(),
+        }
+    elif content:
+        hero = {
+            "headline": content.headline,
+            "body": content.body,
+            "image_url": content.image_url,
+            "updated_at": content.updated_at.isoformat() if content.updated_at else None,
+        }
+
     return jsonify({
         "status": "ok",
-        "content": {
-            "headline": content.headline if content else None,
-            "body": content.body if content else None,
-            "image_url": content.image_url if content else None,
-            "updated_at": content.updated_at.isoformat() if content else None,
-        },
+        "content": hero,
+        "articles": [
+            {
+                "id": a.id,
+                "title": a.title,
+                "body": a.body,
+                "image_url": a.image_url,
+                "position": a.position,
+                "created_at": a.created_at.isoformat() if a.created_at else None,
+            }
+            for a in articles
+        ],
+        "press": [
+            {
+                "id": f.id,
+                "name": f.name,
+                "url": f.url,
+                "logo": f.logo,
+                "position": f.position,
+                "created_at": f.created_at.isoformat() if f.created_at else None,
+            }
+            for f in press
+        ],
         "podcasts": [
             {
                 "id": p.id,
@@ -712,6 +768,22 @@ def website_plugin_content():
             }
             for p in podcasts
         ],
+    })
+
+
+@api_bp.route("/plugins/website/banner")
+def website_banner():
+    plugin = Plugin.query.filter_by(name="website_content").first()
+    if plugin and not plugin.enabled:
+        return "", 204
+
+    banner = WebsiteBanner.query.first()
+    if not banner or not banner.message:
+        return "", 204
+    return jsonify({
+        "message": banner.message,
+        "link": banner.link,
+        "tone": banner.tone,
     })
 
 

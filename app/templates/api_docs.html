@@ -33,7 +33,10 @@ GET /schedule/ical   (iCal feed)</code></pre>
             Returns the weekly schedule for the website’s interactive grid and calendar exports.</li>
         <li><strong>Website content (plugin):</strong>
             <pre><code>GET /api/plugins/website/content</code></pre>
-            Front-page headline/body/image plus podcast embeds for the new website.</li>
+            Front-page hero, ordered articles, podcasts, and press features for the website.</li>
+          <li>
+            <pre><code>GET /api/plugins/website/banner</code></pre>
+            Optional banner message for the website header; returns 204 when unset.</li>
         <li><strong>Hosted audio embeds (plugin):</strong>
             <pre><code>GET /api/plugins/audio/embed/&lt;id&gt;</code></pre>
             Returns a slim iframe-friendly player with RAMS backdrop for interviews/segments hosted in RAMS.</li>

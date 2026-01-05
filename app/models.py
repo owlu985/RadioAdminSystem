@@ -331,6 +331,38 @@ class WebsiteContent(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class WebsiteArticle(db.Model):
+    __tablename__ = "website_article"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=True)
+    image_url = db.Column(db.String(500), nullable=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PressFeature(db.Model):
+    __tablename__ = "press_feature"
+
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(255), nullable=False)
+    url = db.Column(db.String(1024), nullable=False)
+    logo = db.Column(db.String(512), nullable=True)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class WebsiteBanner(db.Model):
+    __tablename__ = "website_banner"
+
+    id = db.Column(db.Integer, primary_key=True)
+    message = db.Column(db.String(500), nullable=True)
+    link = db.Column(db.String(1024), nullable=True)
+    tone = db.Column(db.String(50), nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class PodcastEpisode(db.Model):
     __tablename__ = "podcast_episode"
 
