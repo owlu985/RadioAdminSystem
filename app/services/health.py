@@ -1,5 +1,8 @@
 from datetime import datetime
-from typing import Optional
+from typing import Any, Dict, Optional
+import os
+import sys
+import resource
 
 from app.logger import init_logger
 from app.models import JobHealth, db
@@ -52,3 +55,57 @@ def get_health_snapshot():
         }
         for job in jobs
     }
+
+
+def _get_rss_bytes() -> Optional[int]:
+    statm_path = "/proc/self/statm"
+    if os.path.exists(statm_path):
+        try:
+            with open(statm_path, "r", encoding="utf-8") as fh:
+                parts = fh.read().split()
+            if len(parts) >= 2:
+                rss_pages = int(parts[1])
+                return rss_pages * os.sysconf("SC_PAGE_SIZE")
+        except Exception:
+            pass
+    try:
+        usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+    except Exception:
+        return None
+    if sys.platform == "darwin":
+        return int(usage)
+    return int(usage * 1024)
+
+
+def _collect_cache_stats() -> Dict[str, Any]:
+    stats: Dict[str, Any] = {}
+    try:
+        from app.services import api_cache
+
+        stats["api_cache_entries"] = api_cache.stats().get("entries")
+    except Exception:
+        stats["api_cache_entries"] = None
+    try:
+        from app.services import music_search
+
+        cached = music_search._MUSIC_INDEX_CACHE.get("data")
+        if isinstance(cached, dict):
+            stats["music_index_files"] = len(cached.get("files", {}))
+    except Exception:
+        stats.setdefault("music_index_files", None)
+    try:
+        from app.services import media_library
+
+        cached = media_library._MEDIA_INDEX_CACHE.get("data")
+        if isinstance(cached, dict):
+            stats["media_index_files"] = len(cached.get("files", {}))
+    except Exception:
+        stats.setdefault("media_index_files", None)
+    return stats
+
+
+def log_resource_usage(context: str = "periodic") -> None:
+    rss_bytes = _get_rss_bytes()
+    rss_mb = round(rss_bytes / (1024 * 1024), 2) if rss_bytes is not None else None
+    cache_stats = _collect_cache_stats()
+    logger.info("Resource usage (%s): rss_mb=%s cache=%s", context, rss_mb, cache_stats)
