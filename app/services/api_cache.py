@@ -1,6 +1,10 @@
 import time
 from typing import Any, Dict, Optional
 
+KEY_SCHEDULE = "schedule"
+KEY_DJ_LIST = "dj_list"
+KEY_WEBSITE_CONTENT = "website_content"
+
 _cache: Dict[str, Dict[str, Any]] = {}
 
 

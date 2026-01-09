@@ -319,11 +319,16 @@ def artist_frequency():
     return jsonify([{"artist": artist or "Unknown", "plays": plays} for artist, plays in counts])
 
 
+MAX_PER_PAGE = 100
+
+
 @api_bp.route("/music/search")
 def music_search():
     q = request.args.get("q", "").strip()
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
+    page = max(1, page)
+    per_page = max(1, min(per_page, MAX_PER_PAGE))
     folder = request.args.get("folder")
     refresh = request.args.get("refresh", type=int, default=0)
     if refresh:
@@ -332,7 +337,6 @@ def music_search():
         return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
     payload = search_music(q, page=page, per_page=per_page, folder=folder)
     return jsonify(payload)
->>>>>>> main
 
 
 @api_bp.route("/music/saved-searches", methods=["GET", "POST", "DELETE"])
@@ -530,12 +534,13 @@ def music_bulk_update():
 def psa_library():
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
+    page = max(1, page)
+    per_page = max(1, min(per_page, MAX_PER_PAGE))
     category = request.args.get("category")
     kind = request.args.get("kind")
     query = request.args.get("q")
     payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
     return jsonify(payload)
->>>>>>> main
 
 
 @api_bp.route("/music/scan/library")
@@ -586,7 +591,7 @@ def music_cue():
 @api_bp.route("/schedule")
 def schedule_api():
     tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
-    cached = api_cache.get("schedule")
+    cached = api_cache.get(api_cache.KEY_SCHEDULE)
     if cached:
         return jsonify(cached)
 
@@ -641,7 +646,7 @@ def schedule_api():
             "type": "marathon",
         })
     payload = {"events": events, "timezone": tz}
-    api_cache.set("schedule", payload, ttl=300)
+    api_cache.set(api_cache.KEY_SCHEDULE, payload, ttl=300)
     return jsonify(payload)
 
 
@@ -650,6 +655,10 @@ def website_plugin_content():
     plugin = Plugin.query.filter_by(name="website_content").first()
     if plugin and not plugin.enabled:
         return jsonify({"status": "disabled", "message": "website_content plugin disabled"}), 503
+
+    cached = api_cache.get(api_cache.KEY_WEBSITE_CONTENT)
+    if cached:
+        return jsonify(cached)
 
     content = WebsiteContent.query.first()
     articles = WebsiteArticle.query.order_by(WebsiteArticle.position, WebsiteArticle.id).all()
@@ -673,7 +682,7 @@ def website_plugin_content():
             "updated_at": content.updated_at.isoformat() if content.updated_at else None,
         }
 
-    return jsonify({
+    payload = {
         "status": "ok",
         "content": hero,
         "articles": [
@@ -708,7 +717,9 @@ def website_plugin_content():
             }
             for p in podcasts
         ],
-    })
+    }
+    api_cache.set(api_cache.KEY_WEBSITE_CONTENT, payload, ttl=300)
+    return jsonify(payload)
 
 
 @api_bp.route("/plugins/website/banner")
@@ -952,6 +963,10 @@ def audit_status(job_id):
 
 @api_bp.route("/djs")
 def list_djs_api():
+    cached = api_cache.get(api_cache.KEY_DJ_LIST)
+    if cached:
+        return jsonify(cached)
+
     items = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
     payload = []
     for dj in items:
@@ -975,6 +990,7 @@ def list_djs_api():
                 for s in dj.shows
             ]
         })
+    api_cache.set(api_cache.KEY_DJ_LIST, payload, ttl=300)
     return jsonify(payload)
 
 
