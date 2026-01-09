@@ -338,7 +338,7 @@ def schedule_nas_watch():
     """Monitor NAS news/calendar files and import to RadioDJ folder."""
     if flask_app is None:
         return
-    interval = 5  # minutes
+    interval = flask_app.config.get("NAS_WATCH_INTERVAL_MINUTES", 5)
     try:
         scheduler.add_job(
             run_nas_watch_job,
