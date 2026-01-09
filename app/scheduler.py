@@ -7,7 +7,7 @@ from .logger import init_logger
 from .models import db, Show, MarathonEvent
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
-from app.services.health import record_failure
+from app.services.health import record_failure, log_resource_usage
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
@@ -45,6 +45,7 @@ def init_scheduler(app):
             schedule_news_rotation()
             schedule_icecast_analytics()
             schedule_settings_backup()
+            schedule_health_logging()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -379,6 +380,23 @@ def schedule_settings_backup():
         logger.error(f"Error scheduling settings backup: {e}")
 
 
+def schedule_health_logging():
+    if flask_app is None:
+        return
+    interval_minutes = flask_app.config.get("HEALTH_LOG_INTERVAL_MINUTES", 15)
+    try:
+        scheduler.add_job(
+            run_health_logging_job,
+            "interval",
+            minutes=interval_minutes,
+            id="health_log_job",
+            replace_existing=True,
+        )
+        logger.info("Health log job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling health log job: {e}")
+
+
 def schedule_news_rotation():
     """Daily job to activate the news file for the current date if available."""
     if flask_app is None:
@@ -408,6 +426,16 @@ def run_news_rotation_job():
             activate_news_for_date(date_cls.today())
         finally:
             _log_job_duration("news_rotation", started_at)
+
+
+def run_health_logging_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        try:
+            log_resource_usage()
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("Health log job failed: %s", exc)
 
 
 def run_nas_watch_job():
