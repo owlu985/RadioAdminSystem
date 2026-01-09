@@ -387,10 +387,10 @@ def media_file(token: str):
         decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
     except Exception:
         abort(404)
-    full = os.path.abspath(decoded)
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
     allowed = False
     for _, root in _media_roots():
-        root_abs = os.path.abspath(root)
+        root_abs = os.path.normcase(os.path.abspath(os.path.normpath(root)))
         if full.startswith(root_abs):
             allowed = True
             break
@@ -775,8 +775,8 @@ def _safe_music_path(path: str) -> str:
     root = current_app.config.get("NAS_MUSIC_ROOT") or ""
     if not root:
         abort(404)
-    normalized = os.path.realpath(path)
-    root_norm = os.path.realpath(root)
+    normalized = os.path.normcase(os.path.realpath(os.path.normpath(path)))
+    root_norm = os.path.normcase(os.path.realpath(os.path.normpath(root)))
     if not normalized.startswith(root_norm):
         abort(403)
     if not os.path.exists(normalized):
