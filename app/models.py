@@ -184,7 +184,7 @@ class StreamProbe(db.Model):
     avg_db = db.Column(db.Float, nullable=False)
     silence_ratio = db.Column(db.Float, nullable=False)
     automation_ratio = db.Column(db.Float, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     show_run = db.relationship("ShowRun", backref="probes")
 

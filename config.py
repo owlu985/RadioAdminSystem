@@ -31,7 +31,7 @@ class Config:
     AUTOMATION_RATIO_THRESHOLD = 0.65
     SILENCE_CHUNK_MS = 500
     STREAM_PROBE_SECONDS = 8
-    STREAM_PROBE_INTERVAL_MINUTES = 2
+    STREAM_PROBE_INTERVAL_MINUTES = 1
 
     # REST/API defaults
     DEFAULT_OFF_AIR_MESSAGE = "WLMC is currently off-air"
@@ -73,7 +73,7 @@ class Config:
     ICECAST_USERNAME = None
     ICECAST_PASSWORD = None
     ICECAST_MOUNT = None
-    ICECAST_ANALYTICS_INTERVAL_MINUTES = 20
+    ICECAST_ANALYTICS_INTERVAL_MINUTES = 15
     ICECAST_ANALYTICS_FILE = None  # defaults to instance/analytics/icecast_listener_history.jsonl
     ICECAST_IGNORED_IPS = []
 
@@ -94,9 +94,8 @@ class Config:
     TEST_SAMPLE_AUDIO = os.path.join(NAS_ROOT, "sample_probe.mp3")
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
     NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
-    MUSIC_INDEX_TTL = 300
-    MEDIA_INDEX_TTL = 300
-    NAS_WATCH_INTERVAL_MINUTES = 10
+    MUSIC_INDEX_TTL = 60
+    MEDIA_INDEX_TTL = 60
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
     MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")

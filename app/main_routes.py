@@ -7,7 +7,6 @@ import base64
 import hashlib
 import requests
 from urllib.parse import quote_plus
-import mimetypes
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
@@ -62,7 +61,6 @@ from app.services.music_search import (
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
-from app.services.metrics import start_route_timer, finalize_route_metrics
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
@@ -263,13 +261,11 @@ def shows():
 
 @main_bp.route('/schedule/grid')
 def schedule_grid():
-        start_time = start_route_timer()
-        return finalize_route_metrics("main.schedule_grid", start_time, render_template('schedule_grid.html'), request)
+        return render_template('schedule_grid.html')
 
 
 @main_bp.route('/schedule/ical')
 def schedule_ical():
-        start_time = start_route_timer()
         shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
         tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
         lines = [
@@ -294,12 +290,7 @@ def schedule_ical():
                         ])
         lines.append("END:VCALENDAR")
         ical = "\r\n".join(lines)
-        return finalize_route_metrics(
-                "main.schedule_ical",
-                start_time,
-                current_app.response_class(ical, mimetype="text/calendar"),
-                request,
-        )
+        return current_app.response_class(ical, mimetype="text/calendar")
 
 
 @main_bp.route('/dashboard')
@@ -350,8 +341,7 @@ def api_docs_page():
 @main_bp.route("/dj/status")
 def dj_status_page():
     """Public DJ status screen."""
-    start_time = start_route_timer()
-    return finalize_route_metrics("main.dj_status", start_time, render_template("dj_status.html"), request)
+    return render_template("dj_status.html")
 
 
 def _psa_library_root():
@@ -378,11 +368,10 @@ def _media_roots() -> list[tuple[str, str]]:
 
 @main_bp.route("/psa/player")
 def psa_player():
-    start_time = start_route_timer()
     psa_root = _psa_library_root()
     resp = make_response(render_template("psa_player.html", psa_root=psa_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-    return finalize_route_metrics("main.psa_player", start_time, resp, request)
+    return resp
 
 
 @main_bp.route("/dj/autodj")
@@ -398,21 +387,16 @@ def media_file(token: str):
         decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
     except Exception:
         abort(404)
-    normalized = os.path.realpath(os.path.normpath(decoded))
+    full = os.path.abspath(decoded)
     allowed = False
     for _, root in _media_roots():
-        root_abs = os.path.realpath(os.path.normpath(root))
-        if os.path.commonpath([normalized, root_abs]) == root_abs:
+        root_abs = os.path.abspath(root)
+        if full.startswith(root_abs):
             allowed = True
             break
-    if not allowed or not os.path.isfile(normalized):
+    if not allowed or not os.path.isfile(full):
         abort(404)
-    mimetype, _ = mimetypes.guess_type(normalized)
-    resp = send_file(
-        normalized,
-        conditional=True,
-        mimetype=mimetype or "application/octet-stream",
-    )
+    resp = send_file(full, conditional=True)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -791,9 +775,9 @@ def _safe_music_path(path: str) -> str:
     root = current_app.config.get("NAS_MUSIC_ROOT") or ""
     if not root:
         abort(404)
-    normalized = os.path.realpath(os.path.normpath(path))
-    root_norm = os.path.realpath(os.path.normpath(root))
-    if os.path.commonpath([normalized, root_norm]) != root_norm:
+    normalized = os.path.realpath(path)
+    root_norm = os.path.realpath(root)
+    if not normalized.startswith(root_norm):
         abort(403)
     if not os.path.exists(normalized):
         abort(404)
@@ -807,12 +791,7 @@ def music_stream():
     if not path:
         abort(404)
     safe_path = _safe_music_path(path)
-    mimetype, _ = mimetypes.guess_type(safe_path)
-    return send_file(
-        safe_path,
-        conditional=True,
-        mimetype=mimetype or "application/octet-stream",
-    )
+    return send_file(safe_path, conditional=True)
 
 
 @main_bp.route("/music/detail")

@@ -7,7 +7,7 @@ from .logger import init_logger
 from .models import db, Show, MarathonEvent
 from app.services.detection import probe_and_record
 from app.services.radiodj_client import import_news_or_calendar
-from app.services.health import record_failure, log_resource_usage
+from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
@@ -20,12 +20,6 @@ import os
 scheduler = BackgroundScheduler()
 logger = None
 flask_app = None
-
-def _log_job_duration(job_name: str, started_at: float) -> None:
-    if logger is None:
-        return
-    elapsed = time.monotonic() - started_at
-    logger.info("Job %s completed in %.2fs", job_name, elapsed)
 
 def init_scheduler(app):
     """Initialize and start the scheduler with the Flask app context."""
@@ -45,7 +39,6 @@ def init_scheduler(app):
             schedule_news_rotation()
             schedule_icecast_analytics()
             schedule_settings_backup()
-            schedule_health_logging()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -318,9 +311,8 @@ def schedule_stream_probe():
             minutes=interval_minutes,
             id="stream_probe_job",
             replace_existing=True,
-            max_instances=1,
         )
-        logger.info("Stream probe job scheduled every %s minutes.", interval_minutes)
+        logger.info("Stream probe job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling stream probe job: {e}")
 
@@ -336,9 +328,8 @@ def schedule_icecast_analytics():
             minutes=interval_minutes,
             id="icecast_analytics_job",
             replace_existing=True,
-            max_instances=1,
         )
-        logger.info("Icecast analytics job scheduled every %s minutes.", interval_minutes)
+        logger.info("Icecast analytics job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling icecast analytics job: {e}")
 
@@ -347,7 +338,7 @@ def schedule_nas_watch():
     """Monitor NAS news/calendar files and import to RadioDJ folder."""
     if flask_app is None:
         return
-    interval = flask_app.config.get("NAS_WATCH_INTERVAL_MINUTES", 5)
+    interval = 5  # minutes
     try:
         scheduler.add_job(
             run_nas_watch_job,
@@ -355,9 +346,8 @@ def schedule_nas_watch():
             minutes=interval,
             id="nas_watch_job",
             replace_existing=True,
-            max_instances=1,
         )
-        logger.info("NAS watch job scheduled every %s minutes.", interval)
+        logger.info("NAS watch job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling NAS watch job: {e}")
 
@@ -373,28 +363,10 @@ def schedule_settings_backup():
             hours=hours,
             id="settings_backup_job",
             replace_existing=True,
-            max_instances=1,
         )
-        logger.info("Settings backup job scheduled every %s hours.", hours)
+        logger.info("Settings backup job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling settings backup: {e}")
-
-
-def schedule_health_logging():
-    if flask_app is None:
-        return
-    interval_minutes = flask_app.config.get("HEALTH_LOG_INTERVAL_MINUTES", 15)
-    try:
-        scheduler.add_job(
-            run_health_logging_job,
-            "interval",
-            minutes=interval_minutes,
-            id="health_log_job",
-            replace_existing=True,
-        )
-        logger.info("Health log job scheduled.")
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"Error scheduling health log job: {e}")
 
 
 def schedule_news_rotation():
@@ -409,9 +381,8 @@ def schedule_news_rotation():
             minute=5,
             id="news_rotation_job",
             replace_existing=True,
-            max_instances=1,
         )
-        logger.info("News rotation job scheduled daily at 00:05 UTC.")
+        logger.info("News rotation job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling news rotation job: {e}")
 
@@ -419,38 +390,20 @@ def schedule_news_rotation():
 def run_news_rotation_job():
     if flask_app is None:
         return
-    started_at = time.monotonic()
     from app.routes.news import activate_news_for_date  # lazy import to avoid cycles
     with flask_app.app_context():
-        try:
-            activate_news_for_date(date_cls.today())
-        finally:
-            _log_job_duration("news_rotation", started_at)
-
-
-def run_health_logging_job():
-    if flask_app is None:
-        return
-    with flask_app.app_context():
-        try:
-            log_resource_usage()
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Health log job failed: %s", exc)
+        activate_news_for_date(date_cls.today())
 
 
 def run_nas_watch_job():
     if flask_app is None:
         return
-    started_at = time.monotonic()
     with flask_app.app_context():
-        try:
-            for kind in ("news", "community_calendar"):
-                try:
-                    import_news_or_calendar(kind)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("NAS watch import failed for %s: %s", kind, exc)
-        finally:
-            _log_job_duration("nas_watch", started_at)
+        for kind in ("news", "community_calendar"):
+            try:
+                import_news_or_calendar(kind)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("NAS watch import failed for %s: %s", kind, exc)
 
 
 def run_stream_probe_job():
@@ -458,7 +411,6 @@ def run_stream_probe_job():
         return
 
     with flask_app.app_context():
-        started_at = time.monotonic()
         try:
             probe_and_record()
         except Exception as exc:  # noqa: BLE001
@@ -472,32 +424,24 @@ def run_stream_probe_job():
                     record_failure("stream_probe", reason="job_retry_success", restarted=True)
                 except Exception as exc2:  # noqa: BLE001
                     logger.error("Probe retry failed: %s", exc2)
-        finally:
-            _log_job_duration("stream_probe", started_at)
 
 
 def run_icecast_analytics_job():
     if flask_app is None:
         return
     with flask_app.app_context():
-        started_at = time.monotonic()
         try:
             record_icecast_stat()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Icecast analytics sample failed: %s", exc)
-        finally:
-            _log_job_duration("icecast_analytics", started_at)
 
 
 def run_settings_backup_job():
     if flask_app is None:
         return
     with flask_app.app_context():
-        started_at = time.monotonic()
         try:
             backup_settings()
             backup_data_snapshot()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Settings backup failed: %s", exc)
-        finally:
-            _log_job_duration("settings_backup", started_at)
