@@ -332,6 +332,7 @@ def music_search():
         return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
     payload = search_music(q, page=page, per_page=per_page, folder=folder)
     return jsonify(payload)
+>>>>>>> main
 
 
 @api_bp.route("/music/saved-searches", methods=["GET", "POST", "DELETE"])
@@ -534,6 +535,7 @@ def psa_library():
     query = request.args.get("q")
     payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
     return jsonify(payload)
+>>>>>>> main
 
 
 @api_bp.route("/music/scan/library")
