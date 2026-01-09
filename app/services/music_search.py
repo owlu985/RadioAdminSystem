@@ -59,12 +59,12 @@ def _write_music_index_file(payload: Dict) -> None:
         json.dump(payload, fh)
 
 
-def build_music_index(existing: Optional[Dict] = None) -> Dict:
+def build_music_index(existing: Optional[Dict] = None, delta_scan: bool = True) -> Dict:
     root = current_app.config.get("NAS_MUSIC_ROOT")
     if not root or not os.path.exists(root):
         return {"files": {}, "generated_at": time.time(), "root": root}
 
-    existing_files = (existing or {}).get("files", {})
+    existing_files = (existing or {}).get("files", {}) if delta_scan else {}
     new_files: Dict[str, Dict] = {}
     for path in _walk_music():
         full = os.path.normpath(path)
@@ -115,13 +115,25 @@ def get_music_index(refresh: bool = False) -> Dict:
         return cached  # type: ignore[return-value]
 
     disk = _load_music_index_file()
-    if disk.get("files") and not refresh and disk.get("root") == root:
+    if disk.get("generated_at") is not None and not refresh and disk.get("root") == root:
         _MUSIC_INDEX_CACHE["data"] = disk
         _MUSIC_INDEX_CACHE["loaded_at"] = time.time()
         _MUSIC_INDEX_CACHE["root"] = root
         return disk
 
-    payload = build_music_index(disk)
+    disk_for_build = disk if disk.get("root") == root else None
+    payload = build_music_index(disk_for_build, delta_scan=True)
+    _MUSIC_INDEX_CACHE["data"] = payload
+    _MUSIC_INDEX_CACHE["loaded_at"] = time.time()
+    _MUSIC_INDEX_CACHE["root"] = root
+    return payload
+
+
+def rebuild_music_index(delta_scan: bool = True) -> Dict:
+    root = current_app.config.get("NAS_MUSIC_ROOT")
+    disk = _load_music_index_file()
+    existing = disk if delta_scan and disk.get("root") == root else None
+    payload = build_music_index(existing, delta_scan=delta_scan)
     _MUSIC_INDEX_CACHE["data"] = payload
     _MUSIC_INDEX_CACHE["loaded_at"] = time.time()
     _MUSIC_INDEX_CACHE["root"] = root
@@ -1027,10 +1039,22 @@ def enrich_metadata_external(tags: Dict) -> Dict:
     return {"status": "ok", "suggestions": suggestions}
 
 
-def queues_snapshot():
+def queues_snapshot(include_tracks: bool = False, page: int = 1, per_page: int = 50):
     tracks = scan_library()
     metrics = find_duplicates_and_quality(tracks)
-    return {"tracks": tracks, "metrics": metrics}
+    payload = {"metrics": metrics}
+    if include_tracks:
+        page = max(1, page)
+        per_page = max(1, min(per_page, 100))
+        start = (page - 1) * per_page
+        end = start + per_page
+        payload.update({
+            "tracks": tracks[start:end],
+            "total": len(tracks),
+            "page": page,
+            "per_page": per_page,
+        })
+    return payload
 
 
 def load_cue(path: str) -> Optional[MusicCue]:

@@ -17,6 +17,10 @@ def _media_index_path() -> str:
     return os.path.join(current_app.instance_path, "media_index.json")
 
 
+def _media_root_signature() -> List[Dict[str, str]]:
+    return [{"label": label, "root": root, "kind": kind} for label, root, kind in _media_roots()]
+
+
 def _media_roots() -> List[Tuple[str, str, str]]:
     roots: List[Tuple[str, str, str]] = []
     psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
@@ -44,12 +48,12 @@ def _normalize_category(label: str, root: str, base: str) -> str:
 def _read_index_file() -> Dict:
     path = _media_index_path()
     if not os.path.exists(path):
-        return {"files": {}, "generated_at": None}
+        return {"files": {}, "generated_at": None, "roots": []}
     try:
         with open(path, "r", encoding="utf-8") as fh:
-            return json.load(fh) or {"files": {}, "generated_at": None}
+            return json.load(fh) or {"files": {}, "generated_at": None, "roots": []}
     except Exception:
-        return {"files": {}, "generated_at": None}
+        return {"files": {}, "generated_at": None, "roots": []}
 
 
 def _write_index_file(payload: Dict) -> None:
@@ -59,8 +63,8 @@ def _write_index_file(payload: Dict) -> None:
         json.dump(payload, fh)
 
 
-def build_media_index(existing: Optional[Dict] = None) -> Dict:
-    existing_files = (existing or {}).get("files", {})
+def build_media_index(existing: Optional[Dict] = None, delta_scan: bool = True) -> Dict:
+    existing_files = (existing or {}).get("files", {}) if delta_scan else {}
     new_files: Dict[str, Dict] = {}
     for label, root, kind in _media_roots():
         if not root:
@@ -89,7 +93,7 @@ def build_media_index(existing: Optional[Dict] = None) -> Dict:
                     "size": stat.st_size,
                 }
                 new_files[full] = entry
-    payload = {"generated_at": time.time(), "files": new_files}
+    payload = {"generated_at": time.time(), "files": new_files, "roots": _media_root_signature()}
     _write_index_file(payload)
     return payload
 
@@ -102,12 +106,24 @@ def get_media_index(refresh: bool = False) -> Dict:
         return cached  # type: ignore[return-value]
 
     disk = _read_index_file()
-    if disk.get("files") and not refresh:
+    current_roots = _media_root_signature()
+    if disk.get("generated_at") is not None and not refresh and disk.get("roots") == current_roots:
         _MEDIA_INDEX_CACHE["data"] = disk
         _MEDIA_INDEX_CACHE["loaded_at"] = time.time()
         return disk
 
-    payload = build_media_index(disk)
+    disk_for_build = disk if disk.get("roots") == current_roots else None
+    payload = build_media_index(disk_for_build, delta_scan=True)
+    _MEDIA_INDEX_CACHE["data"] = payload
+    _MEDIA_INDEX_CACHE["loaded_at"] = time.time()
+    return payload
+
+
+def rebuild_media_index(delta_scan: bool = True) -> Dict:
+    disk = _read_index_file()
+    current_roots = _media_root_signature()
+    existing = disk if delta_scan and disk.get("roots") == current_roots else None
+    payload = build_media_index(existing, delta_scan=delta_scan)
     _MEDIA_INDEX_CACHE["data"] = payload
     _MEDIA_INDEX_CACHE["loaded_at"] = time.time()
     return payload
