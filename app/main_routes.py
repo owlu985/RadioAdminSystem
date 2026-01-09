@@ -7,6 +7,7 @@ import base64
 import hashlib
 import requests
 from urllib.parse import quote_plus
+import mimetypes
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
@@ -387,18 +388,21 @@ def media_file(token: str):
         decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
     except Exception:
         abort(404)
-    full = os.path.abspath(decoded)
+    normalized = os.path.realpath(os.path.normpath(decoded))
     allowed = False
     for _, root in _media_roots():
-        root_abs = os.path.abspath(root)
-        if full.startswith(root_abs):
+        root_abs = os.path.realpath(os.path.normpath(root))
+        if os.path.commonpath([normalized, root_abs]) == root_abs:
             allowed = True
             break
-    if not allowed or not os.path.isfile(full):
+    if not allowed or not os.path.isfile(normalized):
         abort(404)
-    resp = send_file(full, conditional=True)
-    resp = send_file(full, conditional=True)
->>>>>>> main
+    mimetype, _ = mimetypes.guess_type(normalized)
+    resp = send_file(
+        normalized,
+        conditional=True,
+        mimetype=mimetype or "application/octet-stream",
+    )
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -777,9 +781,9 @@ def _safe_music_path(path: str) -> str:
     root = current_app.config.get("NAS_MUSIC_ROOT") or ""
     if not root:
         abort(404)
-    normalized = os.path.realpath(path)
-    root_norm = os.path.realpath(root)
-    if not normalized.startswith(root_norm):
+    normalized = os.path.realpath(os.path.normpath(path))
+    root_norm = os.path.realpath(os.path.normpath(root))
+    if os.path.commonpath([normalized, root_norm]) != root_norm:
         abort(403)
     if not os.path.exists(normalized):
         abort(404)
@@ -793,7 +797,12 @@ def music_stream():
     if not path:
         abort(404)
     safe_path = _safe_music_path(path)
-    return send_file(safe_path, conditional=True)
+    mimetype, _ = mimetypes.guess_type(safe_path)
+    return send_file(
+        safe_path,
+        conditional=True,
+        mimetype=mimetype or "application/octet-stream",
+    )
 
 
 @main_bp.route("/music/detail")
