@@ -92,6 +92,8 @@ class Config:
     TEST_SAMPLE_AUDIO = os.path.join(NAS_ROOT, "sample_probe.mp3")
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
     NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
+    MUSIC_INDEX_TTL = 60
+    MEDIA_INDEX_TTL = 60
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
     MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")

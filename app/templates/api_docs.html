@@ -61,7 +61,7 @@ GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
         <li><strong>PSA library (player queue):</strong>
             <pre><code>GET /api/psa/library
 GET /psa/player</code></pre>
-            JSON list of PSA files (name, duration, URL) plus a noindex PSA player for DJs.</li>
+            Paginated media library (PSA/music/assets/voice tracks) with categories, cues, and filters (<code>page</code>, <code>per_page</code>, <code>category</code>, <code>q</code>); the PSA player consumes this API.</li>
     </ul>
 
     <h4 class="mt-4">Stream Monitoring & Probes</h4>
@@ -76,7 +76,7 @@ GET  /api/audit/status/&lt;job_id&gt;</code></pre>
     <p>Probes classify live/automation/dead-air and log dB ratios. Audit jobs run in the background with progress polling.</p>
 
     <h4 class="mt-4">Music Library</h4>
-    <pre><code>GET    /api/music/search?q=&lt;query&gt;            (use q=% to list all)
+    <pre><code>GET    /api/music/search?q=&lt;query&gt;&amp;page=1&amp;per_page=50&amp;folder=&lt;rel&gt;  (use q=% to list all)
 GET    /api/music/detail?path=&lt;abs_path&gt;
 POST   /api/music/cover-art                   (harvest/embed cover art)
 GET    /api/music/musicbrainz?title=&lt;t&gt;&amp;artist=&lt;a&gt;&amp;limit=5

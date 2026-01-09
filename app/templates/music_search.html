@@ -41,6 +41,15 @@
                 <option value="duration_seconds">Length</option>
             </select>
         </div>
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+        <div class="col-12 col-lg-4">
+            <label class="form-label">Folder</label>
+            <select id="folderFilter" class="form-select">
+                <option value="">All folders</option>
+            </select>
+        </div>
+=======
+>>>>>>> main
     </form>
 
     <div class="row">
@@ -57,6 +66,16 @@
                 </thead>
                 <tbody></tbody>
             </table>
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+            <div class="d-flex justify-content-between align-items-center">
+                <div class="text-muted small" id="resultsMeta">No results loaded.</div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
+                    <button class="btn btn-outline-secondary" id="prevPage">Prev</button>
+                    <button class="btn btn-outline-secondary" id="nextPage">Next</button>
+                </div>
+            </div>
+=======
+>>>>>>> main
         </div>
         <div class="col-lg-4">
             <div class="card mb-3">
@@ -101,6 +120,13 @@
     let savedSearches = {{ saved_searches|default([])|tojson }};
     let resultsData = [];
     let sortState = { key: null, dir: 1 };
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+    let currentPage = 1;
+    let lastQuery = '';
+    const perPage = 50;
+    const folderFilter = document.getElementById('folderFilter');
+=======
+>>>>>>> main
 
     function renderSaved() {
         const list = document.getElementById('savedList');
@@ -221,9 +247,59 @@
         e.preventDefault();
         const q = document.getElementById('query').value.trim();
         if (!q) return;
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+        currentPage = 1;
+        lastQuery = q;
+        await fetchPage();
+    });
+
+    async function fetchPage() {
+        if (!lastQuery) return;
+        const folder = folderFilter.value || '';
+        const params = new URLSearchParams({
+            q: lastQuery,
+            page: currentPage,
+            per_page: perPage,
+        });
+        if (folder) params.set('folder', folder);
+        const res = await fetch(`/api/music/search?${params.toString()}`);
+        const data = await res.json();
+        renderResults(data.items || []);
+        if (data.folders) {
+            const opts = ['<option value="">All folders</option>'];
+            data.folders.filter(Boolean).sort().forEach(f => {
+                opts.push(`<option value="${f}">${f}</option>`);
+            });
+            folderFilter.innerHTML = opts.join('');
+            if (folder) folderFilter.value = folder;
+        }
+        const total = data.total || 0;
+        const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
+        const end = Math.min(total, data.page * data.per_page);
+        document.getElementById('resultsMeta').textContent = total
+            ? `Showing ${start}-${end} of ${total}`
+            : 'No results found.';
+        document.getElementById('prevPage').disabled = data.page <= 1;
+        document.getElementById('nextPage').disabled = end >= total;
+    }
+
+    document.getElementById('prevPage').addEventListener('click', async () => {
+        if (currentPage <= 1) return;
+        currentPage -= 1;
+        await fetchPage();
+    });
+    document.getElementById('nextPage').addEventListener('click', async () => {
+        currentPage += 1;
+        await fetchPage();
+    });
+    folderFilter.addEventListener('change', async () => {
+        currentPage = 1;
+        await fetchPage();
+=======
         const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`);
         const data = await res.json();
         renderResults(data);
+>>>>>>> main
     });
 
     selectAll.addEventListener('change', () => {

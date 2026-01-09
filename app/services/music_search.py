@@ -1,6 +1,7 @@
 import os
 import json
 import hashlib
+import time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from flask import current_app
@@ -23,6 +24,7 @@ from app.models import db, MusicAnalysis, MusicCue
 
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
+_MUSIC_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
 
 
 def _walk_music():
@@ -33,6 +35,93 @@ def _walk_music():
         for f in files:
             if f.lower().endswith(AUDIO_EXTS):
                 yield os.path.join(base, f)
+
+
+def _music_index_path() -> str:
+    return os.path.join(current_app.instance_path, "music_index.json")
+
+
+def _load_music_index_file() -> Dict:
+    path = _music_index_path()
+    if not os.path.exists(path):
+        return {"files": {}, "generated_at": None, "root": None}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh) or {"files": {}, "generated_at": None, "root": None}
+    except Exception:
+        return {"files": {}, "generated_at": None, "root": None}
+
+
+def _write_music_index_file(payload: Dict) -> None:
+    path = _music_index_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+
+def build_music_index(existing: Optional[Dict] = None) -> Dict:
+    root = current_app.config.get("NAS_MUSIC_ROOT")
+    if not root or not os.path.exists(root):
+        return {"files": {}, "generated_at": time.time(), "root": root}
+
+    existing_files = (existing or {}).get("files", {})
+    new_files: Dict[str, Dict] = {}
+    for path in _walk_music():
+        full = os.path.normpath(path)
+        try:
+            stat = os.stat(full)
+        except OSError:
+            continue
+        prev = existing_files.get(full)
+        if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
+            new_files[full] = prev
+            continue
+        tags = _read_tags(full)
+        rel_dir = os.path.relpath(os.path.dirname(full), root)
+        folder = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
+        search_blob = " ".join(filter(None, [
+            tags.get("title"),
+            tags.get("artist"),
+            tags.get("album"),
+            tags.get("composer"),
+        ])).lower()
+        entry = {
+            "path": full,
+            "title": tags.get("title"),
+            "artist": tags.get("artist"),
+            "album": tags.get("album"),
+            "composer": tags.get("composer"),
+            "folder": folder,
+            "mtime": stat.st_mtime,
+            "size": stat.st_size,
+            "search": search_blob,
+        }
+        new_files[full] = entry
+    payload = {"files": new_files, "generated_at": time.time(), "root": root}
+    _write_music_index_file(payload)
+    return payload
+
+
+def get_music_index(refresh: bool = False) -> Dict:
+    ttl = current_app.config.get("MUSIC_INDEX_TTL", 60)
+    root = current_app.config.get("NAS_MUSIC_ROOT")
+    cached = _MUSIC_INDEX_CACHE.get("data")
+    loaded_at = _MUSIC_INDEX_CACHE.get("loaded_at") or 0
+    if cached and not refresh and time.time() - loaded_at < ttl and _MUSIC_INDEX_CACHE.get("root") == root:
+        return cached  # type: ignore[return-value]
+
+    disk = _load_music_index_file()
+    if disk.get("files") and not refresh and disk.get("root") == root:
+        _MUSIC_INDEX_CACHE["data"] = disk
+        _MUSIC_INDEX_CACHE["loaded_at"] = time.time()
+        _MUSIC_INDEX_CACHE["root"] = root
+        return disk
+
+    payload = build_music_index(disk)
+    _MUSIC_INDEX_CACHE["data"] = payload
+    _MUSIC_INDEX_CACHE["loaded_at"] = time.time()
+    _MUSIC_INDEX_CACHE["root"] = root
+    return payload
 
 
 def _read_tags(path: str) -> Dict:
@@ -535,20 +624,56 @@ def lookup_musicbrainz(
     return results
 
 
-def search_music(query: str) -> List[Dict]:
-    query_lower = query.lower()
-    results = []
-    for path in _walk_music():
-        tags = _read_tags(path)
-        haystack = " ".join(filter(None, [
-            tags.get("title"),
-            tags.get("artist"),
-            tags.get("album"),
-            tags.get("composer"),
-        ])).lower()
-        if query_lower in haystack:
-            results.append(_augment_with_analysis(tags))
-    return results
+def search_music(
+    query: Optional[str],
+    page: int = 1,
+    per_page: int = 50,
+    folder: Optional[str] = None,
+) -> Dict:
+    index = get_music_index()
+    entries = list(index.get("files", {}).values())
+    query_lower = (query or "").lower().strip()
+
+    if folder:
+        folder = folder.strip().replace("\\", "/").strip("/")
+        entries = [e for e in entries if (e.get("folder") or "").startswith(folder)]
+
+    if query_lower and query_lower not in {"%", "*"}:
+        entries = [e for e in entries if query_lower in (e.get("search") or "")]
+
+    total = len(entries)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_entries = entries[start:end]
+
+    items: List[Dict] = []
+    for entry in page_entries:
+        path = entry["path"]
+        tags = {
+            "path": path,
+            "title": entry.get("title"),
+            "artist": entry.get("artist"),
+            "album": entry.get("album"),
+            "composer": entry.get("composer"),
+        }
+        analysis = MusicAnalysis.query.filter_by(path=path).first()
+        payload = tags.copy()
+        payload.update({
+            "duration_seconds": analysis.duration_seconds if analysis else None,
+            "folder": entry.get("folder"),
+        })
+        items.append(payload)
+
+    folders = sorted({e.get("folder") or "" for e in entries})
+    return {
+        "items": items,
+        "total": total,
+        "page": page,
+        "per_page": per_page,
+        "folders": folders,
+    }
 
 
 def get_track(path: str) -> Optional[Dict]:

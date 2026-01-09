@@ -42,6 +42,7 @@ from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_
 from app.services.music_search import (
     auto_fill_missing_cues,
     search_music,
+    get_music_index,
     get_track,
     bulk_update_metadata,
     queues_snapshot,
@@ -54,6 +55,7 @@ from app.services.music_search import (
     cover_art_candidates,
     enrich_metadata_external,
 )
+from app.services.media_library import list_media
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -320,6 +322,18 @@ def artist_frequency():
 @api_bp.route("/music/search")
 def music_search():
     q = request.args.get("q", "").strip()
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+    page = request.args.get("page", type=int, default=1)
+    per_page = request.args.get("per_page", type=int, default=50)
+    folder = request.args.get("folder")
+    refresh = request.args.get("refresh", type=int, default=0)
+    if refresh:
+        get_music_index(refresh=True)
+    if not q:
+        return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
+    payload = search_music(q, page=page, per_page=per_page, folder=folder)
+    return jsonify(payload)
+=======
     if not q:
         return jsonify([])
     if q in {"%", "*"}:
@@ -328,6 +342,7 @@ def music_search():
         results = search_music(q)
     results = results[:200]
     return jsonify(results)
+>>>>>>> main
 
 
 @api_bp.route("/music/saved-searches", methods=["GET", "POST", "DELETE"])
@@ -523,6 +538,15 @@ def music_bulk_update():
 
 @api_bp.route("/psa/library")
 def psa_library():
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
+    page = request.args.get("page", type=int, default=1)
+    per_page = request.args.get("per_page", type=int, default=50)
+    category = request.args.get("category")
+    kind = request.args.get("kind")
+    query = request.args.get("q")
+    payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
+    return jsonify(payload)
+=======
     entries = []
 
     def _meta_for(path: str) -> dict:
@@ -598,6 +622,7 @@ def psa_library():
                     "cues": {k: v for k, v in cues.items() if v is not None},
                 })
     return jsonify(entries)
+>>>>>>> main
 
 
 @api_bp.route("/music/scan/library")
