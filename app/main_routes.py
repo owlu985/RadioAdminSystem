@@ -374,6 +374,13 @@ def psa_player():
     return resp
 
 
+@main_bp.route("/dj/autodj")
+def autodj_menu():
+    resp = make_response(render_template("autodj_menu.html"))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
 @main_bp.route("/media/file/<path:token>")
 def media_file(token: str):
     try:
@@ -389,10 +396,8 @@ def media_file(token: str):
             break
     if not allowed or not os.path.isfile(full):
         abort(404)
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
     resp = send_file(full, conditional=True)
-=======
-    resp = send_file(full)
+    resp = send_file(full, conditional=True)
 >>>>>>> main
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp

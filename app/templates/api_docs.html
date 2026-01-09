@@ -58,10 +58,14 @@ GET /logs/download/docx?sheet_id=&lt;id&gt;</code></pre>
         <li><strong>DJ Status screen:</strong>
             <pre><code>GET /dj/status</code></pre>
             Full-screen clock + weather + station status for studio displays.</li>
-        <li><strong>PSA library (player queue):</strong>
+        <li><strong>Media library (player queue):</strong>
             <pre><code>GET /api/psa/library
 GET /psa/player</code></pre>
-            Paginated media library (PSA/music/assets/voice tracks) with categories, cues, and filters (<code>page</code>, <code>per_page</code>, <code>category</code>, <code>q</code>); the PSA player consumes this API.</li>
+            Paginated media library (PSA/music/assets/voice tracks) with categories, cues, and filters (<code>page</code>, <code>per_page</code>, <code>category</code>, <code>q</code>); the media player consumes this API.</li>
+        <li><strong>Public AutoDJ control:</strong>
+            <pre><code>GET  /dj/autodj
+POST /api/radiodj/autodj</code></pre>
+            No-login AutoDJ toggle page and API; dead-air auto-recovery re-enables AutoDJ after 4 minutes.</li>
     </ul>
 
     <h4 class="mt-4">Stream Monitoring & Probes</h4>

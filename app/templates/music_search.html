@@ -41,14 +41,12 @@
                 <option value="duration_seconds">Length</option>
             </select>
         </div>
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
         <div class="col-12 col-lg-4">
             <label class="form-label">Folder</label>
             <select id="folderFilter" class="form-select">
                 <option value="">All folders</option>
             </select>
         </div>
-=======
 >>>>>>> main
     </form>
 
@@ -66,7 +64,6 @@
                 </thead>
                 <tbody></tbody>
             </table>
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
             <div class="d-flex justify-content-between align-items-center">
                 <div class="text-muted small" id="resultsMeta">No results loaded.</div>
                 <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
@@ -74,7 +71,6 @@
                     <button class="btn btn-outline-secondary" id="nextPage">Next</button>
                 </div>
             </div>
-=======
 >>>>>>> main
         </div>
         <div class="col-lg-4">
@@ -120,12 +116,10 @@
     let savedSearches = {{ saved_searches|default([])|tojson }};
     let resultsData = [];
     let sortState = { key: null, dir: 1 };
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
     let currentPage = 1;
     let lastQuery = '';
     const perPage = 50;
     const folderFilter = document.getElementById('folderFilter');
-=======
 >>>>>>> main
 
     function renderSaved() {
@@ -247,7 +241,6 @@
         e.preventDefault();
         const q = document.getElementById('query').value.trim();
         if (!q) return;
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
         currentPage = 1;
         lastQuery = q;
         await fetchPage();
@@ -295,10 +288,6 @@
     folderFilter.addEventListener('change', async () => {
         currentPage = 1;
         await fetchPage();
-=======
-        const res = await fetch(`/api/music/search?q=${encodeURIComponent(q)}`);
-        const data = await res.json();
-        renderResults(data);
 >>>>>>> main
     });
 

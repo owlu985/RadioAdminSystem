@@ -82,6 +82,7 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
         search_blob = " ".join(filter(None, [
             tags.get("title"),
             tags.get("artist"),
+            tags.get("album_artist"),
             tags.get("album"),
             tags.get("composer"),
         ])).lower()
@@ -89,12 +90,15 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "path": full,
             "title": tags.get("title"),
             "artist": tags.get("artist"),
+            "album_artist": tags.get("album_artist"),
             "album": tags.get("album"),
             "composer": tags.get("composer"),
             "folder": folder,
             "mtime": stat.st_mtime,
             "size": stat.st_size,
             "search": search_blob,
+            "track_num": _parse_track_number(tags.get("track")),
+            "disc_num": _parse_track_number(tags.get("disc")),
         }
         new_files[full] = entry
     payload = {"files": new_files, "generated_at": time.time(), "root": root}
@@ -130,6 +134,7 @@ def _read_tags(path: str) -> Dict:
         "path": path,
         "title": None,
         "artist": None,
+        "album_artist": None,
         "album": None,
         "composer": None,
         "isrc": None,
@@ -200,6 +205,7 @@ def _read_tags(path: str) -> Dict:
             for key, target in [
                 ("title", "title"),
                 ("artist", "artist"),
+                ("albumartist", "album_artist"),
                 ("album", "album"),
                 ("composer", "composer"),
                 ("isrc", "isrc"),
@@ -223,6 +229,7 @@ def _read_tags(path: str) -> Dict:
                 for key, target in [
                     ("title", "title"),
                     ("artist", "artist"),
+                    ("albumartist", "album_artist"),
                     ("album", "album"),
                     ("composer", "composer"),
                     ("isrc", "isrc"),
@@ -253,6 +260,7 @@ def _read_tags(path: str) -> Dict:
                 atom_map = {
                     "title": ["©nam", "----:com.apple.iTunes:TITLE"],
                     "artist": ["©ART", "----:com.apple.iTunes:ARTIST"],
+                    "album_artist": ["aART", "----:com.apple.iTunes:ALBUMARTIST"],
                     "album": ["©alb", "----:com.apple.iTunes:ALBUM"],
                     "composer": ["©wrt", "----:com.apple.iTunes:COMPOSER"],
                     "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
@@ -319,6 +327,8 @@ def _read_tags(path: str) -> Dict:
                             data["title"] = text_val
                         if not data.get("artist") and any(hint in lkey for hint in ["©art", "artist", "aart"]):
                             data["artist"] = text_val
+                        if not data.get("album_artist") and any(hint in lkey for hint in ["aart", "albumartist"]):
+                            data["album_artist"] = text_val
                         if not data.get("album") and any(hint in lkey for hint in ["©alb", "album"]):
                             data["album"] = text_val
                         if not data.get("isrc") and "isrc" in lkey:
@@ -641,6 +651,17 @@ def search_music(
     if query_lower and query_lower not in {"%", "*"}:
         entries = [e for e in entries if query_lower in (e.get("search") or "")]
 
+    entries.sort(
+        key=lambda e: (
+            (e.get("artist") or "").lower(),
+            1 if _is_compilation(e.get("album_artist")) else 0,
+            (e.get("album") or "").lower(),
+            e.get("disc_num") or 0,
+            e.get("track_num") or 0,
+            (e.get("title") or "").lower(),
+        )
+    )
+
     total = len(entries)
     page = max(1, page)
     per_page = max(1, min(per_page, 100))
@@ -655,6 +676,7 @@ def search_music(
             "path": path,
             "title": entry.get("title"),
             "artist": entry.get("artist"),
+            "album_artist": entry.get("album_artist"),
             "album": entry.get("album"),
             "composer": entry.get("composer"),
         }
@@ -743,6 +765,20 @@ def _parse_track_tuple(val: Optional[str]) -> Optional[Tuple[int, int]]:
         return int(val), 0
     except Exception:
         return None
+
+
+def _parse_track_number(val: Optional[str]) -> Optional[int]:
+    parsed = _parse_track_tuple(val)
+    if parsed:
+        return parsed[0]
+    return None
+
+
+def _is_compilation(album_artist: Optional[str]) -> bool:
+    if not album_artist:
+        return False
+    lowered = album_artist.strip().lower()
+    return lowered in {"various artists", "various", "va"}
 
 
 def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] = None) -> Dict:

@@ -322,7 +322,6 @@ def artist_frequency():
 @api_bp.route("/music/search")
 def music_search():
     q = request.args.get("q", "").strip()
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     folder = request.args.get("folder")
@@ -333,15 +332,6 @@ def music_search():
         return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
     payload = search_music(q, page=page, per_page=per_page, folder=folder)
     return jsonify(payload)
-=======
-    if not q:
-        return jsonify([])
-    if q in {"%", "*"}:
-        results = scan_library()
-    else:
-        results = search_music(q)
-    results = results[:200]
-    return jsonify(results)
 >>>>>>> main
 
 
@@ -538,7 +528,6 @@ def music_bulk_update():
 
 @api_bp.route("/psa/library")
 def psa_library():
-<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     category = request.args.get("category")
@@ -546,82 +535,6 @@ def psa_library():
     query = request.args.get("q")
     payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
     return jsonify(payload)
-=======
-    entries = []
-
-    def _meta_for(path: str) -> dict:
-        meta_path = os.path.splitext(path)[0] + ".json"
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as fh:
-                    return json.load(fh)
-            except Exception:
-                return {}
-        return {}
-
-    sources: list[tuple[str, str, str]] = [("PSA", _psa_root(), "psa")]
-    music_root = current_app.config.get("NAS_MUSIC_ROOT")
-    if music_root:
-        sources.append(("Music", music_root, "music"))
-    assets_root = current_app.config.get("MEDIA_ASSETS_ROOT")
-    if assets_root:
-        sources.append(("Assets", assets_root, "asset"))
-    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
-    sources.append(("Voice Tracks", voice_root, "voicetrack"))
-
-    for label, root, kind in sources:
-        if not root:
-            continue
-        os.makedirs(root, exist_ok=True)
-        for base, dirs, files in os.walk(root):
-            category = os.path.relpath(base, root)
-            category_label = label if category == "." else f"{label}/{category.replace(os.sep, '/')}"
-            for fname in sorted(files):
-                if not fname.lower().endswith((".mp3", ".m4a", ".wav", ".ogg", ".flac")):
-                    continue
-                duration = None
-                full = os.path.join(base, fname)
-                try:
-                    import mutagen  # type: ignore
-
-                    audio = mutagen.File(full)
-                    if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
-                        duration = round(audio.info.length, 2)
-                except Exception:
-                    duration = None
-                meta = _meta_for(full)
-                cue_obj = load_cue(full)
-                cues: dict[str, Optional[float]] = {}
-                # Merge cues from DB first, then JSON sidecars.
-                if cue_obj:
-                    cues.update({
-                        "cue_in": cue_obj.cue_in,
-                        "intro": cue_obj.intro,
-                        "outro": cue_obj.outro,
-                        "cue_out": cue_obj.cue_out,
-                        "loop_in": cue_obj.loop_in,
-                        "loop_out": cue_obj.loop_out,
-                        "hook_in": cue_obj.hook_in,
-                        "hook_out": cue_obj.hook_out,
-                        "start_next": cue_obj.start_next,
-                    })
-                cues.update({
-                    k: meta.get(k)
-                    for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
-                    if meta.get(k) is not None
-                })
-                cues = auto_fill_missing_cues(full, cues)
-                token = base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8")
-                entries.append({
-                    "name": fname,
-                    "url": url_for("main.media_file", token=token),
-                    "duration": duration,
-                    "category": category_label,
-                    "loop": bool(meta.get("loop")),
-                    "kind": kind,
-                    "cues": {k: v for k, v in cues.items() if v is not None},
-                })
-    return jsonify(entries)
 >>>>>>> main
 
 
@@ -1130,3 +1043,22 @@ def delete_psa(psa_id: str):
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
     return jsonify({"status": "ok", "psa": res})
+
+
+@api_bp.route("/radiodj/autodj", methods=["POST"])
+def radiodj_autodj():
+    payload = request.get_json(force=True, silent=True) or {}
+    enabled = payload.get("enabled")
+    if enabled is None:
+        enabled = request.args.get("enabled")
+    if enabled is None:
+        return jsonify({"status": "error", "message": "enabled required"}), 400
+    enabled_flag = str(enabled).lower() in {"1", "true", "yes", "on"}
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
+    try:
+        result = client.set_autodj(enabled_flag)
+    except Exception as exc:  # noqa: BLE001
+        return jsonify({"status": "error", "message": str(exc)}), 500
+    return jsonify(result)

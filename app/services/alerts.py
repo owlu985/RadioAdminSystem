@@ -19,6 +19,7 @@ _state = {
     "dead_air_since": None,
     "down_since": None,
     "last_alert": {},
+    "autodj_reenabled_at": None,
 }
 
 
@@ -117,6 +118,22 @@ def process_probe_alerts(stream_up: bool, result: Optional["DetectionResult"]) -
                 "dead_air",
                 f"Dead air detected since {_state['dead_air_since']} UTC (last probe {now}).",
             )
+        autodj_threshold = timedelta(minutes=float(cfg.get("AUTODJ_DEAD_AIR_MINUTES", 4)))
+        if (
+            cfg.get("AUTODJ_AUTO_RECOVER", True)
+            and now - _state["dead_air_since"] >= autodj_threshold
+            and _state.get("autodj_reenabled_at") is None
+        ):
+            try:
+                from app.services.radiodj_client import RadioDJClient
+
+                client = RadioDJClient()
+                if client.enabled:
+                    client.set_autodj(True)
+                    _state["autodj_reenabled_at"] = now
+                    logger.info("AutoDJ re-enabled after sustained dead air.")
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to auto-enable AutoDJ: %s", exc)
     else:
         _state["dead_air_since"] = None
-
+        _state["autodj_reenabled_at"] = None

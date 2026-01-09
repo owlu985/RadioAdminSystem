@@ -118,6 +118,25 @@ class RadioDJClient:
                 logger.error("RadioDJ insert fallback failed: %s", exc)
                 raise
 
+    def set_autodj(self, enabled: bool) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        try:
+            resp = requests.get(
+                f"{self.base_url}/SetItem",
+                params={
+                    "auth": self.api_key,
+                    "command": "EnableAutoDJ",
+                    "arg": 1 if enabled else 0,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return {"status": "ok", "enabled": enabled, "raw": resp.text}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ AutoDJ toggle failed: %s", exc)
+            raise
+
     def now_playing(self) -> Optional[dict]:
         """
         Fetch the current on-air metadata from RadioDJ (if enabled).
