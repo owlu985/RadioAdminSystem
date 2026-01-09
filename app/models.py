@@ -115,7 +115,7 @@ class ShowRun(db.Model):
 
     show_name = db.Column(db.String(128), nullable=False)
 
-    start_time = db.Column(db.DateTime, nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False, index=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(
@@ -184,7 +184,7 @@ class StreamProbe(db.Model):
     avg_db = db.Column(db.Float, nullable=False)
     silence_ratio = db.Column(db.Float, nullable=False)
     automation_ratio = db.Column(db.Float, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False, index=True)
 
     show_run = db.relationship("ShowRun", backref="probes")
 
