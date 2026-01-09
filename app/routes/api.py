@@ -1,4 +1,3 @@
-from datetime import datetime
 import time
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template
@@ -133,8 +132,7 @@ def _find_next_show(now: datetime) -> tuple[Show | None, tuple[datetime, datetim
     return show_obj, (start_dt, end_dt), absence
 
 
-@api_bp.route("/now")
-def now_playing():
+def _build_now_payload() -> dict:
     now = datetime.utcnow()
     show = get_current_show()
     absence = active_absence_for_show(show, now=now) if show else None
@@ -163,7 +161,7 @@ def now_playing():
                     "replacement": next_absence.replacement_name,
                 } if next_absence else None,
             }
-        return jsonify(base)
+        return base
 
     dj_first, dj_last = show_primary_host(show)
     if absence and absence.replacement_name:
@@ -204,7 +202,14 @@ def now_playing():
             } if next_absence else None,
         }
 
-    return jsonify(payload)
+    return payload
+
+
+@api_bp.route("/now")
+def now_playing():
+    start_time = start_route_timer()
+    payload = _build_now_payload()
+    return finalize_route_metrics("api.now", start_time, jsonify(payload), request)
 
 
 @api_bp.route("/now/widget")
@@ -213,31 +218,35 @@ def now_widget():
     Widget-friendly now-playing: if a scheduled show is active, show it; otherwise
     return RadioDJ automation metadata when available.
     """
-    base = now_playing().get_json()  # type: ignore
-    if base and base.get("status") != "off_air":
-        return jsonify(base)
-    rdj = RadioDJClient()
-    rdj_payload = rdj.now_playing()
-    if rdj_payload:
-        base = base or {}
-        base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
-        return jsonify(base)
-    return jsonify(base or {"status": "off_air"})
+    start_time = start_route_timer()
+    base = _build_now_payload()
+    return finalize_route_metrics("api.now_widget", start_time, jsonify(base), request)
 
 
 @api_bp.route("/probe", methods=["POST"])
 def probe_now():
     """Trigger an on-demand probe of the stream and return the result."""
+    start_time = start_route_timer()
     result = probe_stream(current_app.config["STREAM_URL"])
     if result is None:
-        return jsonify({"status": "error", "message": "probe_failed"}), 500
-    return jsonify({
-        "avg_db": result.avg_db,
-        "silence_ratio": result.silence_ratio,
-        "automation_ratio": result.automation_ratio,
-        "classification": result.classification,
-        "reason": result.reason,
-    })
+        return finalize_route_metrics(
+            "api.probe",
+            start_time,
+            (jsonify({"status": "error", "message": "probe_failed"}), 500),
+            request,
+        )
+    return finalize_route_metrics(
+        "api.probe",
+        start_time,
+        jsonify({
+            "avg_db": result.avg_db,
+            "silence_ratio": result.silence_ratio,
+            "automation_ratio": result.automation_ratio,
+            "classification": result.classification,
+            "reason": result.reason,
+        }),
+        request,
+    )
 
 
 @api_bp.route("/runs/<int:run_id>")
@@ -322,12 +331,18 @@ def artist_frequency():
 
 @api_bp.route("/music/search")
 def music_search():
+    start_time = start_route_timer()
     q = request.args.get("q", "").strip()
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     folder = request.args.get("folder")
     if not q:
-        return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
+        return finalize_route_metrics(
+            "api.music_search",
+            start_time,
+            jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []}),
+            request,
+        )
     payload = search_music(q, page=page, per_page=per_page, folder=folder)
     return jsonify(payload)
 
@@ -525,6 +540,7 @@ def music_bulk_update():
 
 @api_bp.route("/psa/library")
 def psa_library():
+    start_time = start_route_timer()
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     category = request.args.get("category")
@@ -610,10 +626,11 @@ def music_cue():
 
 @api_bp.route("/schedule")
 def schedule_api():
+    start_time = start_route_timer()
     tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
     cached = api_cache.get("schedule")
     if cached:
-        return jsonify(cached)
+        return finalize_route_metrics("api.schedule", start_time, jsonify(cached), request)
 
     shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
     now = datetime.utcnow()
@@ -667,7 +684,7 @@ def schedule_api():
         })
     payload = {"events": events, "timezone": tz}
     api_cache.set("schedule", payload, ttl=300)
-    return jsonify(payload)
+    return finalize_route_metrics("api.schedule", start_time, jsonify(payload), request)
 
 
 @api_bp.route("/plugins/website/content")

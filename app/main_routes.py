@@ -61,6 +61,7 @@ from app.services.music_search import (
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
+from app.services.metrics import start_route_timer, finalize_route_metrics
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
@@ -261,11 +262,13 @@ def shows():
 
 @main_bp.route('/schedule/grid')
 def schedule_grid():
-        return render_template('schedule_grid.html')
+        start_time = start_route_timer()
+        return finalize_route_metrics("main.schedule_grid", start_time, render_template('schedule_grid.html'), request)
 
 
 @main_bp.route('/schedule/ical')
 def schedule_ical():
+        start_time = start_route_timer()
         shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
         tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
         lines = [
@@ -290,7 +293,12 @@ def schedule_ical():
                         ])
         lines.append("END:VCALENDAR")
         ical = "\r\n".join(lines)
-        return current_app.response_class(ical, mimetype="text/calendar")
+        return finalize_route_metrics(
+                "main.schedule_ical",
+                start_time,
+                current_app.response_class(ical, mimetype="text/calendar"),
+                request,
+        )
 
 
 @main_bp.route('/dashboard')
@@ -341,7 +349,8 @@ def api_docs_page():
 @main_bp.route("/dj/status")
 def dj_status_page():
     """Public DJ status screen."""
-    return render_template("dj_status.html")
+    start_time = start_route_timer()
+    return finalize_route_metrics("main.dj_status", start_time, render_template("dj_status.html"), request)
 
 
 def _psa_library_root():
@@ -368,10 +377,11 @@ def _media_roots() -> list[tuple[str, str]]:
 
 @main_bp.route("/psa/player")
 def psa_player():
+    start_time = start_route_timer()
     psa_root = _psa_library_root()
     resp = make_response(render_template("psa_player.html", psa_root=psa_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-    return resp
+    return finalize_route_metrics("main.psa_player", start_time, resp, request)
 
 
 @main_bp.route("/dj/autodj")
