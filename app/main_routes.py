@@ -389,7 +389,11 @@ def media_file(token: str):
             break
     if not allowed or not os.path.isfile(full):
         abort(404)
+<<<<<<< codex/integrate-advanced-features-into-show-recorder-180zs2
     resp = send_file(full, conditional=True)
+=======
+    resp = send_file(full)
+>>>>>>> main
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
