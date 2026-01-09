@@ -1,4 +1,8 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify
+from io import BytesIO
+import mutagen  # type: ignore
+from mutagen.id3 import ID3  # type: ignore
+from mutagen.mp4 import MP4  # type: ignore
 import json
 import os
 import secrets
@@ -792,6 +796,43 @@ def music_stream():
         abort(404)
     safe_path = _safe_music_path(path)
     return send_file(safe_path, conditional=True)
+
+
+@main_bp.route("/music/cover")
+@permission_required({"music:view"})
+def music_cover():
+    path = request.args.get("path")
+    if not path:
+        abort(404)
+    safe_path = _safe_music_path(path)
+    audio = mutagen.File(safe_path, easy=False)
+    if not audio:
+        abort(404)
+
+    image_data = None
+    mime = "image/jpeg"
+
+    if isinstance(audio, MP4):
+        covr = audio.tags.get("covr") if audio.tags else None
+        if covr:
+            image_data = bytes(covr[0])
+            mime = "image/jpeg"
+    else:
+        try:
+            id3 = ID3(safe_path)
+            apic = id3.get("APIC:") or id3.get("APIC")
+            if apic:
+                image_data = apic.data
+                mime = apic.mime or mime
+        except Exception:
+            if hasattr(audio, "pictures") and audio.pictures:
+                pic = audio.pictures[0]
+                image_data = pic.data
+                mime = pic.mime or mime
+
+    if not image_data:
+        abort(404)
+    return send_file(BytesIO(image_data), mimetype=mime, conditional=True)
 
 
 @main_bp.route("/music/detail")

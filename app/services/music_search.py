@@ -143,6 +143,7 @@ def _read_tags(path: str) -> Dict:
         "disc": None,
         "copyright": None,
         "bitrate": None,
+        "cover_embedded": False,
     }
     if not mutagen:
         data["title"] = base_title
@@ -202,6 +203,8 @@ def _read_tags(path: str) -> Dict:
         if audio_easy:
             if hasattr(audio_easy, "info") and getattr(audio_easy.info, "bitrate", None):
                 data["bitrate"] = getattr(audio_easy.info, "bitrate")
+            if getattr(audio_easy, "tags", None) and "covr" in audio_easy.tags:
+                data["cover_embedded"] = True
             for key, target in [
                 ("title", "title"),
                 ("artist", "artist"),
@@ -256,6 +259,8 @@ def _read_tags(path: str) -> Dict:
 
                 mp4 = MP4(path)
                 mp4_tags = mp4.tags or {}
+                if "covr" in mp4_tags:
+                    data["cover_embedded"] = True
 
                 atom_map = {
                     "title": ["©nam", "----:com.apple.iTunes:TITLE"],
@@ -318,6 +323,9 @@ def _read_tags(path: str) -> Dict:
             try:
                 raw_audio = mutagen.File(path, easy=False)
                 if raw_audio and getattr(raw_audio, "tags", None):
+                    if getattr(raw_audio.tags, "get", None):
+                        if raw_audio.tags.get("APIC:") or raw_audio.tags.get("APIC"):
+                            data["cover_embedded"] = True
                     for key, val in raw_audio.tags.items():
                         text_val = _first_text(val)
                         if not text_val:
@@ -524,6 +532,7 @@ def _augment_with_analysis(tags: Dict) -> Dict:
         "hash": analysis.hash,
         "missing_tags": analysis.missing_tags,
         "cover_path": cover_path if os.path.exists(cover_path) else None,
+        "cover_embedded": bool(tags.get("cover_embedded")),
     })
     return payload
 
@@ -826,6 +835,13 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
                     mp4["disk"] = [parsed]
                 else:
                     mp4.pop("disk", None)
+            if cover_art_bytes:
+                try:
+                    from mutagen.mp4 import MP4Cover  # type: ignore
+
+                    mp4["covr"] = [MP4Cover(cover_art_bytes, imageformat=MP4Cover.FORMAT_JPEG)]
+                except Exception:
+                    mp4["covr"] = [cover_art_bytes]
             mp4.save()
         else:
             audio = mutagen.File(path, easy=True)
