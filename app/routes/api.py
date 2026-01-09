@@ -39,10 +39,11 @@ from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
 from app.services import api_cache
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
+from app.auth_utils import admin_required
 from app.services.music_search import (
     auto_fill_missing_cues,
     search_music,
-    get_music_index,
+    rebuild_music_index,
     get_track,
     bulk_update_metadata,
     queues_snapshot,
@@ -55,7 +56,7 @@ from app.services.music_search import (
     cover_art_candidates,
     enrich_metadata_external,
 )
-from app.services.media_library import list_media
+from app.services.media_library import list_media, rebuild_media_index
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -325,14 +326,10 @@ def music_search():
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     folder = request.args.get("folder")
-    refresh = request.args.get("refresh", type=int, default=0)
-    if refresh:
-        get_music_index(refresh=True)
     if not q:
         return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
     payload = search_music(q, page=page, per_page=per_page, folder=folder)
     return jsonify(payload)
->>>>>>> main
 
 
 @api_bp.route("/music/saved-searches", methods=["GET", "POST", "DELETE"])
@@ -535,12 +532,40 @@ def psa_library():
     query = request.args.get("q")
     payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
     return jsonify(payload)
->>>>>>> main
+
+
+@api_bp.route("/music/index/rebuild", methods=["POST"])
+@admin_required
+def music_rebuild_index():
+    delta_scan = request.args.get("delta", type=int, default=0)
+    payload = rebuild_music_index(delta_scan=bool(delta_scan))
+    return jsonify({
+        "status": "ok",
+        "generated_at": payload.get("generated_at"),
+        "root": payload.get("root"),
+        "total": len(payload.get("files") or {}),
+    })
+
+
+@api_bp.route("/media/index/rebuild", methods=["POST"])
+@admin_required
+def media_rebuild_index():
+    delta_scan = request.args.get("delta", type=int, default=0)
+    payload = rebuild_media_index(delta_scan=bool(delta_scan))
+    return jsonify({
+        "status": "ok",
+        "generated_at": payload.get("generated_at"),
+        "roots": payload.get("roots") or [],
+        "total": len(payload.get("files") or {}),
+    })
 
 
 @api_bp.route("/music/scan/library")
 def music_scan_library():
-    snapshot = queues_snapshot()
+    include_tracks = request.args.get("include_tracks", type=int, default=0)
+    page = request.args.get("page", type=int, default=1)
+    per_page = request.args.get("per_page", type=int, default=50)
+    snapshot = queues_snapshot(include_tracks=bool(include_tracks), page=page, per_page=per_page)
     return jsonify(snapshot)
 
 

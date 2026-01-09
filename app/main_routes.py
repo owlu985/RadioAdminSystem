@@ -397,8 +397,6 @@ def media_file(token: str):
     if not allowed or not os.path.isfile(full):
         abort(404)
     resp = send_file(full, conditional=True)
-    resp = send_file(full, conditional=True)
->>>>>>> main
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
