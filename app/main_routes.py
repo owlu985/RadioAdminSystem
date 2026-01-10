@@ -1,8 +1,9 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, after_this_request
 from io import BytesIO
 import mutagen  # type: ignore
 from mutagen.id3 import ID3  # type: ignore
 from mutagen.mp4 import MP4  # type: ignore
+import ffmpeg
 import json
 import os
 import secrets
@@ -11,6 +12,7 @@ import base64
 import hashlib
 import requests
 from urllib.parse import quote_plus
+from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
@@ -400,7 +402,7 @@ def media_file(token: str):
             break
     if not allowed or not os.path.isfile(full):
         abort(404)
-    resp = send_file(full, conditional=True)
+    resp = _send_audio(full)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -788,6 +790,57 @@ def _safe_music_path(path: str) -> str:
     return normalized
 
 
+def _is_alac(path: str) -> bool:
+    try:
+        probe = ffmpeg.probe(path)
+    except Exception:
+        return False
+    for stream in probe.get("streams", []):
+        if stream.get("codec_type") == "audio" and stream.get("codec_name") == "alac":
+            return True
+    return False
+
+
+def _send_audio(path: str):
+    if not current_app.config.get("TRANSCODE_ALAC_TO_MP3", True):
+        return send_file(path, conditional=True)
+
+    if os.path.splitext(path)[1].lower() != ".m4a":
+        return send_file(path, conditional=True)
+
+    if not _is_alac(path):
+        return send_file(path, conditional=True)
+
+    tmp = NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp_path = tmp.name
+    tmp.close()
+
+    try:
+        (
+            ffmpeg
+            .input(path)
+            .output(tmp_path, acodec="libmp3lame", ar=44100, ac=2)
+            .overwrite_output()
+            .run(capture_stdout=True, capture_stderr=True)
+        )
+    except Exception:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return send_file(path, conditional=True)
+
+    @after_this_request
+    def _cleanup(response):
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
+        return response
+
+    return send_file(tmp_path, mimetype="audio/mpeg", conditional=True)
+
+
 @main_bp.route("/music/stream")
 @permission_required({"music:view"})
 def music_stream():
@@ -795,7 +848,7 @@ def music_stream():
     if not path:
         abort(404)
     safe_path = _safe_music_path(path)
-    return send_file(safe_path, conditional=True)
+    return _send_audio(safe_path)
 
 
 @main_bp.route("/music/cover")
