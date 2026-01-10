@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, after_this_request
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, Response, stream_with_context
 from io import BytesIO
 import mutagen  # type: ignore
 from mutagen.id3 import ID3  # type: ignore
@@ -6,13 +6,13 @@ from mutagen.mp4 import MP4  # type: ignore
 import ffmpeg
 import json
 import os
+import subprocess
 import secrets
 import random
 import base64
 import hashlib
 import requests
 from urllib.parse import quote_plus
-from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
@@ -818,41 +818,50 @@ def _send_audio(path: str):
     if not _is_alac(path):
         return send_file(path, conditional=True)
 
-    tmp = NamedTemporaryFile(suffix=".m4a", delete=False)
-    tmp_path = tmp.name
-    tmp.close()
-
     try:
-        (
-            ffmpeg
-            .input(path)
-            .output(
-                tmp_path,
-                acodec="aac",
-                ar=44100,
-                ac=2,
-                format="ipod",
-                **{"movflags": "+faststart"},
-            )
-            .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+        process = subprocess.Popen(
+            [
+                "ffmpeg",
+                "-nostdin",
+                "-hide_banner",
+                "-loglevel",
+                "error",
+                "-i",
+                path,
+                "-vn",
+                "-c:a",
+                "libmp3lame",
+                "-b:a",
+                "192k",
+                "-f",
+                "mp3",
+                "pipe:1",
+            ],
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
         )
-    except Exception:
-        try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
+    except OSError:
         return send_file(path, conditional=True)
 
-    @after_this_request
-    def _cleanup(response):
+    def _generate():
         try:
-            os.unlink(tmp_path)
-        except OSError:
-            pass
-        return response
+            if process.stdout is None:
+                return
+            while True:
+                chunk = process.stdout.read(8192)
+                if not chunk:
+                    break
+                yield chunk
+        finally:
+            if process.stdout:
+                process.stdout.close()
+            process.terminate()
+            try:
+                process.wait(timeout=1)
+            except subprocess.TimeoutExpired:
+                process.kill()
 
-    return send_file(tmp_path, mimetype="audio/mp4", conditional=True)
+    return Response(stream_with_context(_generate()), mimetype="audio/mpeg")
 
 
 @main_bp.route("/music/stream")
