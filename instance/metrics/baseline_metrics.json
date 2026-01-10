@@ -1,0 +1,78 @@
+{
+  "generated_at": "2026-01-09T22:48:13Z",
+  "note": "Baseline metrics not captured; Flask dependency missing in this environment.",
+  "entries": [
+    {
+      "label": "music_search_page_1",
+      "method": "GET",
+      "path": "/api/music/search?q=test&page=1",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "music_search_page_2",
+      "method": "GET",
+      "path": "/api/music/search?q=test&page=2",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "music_search_page_3",
+      "method": "GET",
+      "path": "/api/music/search?q=test&page=3",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "psa_library_page_1",
+      "method": "GET",
+      "path": "/api/psa/library?page=1",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "psa_library_page_2",
+      "method": "GET",
+      "path": "/api/psa/library?page=2",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "psa_library_page_3",
+      "method": "GET",
+      "path": "/api/psa/library?page=3",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "media_player_ui",
+      "method": "GET",
+      "path": "/psa/player",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    },
+    {
+      "label": "probe_run",
+      "method": "POST",
+      "path": "/api/probe",
+      "status_code": null,
+      "duration_ms": null,
+      "response_bytes": null,
+      "error": "Missing dependency: flask"
+    }
+  ]
+}
