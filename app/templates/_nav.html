@@ -1,0 +1,191 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="{{ url_for('main.dashboard') }}">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="RAMS logo" class="me-2" style="max-height:44px; width:auto; object-fit:contain; filter: drop-shadow(0 0 4px rgba(255,255,255,0.35));">
+      <div class="d-flex flex-column lh-1 text-white">
+        <span class="fw-bold text-uppercase">{{ rams_name }}</span>
+        <small class="text-light">{{ station_name }} - {{ station_slogan }}</small>
+      </div>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#ramsNav" aria-controls="ramsNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="ramsNav">
+      {% set is_auth = session.get('authenticated') %}
+      {% set can_view = can %}
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        {% if is_auth %}
+          {% if can_view('dashboard:view') %}
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.dashboard') }}">Dashboard</a></li>
+          {% endif %}
+          {% set show_menu = can_view('schedule:view') or can_view('logs:view') or can_view('dj:absence') %}
+          {% if show_menu %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
+              <ul class="dropdown-menu">
+                {% if can_view('schedule:view') %}<li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>{% endif %}
+                <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
+                {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>{% endif %}
+              {% if can_view('dj:absence') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>{% endif %}
+            </ul>
+          </li>
+          {% endif %}
+          {% set lib_menu = can_view('music:view') or can_view('dj:manage') or can_view('dj:discipline') %}
+          {% if lib_menu %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
+            <ul class="dropdown-menu">
+              {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>{% endif %}
+              {% if can_view('dj:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>{% endif %}
+              {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.archivist_page') }}">Archivist DB</a></li>{% endif %}
+              {% if can_view('dj:discipline') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_dj_discipline') }}">Disciplinary</a></li>{% endif %}
+            </ul>
+          </li>
+          {% endif %}
+          {% set ops_menu = can_view('news:view') or can_view('news:edit') or can_view('audit:run') or can_view('schedule:marathon') or can_view('social:post') or can_view('plugins:manage') or can_view('settings:edit') or can_view('users:manage') %}
+          {% if ops_menu %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
+            <ul class="dropdown-menu">
+              <li><h6 class="dropdown-header">Broadcast</h6></li>
+              {% if can_view('news:view') %}<li><a class="dropdown-item" href="{{ url_for('news.news_dashboard') }}">News Dashboard</a></li>{% endif %}
+              {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>{% endif %}
+              {% if can_view('audit:run') %}<li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>{% endif %}
+              {% if can_view('schedule:marathon') %}<li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>{% endif %}
+              {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>{% endif %}
+              <li><hr class="dropdown-divider"></li>
+              <li><h6 class="dropdown-header">Digital & Social</h6></li>
+              {% if can_view('social:post') %}<li><a class="dropdown-item" href="{{ url_for('main.social_post_page') }}">Social Posting</a></li>{% endif %}
+              {% if can_view('plugins:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.plugins_home') }}">Plugins</a></li>{% endif %}
+              <li><hr class="dropdown-divider"></li>
+              <li><h6 class="dropdown-header">Admin</h6></li>
+              {% if can_view('users:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_users') }}">Users</a></li>{% endif %}
+              {% if can_view('settings:edit') %}<li><a class="dropdown-item" href="{{ url_for('main.settings') }}">Settings</a></li>{% endif %}
+            </ul>
+          </li>
+          {% endif %}
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">DJ Tools</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_tools') }}" target="_blank">DJ Dashboard</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" target="_blank" rel="nofollow">AutoDJ Control</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" target="_blank" rel="nofollow">PSA Player</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
+            </ul>
+          </li>
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.api_docs_page') }}">API Docs</a></li>
+        {% else %}
+          <li class="nav-item"><a class="nav-link" href="{{ url_for('main.schedule_grid') }}">Schedule</a></li>
+          <li class="nav-item dropdown">
+            <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">DJ Tools</a>
+            <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_tools') }}">DJ Dashboard</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}">Public Logger</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" rel="nofollow">AutoDJ Control</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" rel="nofollow">PSA Player</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}">DJ Status</a></li>
+            </ul>
+          </li>
+        {% endif %}
+      </ul>
+      <div class="d-flex align-items-center gap-2">
+        <select id="themeToggle" class="form-select form-select-sm bg-dark text-white" style="width:auto;">
+          <option value="system">System</option>
+          <option value="light">Light</option>
+          <option value="dark">Dark</option>
+        </select>
+        <button class="btn btn-outline-light btn-sm" id="helpToggle" type="button" title="Toggle inline help">Help</button>
+        <button class="btn btn-outline-light btn-sm" id="contrastToggle" type="button" title="High contrast">HC</button>
+        <select id="fontScaleToggle" class="form-select form-select-sm bg-dark text-white" style="width:auto;">
+          <option value="90">90%</option>
+          <option value="100">100%</option>
+          <option value="110">110%</option>
+          <option value="120">120%</option>
+        </select>
+        {% if is_auth %}
+          <div class="dropdown">
+            <button class="btn btn-outline-light btn-sm dropdown-toggle" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+              {{ session.get('display_name') or 'Account' }}
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><span class="dropdown-header">{{ session.get('user_email') }}</span></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.profile') }}">Profile</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="{{ url_for('main.logout') }}">Logout</a></li>
+            </ul>
+          </div>
+        {% else %}
+          <a class="btn btn-outline-light btn-sm" href="{{ url_for('main.login') }}">Login</a>
+        {% endif %}
+      </div>
+    </div>
+  </div>
+  <link rel="preload" as="image" href="{{ url_for('static', filename='logo.png') }}">
+</nav>
+{% include '_flash.html' %}
+<script>
+  (function(){
+    const sel = document.getElementById('themeToggle');
+    const stored = localStorage.getItem('rams-theme') || '{{ theme_default|default('"system"') }}';
+    const root = document.documentElement;
+    const apply = (val) => {
+      if (val === 'system') {
+        const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+        root.setAttribute('data-bs-theme', prefersDark ? 'dark' : 'light');
+      } else {
+        root.setAttribute('data-bs-theme', val);
+      }
+    };
+    apply(stored);
+    if (sel) {
+      sel.value = stored;
+      sel.addEventListener('change', (e)=>{
+        localStorage.setItem('rams-theme', e.target.value);
+        apply(e.target.value);
+      });
+    }
+
+    const contrastBtn = document.getElementById('contrastToggle');
+    const helpBtn = document.getElementById('helpToggle');
+    const fontSel = document.getElementById('fontScaleToggle');
+
+    const applyContrast = (enabled) => {
+      document.body.classList.toggle('high-contrast', enabled);
+      localStorage.setItem('rams-contrast', enabled ? '1' : '0');
+    };
+    const applyHelp = (enabled) => {
+      document.body.classList.toggle('help-on', enabled);
+      localStorage.setItem('rams-help', enabled ? '1' : '0');
+    };
+    const applyFont = (val) => {
+      document.documentElement.style.setProperty('--rams-font-scale', `${val}%`);
+      localStorage.setItem('rams-font', val);
+    };
+
+    const defaultContrast = {{ 'true' if high_contrast_default else 'false' }};
+    applyContrast(localStorage.getItem('rams-contrast') === '1' || (localStorage.getItem('rams-contrast') === null && defaultContrast));
+    const savedHelp = localStorage.getItem('rams-help');
+    applyHelp(savedHelp === '1' || (savedHelp === null && {{ 'true' if inline_help_enabled else 'false' }}));
+    const storedFont = localStorage.getItem('rams-font') || '{{ font_scale_percent if font_scale_percent else 100 }}';
+    applyFont(storedFont);
+    if (fontSel) {
+      fontSel.value = storedFont;
+      fontSel.addEventListener('change', (e) => applyFont(e.target.value));
+    }
+    if (contrastBtn) {
+      contrastBtn.addEventListener('click', () => {
+        const next = !(document.body.classList.contains('high-contrast'));
+        applyContrast(next);
+      });
+    }
+    if (helpBtn) {
+      helpBtn.addEventListener('click', () => {
+        const next = !(document.body.classList.contains('help-on'));
+        applyHelp(next);
+      });
+    }
+  })();
+</script>
