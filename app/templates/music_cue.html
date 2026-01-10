@@ -6,14 +6,14 @@
     <title>CUE Editor</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .wave-container {height:200px; background:rgba(0,0,0,0.05); border-radius:6px; padding:10px; position:relative; overflow-x:auto; overflow-y:hidden;}
+        .wave-container {height:260px; background:linear-gradient(180deg,#f8f9fa,#ffffff); border-radius:10px; padding:12px; position:relative; overflow-x:auto; overflow-y:hidden; border:1px solid rgba(0,0,0,0.08);}
         .wave-inner {position:relative; height:100%; min-width:100%;}
         .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
         .marker-label {font-size:11px; background:rgba(0,0,0,0.75); color:#fff; padding:2px 4px; border-radius:4px; white-space:nowrap;}
         #markers {position:absolute; inset:0; pointer-events:none;}
         #markers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
         .zoom-row {display:flex; align-items:center; gap:8px;}
-        .legend span {display:inline-block; padding:4px 6px; border-radius:4px; margin-right:6px; font-size:12px;}
+        .legend span {display:inline-block; padding:4px 8px; border-radius:6px; margin-right:6px; font-size:12px;}
         .cue-btn {border-width:2px;}
         .cue-btn.active {box-shadow:0 0 0 2px rgba(13,110,253,0.35); background:#000; color:#fff;}
         .cue-btn.active .text-muted {color:#fff !important;}
@@ -37,7 +37,7 @@
         </div>
         <div class="mt-2 position-relative wave-container" id="wave">
             <div id="waveInner" class="wave-inner">
-                <canvas id="waveCanvas" height="160" style="width:100%; height:160px;"></canvas>
+                <canvas id="waveCanvas" height="210" style="width:100%; height:210px;"></canvas>
                 <div id="needle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
                 <div id="markers"></div>
             </div>
@@ -188,6 +188,13 @@
             ctx.fillText('Waveform unavailable', 10, height/2);
             return;
         }
+        ctx.fillStyle = '#f1f3f5';
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+        ctx.beginPath();
+        ctx.moveTo(0, height/2);
+        ctx.lineTo(width, height/2);
+        ctx.stroke();
         const len = data.length;
         const step = Math.max(1, Math.floor(len / width));
         const mid = height/2;
@@ -197,16 +204,30 @@
         const rightGrad = ctx.createLinearGradient(0,0,width,0);
         rightGrad.addColorStop(0,'#6610f2');
         rightGrad.addColorStop(1,'#d63384');
+        ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+        ctx.font = '10px sans-serif';
+        if (player && player.duration) {
+            for (let t = 0; t <= player.duration; t += 30) {
+                const x = (t / player.duration) * width;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+                ctx.fillStyle = '#adb5bd';
+                const label = `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
+                ctx.fillText(label, x + 2, 12);
+            }
+        }
         for (let i=0,x=0;i<len;i+=step, x++) {
             const p = parseFloat(data[i]) || 0;
-            const h = Math.min(mid-4, Math.abs(p)*mid);
+            const h = Math.min(mid-10, Math.abs(p)*mid);
             ctx.fillStyle = leftGrad;
-            ctx.fillRect(x, mid-h, 1, h*2);
+            ctx.fillRect(x, mid-h, 1, h);
             if (right.length) {
                 const pr = parseFloat(right[i]) || 0;
-                const hr = Math.min(mid-4, Math.abs(pr)*mid);
+                const hr = Math.min(mid-10, Math.abs(pr)*mid);
                 ctx.fillStyle = rightGrad;
-                ctx.fillRect(x+1, mid-hr, 1, hr*2);
+                ctx.fillRect(x, mid+1, 1, hr);
             }
         }
     }

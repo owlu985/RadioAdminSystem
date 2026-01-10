@@ -67,8 +67,10 @@
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">DJ Tools</a>
             <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_tools') }}" target="_blank">DJ Dashboard</a></li>
               <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" target="_blank" rel="nofollow">AutoDJ Control</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" target="_blank" rel="nofollow">PSA Player</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
             </ul>
@@ -79,8 +81,10 @@
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">DJ Tools</a>
             <ul class="dropdown-menu">
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_tools') }}">DJ Dashboard</a></li>
               <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}">Public Logger</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" rel="nofollow">AutoDJ Control</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" rel="nofollow">PSA Player</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}">DJ Status</a></li>
             </ul>

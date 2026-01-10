@@ -387,6 +387,13 @@ def autodj_menu():
     return resp
 
 
+@main_bp.route("/dj/tools")
+def dj_tools():
+    resp = make_response(render_template("dj_tools.html"))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
 @main_bp.route("/media/file/<path:token>")
 def media_file(token: str):
     try:
@@ -811,7 +818,7 @@ def _send_audio(path: str):
     if not _is_alac(path):
         return send_file(path, conditional=True)
 
-    tmp = NamedTemporaryFile(suffix=".mp3", delete=False)
+    tmp = NamedTemporaryFile(suffix=".m4a", delete=False)
     tmp_path = tmp.name
     tmp.close()
 
@@ -819,7 +826,14 @@ def _send_audio(path: str):
         (
             ffmpeg
             .input(path)
-            .output(tmp_path, acodec="libmp3lame", ar=44100, ac=2)
+            .output(
+                tmp_path,
+                acodec="aac",
+                ar=44100,
+                ac=2,
+                format="ipod",
+                **{"movflags": "+faststart"},
+            )
             .overwrite_output()
             .run(capture_stdout=True, capture_stderr=True)
         )
@@ -838,7 +852,7 @@ def _send_audio(path: str):
             pass
         return response
 
-    return send_file(tmp_path, mimetype="audio/mpeg", conditional=True)
+    return send_file(tmp_path, mimetype="audio/mp4", conditional=True)
 
 
 @main_bp.route("/music/stream")
