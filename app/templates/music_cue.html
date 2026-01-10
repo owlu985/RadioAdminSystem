@@ -1,0 +1,349 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CUE Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .wave-container {height:260px; background:linear-gradient(180deg,#f8f9fa,#ffffff); border-radius:10px; padding:12px; position:relative; overflow-x:auto; overflow-y:hidden; border:1px solid rgba(0,0,0,0.08);}
+        .wave-inner {position:relative; height:100%; min-width:100%;}
+        .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
+        .marker-label {font-size:11px; background:rgba(0,0,0,0.75); color:#fff; padding:2px 4px; border-radius:4px; white-space:nowrap;}
+        #markers {position:absolute; inset:0; pointer-events:none;}
+        #markers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
+        .zoom-row {display:flex; align-items:center; gap:8px;}
+        .legend span {display:inline-block; padding:4px 8px; border-radius:6px; margin-right:6px; font-size:12px;}
+        .cue-btn {border-width:2px;}
+        .cue-btn.active {box-shadow:0 0 0 2px rgba(13,110,253,0.35); background:#000; color:#fff;}
+        .cue-btn.active .text-muted {color:#fff !important;}
+        .control-buttons .btn {min-width:90px;}
+    </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <h3>CUE Editor</h3>
+    {% if track %}
+    <p class="text-muted">{{ track.title }} — {{ track.artist }}</p>
+    <div class="mb-3">
+        <audio id="player" controls preload="metadata" style="width:100%;" src="/music/stream?path={{ track.path|urlencode }}"></audio>
+        <div class="zoom-row mt-2">
+            <div class="legend">
+                <span style="background:#0d6efd;color:#fff;">Left/Mono</span>
+                <span style="background:#6610f2;color:#fff;">Right</span>
+            </div>
+            <label class="mb-0">Zoom <input type="range" min="1" max="6" value="1" id="zoom" style="vertical-align:middle"></label>
+        </div>
+        <div class="mt-2 position-relative wave-container" id="wave">
+            <div id="waveInner" class="wave-inner">
+                <canvas id="waveCanvas" height="210" style="width:100%; height:210px;"></canvas>
+                <div id="needle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
+                <div id="markers"></div>
+            </div>
+        </div>
+    </div>
+
+    {% set fields = {
+        'cue_in':'Start',
+        'intro':'Intro',
+        'loop_in':'Loop In',
+        'loop_out':'Loop Out',
+        'hook_in':'Hook In',
+        'hook_out':'Hook Out',
+        'start_next':'Next',
+        'outro':'Outro',
+        'cue_out':'End'
+    } %}
+
+    <div class="mb-3 d-flex flex-wrap gap-2">
+        {% for key,label in fields.items() %}
+        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-{{ key }}" data-cue="{{ key }}" onclick="selectCue('{{ key }}')">
+            <span class="fw-semibold cue-swatch" data-cue="{{ key }}">■</span>
+            {{ label }} <span class="text-muted" id="time-{{ key }}"></span>
+        </button>
+        <input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}" form="cue-form">
+        {% endfor %}
+    </div>
+
+    <div class="mb-3 d-flex flex-wrap gap-2 control-buttons">
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(-STEP)">« Step</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="togglePlay()" id="playToggle">Play/Pause</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(STEP)">Step »</button>
+        <button type="button" class="btn btn-outline-primary" onclick="setCueValue()">Set</button>
+        <button type="button" class="btn btn-outline-danger" onclick="removeCue()">Remove</button>
+    </div>
+
+    <form method="post" class="row g-3" id="cue-form">
+        <div class="col-12">
+            <button class="btn btn-primary" type="submit">Save CUE</button>
+            <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Back</a>
+        </div>
+    </form>
+    {% else %}
+    <p>Track not found.</p>
+    {% endif %}
+</div>
+{% include '_footer.html' %}
+<script>
+    const player = document.getElementById('player');
+    const needle = document.getElementById('needle');
+    const wave = document.getElementById('wave');
+    const waveInner = document.getElementById('waveInner');
+    const markersLayer = document.getElementById('markers');
+    const zoomControl = document.getElementById('zoom');
+    const waveCanvas = document.getElementById('waveCanvas');
+    const peaksData = {{ track.peaks|default({})|tojson }};
+    const fields = ['cue_in','intro','loop_in','loop_out','hook_in','hook_out','start_next','outro','cue_out'];
+    const colorMap = {
+        cue_in: '#0d6efd',
+        intro: '#20c997',
+        loop_in: '#198754',
+        loop_out: '#0dcaf0',
+        hook_in: '#6f42c1',
+        hook_out: '#d63384',
+        start_next: '#fd7e14',
+        outro: '#0dcaf0',
+        cue_out: '#dc3545'
+    };
+    const STEP = 0.05;
+    let selectedCue = 'cue_in';
+    let baseWidth = 0;
+    let dragField = null;
+    let dragNeedle = false;
+
+    function fmt(t) {
+        if (t === '' || t === null || t === undefined || isNaN(t)) return '';
+        const ms = Math.floor((t % 1) * 100);
+        const total = Math.floor(t);
+        const min = Math.floor(total/60).toString().padStart(2,'0');
+        const sec = (total % 60).toString().padStart(2,'0');
+        return `${min}:${sec}.${ms.toString().padStart(2,'0')}`;
+    }
+
+    function selectCue(key) {
+        selectedCue = key;
+        fields.forEach(f => {
+            const btn = document.getElementById(`btn-${f}`);
+            if (btn) btn.classList.toggle('active', f === key);
+        });
+        updateMarkers();
+    }
+
+    function paintSwatches() {
+        document.querySelectorAll('.cue-swatch').forEach(el => {
+            const key = el.dataset.cue;
+            if (key && colorMap[key]) {
+                el.style.color = colorMap[key];
+            }
+        });
+    }
+
+    function setCueValue() {
+        if (!player || isNaN(player.currentTime)) return;
+        const input = document.getElementById(selectedCue);
+        input.value = player.currentTime.toFixed(2);
+        updateMarkers();
+    }
+
+    function removeCue() {
+        const input = document.getElementById(selectedCue);
+        input.value = '';
+        updateMarkers();
+    }
+
+    function nudge(delta) {
+        if (!player || isNaN(player.currentTime)) return;
+        const wasPlaying = !player.paused;
+        player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + delta));
+        updateNeedle();
+        if (wasPlaying) {
+            player.play().catch(() => {});
+        }
+    }
+
+    function togglePlay() {
+        if (!player) return;
+        if (player.paused) player.play(); else player.pause();
+    }
+
+    function drawWaveform() {
+        if (!waveCanvas || !peaksData) return;
+        const peakLen = (peaksData.mono?.length || peaksData.left?.length || peaksData.right?.length || 0);
+        baseWidth = Math.max(wave.clientWidth || 1200, peakLen ? Math.min(peakLen, 8000) : 1200);
+        waveCanvas.width = baseWidth;
+        waveCanvas.style.width = `${baseWidth}px`;
+        waveInner.style.width = `${baseWidth}px`;
+        markersLayer.style.width = `${baseWidth}px`;
+        markersLayer.style.minWidth = `${baseWidth}px`;
+        const ctx = waveCanvas.getContext('2d');
+        const width = waveCanvas.width;
+        const height = waveCanvas.height;
+        ctx.clearRect(0,0,width,height);
+        const mono = peaksData.mono || peaksData.left || peaksData || [];
+        const right = peaksData.right || [];
+        const data = Array.isArray(mono) ? mono : [];
+        if (!data.length) {
+            ctx.fillStyle = '#6c757d';
+            ctx.fillText('Waveform unavailable', 10, height/2);
+            return;
+        }
+        ctx.fillStyle = '#f1f3f5';
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = 'rgba(0,0,0,0.08)';
+        ctx.beginPath();
+        ctx.moveTo(0, height/2);
+        ctx.lineTo(width, height/2);
+        ctx.stroke();
+        const len = data.length;
+        const step = Math.max(1, Math.floor(len / width));
+        const mid = height/2;
+        const leftGrad = ctx.createLinearGradient(0,0,width,0);
+        leftGrad.addColorStop(0,'#0d6efd');
+        leftGrad.addColorStop(1,'#0dcaf0');
+        const rightGrad = ctx.createLinearGradient(0,0,width,0);
+        rightGrad.addColorStop(0,'#6610f2');
+        rightGrad.addColorStop(1,'#d63384');
+        ctx.strokeStyle = 'rgba(0,0,0,0.06)';
+        ctx.font = '10px sans-serif';
+        if (player && player.duration) {
+            for (let t = 0; t <= player.duration; t += 30) {
+                const x = (t / player.duration) * width;
+                ctx.beginPath();
+                ctx.moveTo(x, 0);
+                ctx.lineTo(x, height);
+                ctx.stroke();
+                ctx.fillStyle = '#adb5bd';
+                const label = `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
+                ctx.fillText(label, x + 2, 12);
+            }
+        }
+        for (let i=0,x=0;i<len;i+=step, x++) {
+            const p = parseFloat(data[i]) || 0;
+            const h = Math.min(mid-10, Math.abs(p)*mid);
+            ctx.fillStyle = leftGrad;
+            ctx.fillRect(x, mid-h, 1, h);
+            if (right.length) {
+                const pr = parseFloat(right[i]) || 0;
+                const hr = Math.min(mid-10, Math.abs(pr)*mid);
+                ctx.fillStyle = rightGrad;
+                ctx.fillRect(x, mid+1, 1, hr);
+            }
+        }
+    }
+
+    function applyZoom() {
+        const scale = parseFloat(zoomControl.value || '1');
+        const newWidth = baseWidth * scale;
+        waveCanvas.style.width = `${newWidth}px`;
+        waveInner.style.width = `${newWidth}px`;
+        markersLayer.style.width = `${newWidth}px`;
+        updateMarkers();
+    }
+
+    function updateNeedle() {
+        if (!player || !player.duration || !needle) return;
+        const pct = (player.currentTime / player.duration) * 100;
+        needle.style.left = pct + '%';
+    }
+
+    function updateMarkers() {
+        if (!player || !player.duration || !markersLayer) return;
+        markersLayer.innerHTML = '';
+        fields.forEach(f => {
+            const val = parseFloat(document.getElementById(f)?.value || '');
+            const display = document.getElementById(`time-${f}`);
+            if (display) display.textContent = val ? `(${fmt(val)})` : '';
+            if (!isNaN(val) && val >= 0 && val <= player.duration) {
+                const pct = (val / player.duration) * 100;
+                const marker = document.createElement('div');
+                marker.className = 'marker';
+                marker.style.left = pct + '%';
+                marker.style.background = colorMap[f] || '#0d6efd';
+                marker.style.pointerEvents = 'none';
+                
+                const handle = document.createElement('div');
+                handle.className = 'handle';
+                handle.style.left = pct + '%';
+                handle.style.cursor = f === selectedCue ? 'ew-resize' : 'not-allowed';
+                handle.style.pointerEvents = f === selectedCue ? 'all' : 'none';
+                handle.addEventListener('pointerdown', (ev) => startDrag(ev, f));
+
+                const label = document.createElement('div');
+                label.className = 'marker-label position-absolute';
+                label.style.left = pct + '%';
+                label.style.transform = 'translateX(-50%) translateY(-100%)';
+                label.textContent = f.replace('_', ' ');
+                markersLayer.appendChild(marker);
+                markersLayer.appendChild(label);
+                markersLayer.appendChild(handle);
+            }
+        });
+    }
+
+    function startDrag(ev, field) {
+        if (field !== selectedCue) return;
+        dragField = field;
+        ev.preventDefault();
+        document.addEventListener('pointermove', onDrag);
+        document.addEventListener('pointerup', endDrag);
+    }
+
+    function onDrag(ev) {
+        if ((!dragField && !dragNeedle) || !waveInner || !player || !player.duration) return;
+        const rect = waveInner.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const seconds = pct * player.duration;
+        if (dragNeedle) {
+            player.currentTime = seconds;
+        } else if (dragField) {
+            const input = document.getElementById(dragField);
+            input.value = seconds.toFixed(2);
+            updateMarkers();
+        }
+    }
+
+    function endDrag() {
+        dragField = null;
+        dragNeedle = false;
+        document.removeEventListener('pointermove', onDrag);
+        document.removeEventListener('pointerup', endDrag);
+    }
+
+    wave.addEventListener('click', (ev) => {
+        if (!player || !player.duration) return;
+        const rect = waveInner.getBoundingClientRect();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        player.currentTime = pct * player.duration;
+    });
+
+    needle.addEventListener('pointerdown', (ev) => {
+        dragNeedle = true;
+        ev.preventDefault();
+        document.addEventListener('pointermove', onDrag);
+        document.addEventListener('pointerup', endDrag);
+    });
+
+    if (player) {
+        player.addEventListener('timeupdate', updateNeedle);
+        player.addEventListener('loadedmetadata', () => {
+            updateNeedle();
+            updateMarkers();
+        });
+    }
+    if (zoomControl && waveCanvas) {
+        zoomControl.addEventListener('input', applyZoom);
+    }
+    window.addEventListener('resize', () => {
+        drawWaveform();
+        applyZoom();
+    });
+
+    selectCue(selectedCue);
+    paintSwatches();
+    drawWaveform();
+    applyZoom();
+    updateMarkers();
+</script>
+</body>
+</html>
