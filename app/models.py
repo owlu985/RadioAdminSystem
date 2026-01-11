@@ -214,6 +214,17 @@ class DJAbsence(db.Model):
     show = db.relationship("Show", backref="absences")
 
 
+class DJHandoffNote(db.Model):
+    __tablename__ = "dj_handoff_note"
+
+    id = db.Column(db.Integer, primary_key=True)
+    author_name = db.Column(db.String(255), nullable=False)
+    author_email = db.Column(db.String(255), nullable=True)
+    show_name = db.Column(db.String(128), nullable=True)
+    notes = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class MusicAnalysis(db.Model):
     __tablename__ = "music_analysis"
 

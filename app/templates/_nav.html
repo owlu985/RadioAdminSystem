@@ -23,9 +23,10 @@
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Shows</a>
               <ul class="dropdown-menu">
-                {% if can_view('schedule:view') %}<li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>{% endif %}
-                <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
-                {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>{% endif %}
+              {% if can_view('schedule:view') %}<li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>{% endif %}
+              <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
+              {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>{% endif %}
+              {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('main.recordings_manage') }}">Recordings Manager</a></li>{% endif %}
               {% if can_view('dj:absence') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>{% endif %}
             </ul>
           </li>
@@ -70,9 +71,11 @@
               <li><a class="dropdown-item" href="{{ url_for('main.dj_tools') }}" target="_blank">DJ Dashboard</a></li>
               <li><a class="dropdown-item" href="{{ url_for('logs.submit_log') }}" target="_blank">Public Logger</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_absence_submit') }}" target="_blank">DJ Absence Form</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.dj_handoff_notes') }}">DJ Handoff Notes</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" target="_blank" rel="nofollow">AutoDJ Control</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" target="_blank" rel="nofollow">PSA Player</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}" target="_blank">DJ Status</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.tutorial_page') }}">Tutorials & Tips</a></li>
             </ul>
           </li>
           <li class="nav-item"><a class="nav-link" href="{{ url_for('main.api_docs_page') }}">API Docs</a></li>
@@ -87,6 +90,7 @@
               <li><a class="dropdown-item" href="{{ url_for('main.autodj_menu') }}" rel="nofollow">AutoDJ Control</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.psa_player') }}" rel="nofollow">PSA Player</a></li>
               <li><a class="dropdown-item" href="{{ url_for('main.dj_status_page') }}">DJ Status</a></li>
+              <li><a class="dropdown-item" href="{{ url_for('main.tutorial_page') }}">Tutorials & Tips</a></li>
             </ul>
           </li>
         {% endif %}
@@ -126,6 +130,48 @@
   <link rel="preload" as="image" href="{{ url_for('static', filename='logo.png') }}">
 </nav>
 {% include '_flash.html' %}
+<style>
+  .help-tip {
+    display: none;
+    font-size: 0.9rem;
+    color: #6c757d;
+    background: rgba(255, 193, 7, 0.1);
+    border-left: 3px solid #ffc107;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.25rem;
+  }
+  body.help-on .help-tip {
+    display: block;
+  }
+  .help-spot {
+    position: relative;
+    border: 1px dashed rgba(255, 193, 7, 0.6);
+    border-radius: 0.5rem;
+    padding: 1rem;
+    background: rgba(255, 193, 7, 0.08);
+  }
+  body.help-on .help-spot::after {
+    content: attr(data-help);
+    position: absolute;
+    left: 1rem;
+    right: 1rem;
+    bottom: calc(100% + 0.5rem);
+    background: #212529;
+    color: #f8f9fa;
+    padding: 0.5rem 0.75rem;
+    border-radius: 0.5rem;
+    font-size: 0.85rem;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.2s ease, transform 0.2s ease;
+    pointer-events: none;
+    z-index: 10;
+  }
+  body.help-on .help-spot:hover::after {
+    opacity: 1;
+    transform: translateY(0);
+  }
+</style>
 <script>
   (function(){
     const sel = document.getElementById('themeToggle');

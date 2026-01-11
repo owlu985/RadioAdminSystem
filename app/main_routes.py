@@ -1,5 +1,6 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, Response, stream_with_context
 from io import BytesIO
+from dataclasses import dataclass
 import mutagen  # type: ignore
 from mutagen.id3 import ID3  # type: ignore
 from mutagen.mp4 import MP4  # type: ignore
@@ -12,7 +13,10 @@ import random
 import base64
 import hashlib
 import requests
+import zipfile
+import re
 from urllib.parse import quote_plus
+from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
     update_user_config,
@@ -38,6 +42,7 @@ from .models import (
     ArchivistEntry,
     SocialPost,
     LogSheet,
+    DJHandoffNote,
     Plugin,
     WebsiteContent,
     PodcastEpisode,
@@ -372,6 +377,85 @@ def _media_roots() -> list[tuple[str, str]]:
     return roots
 
 
+def _recordings_root() -> str:
+    root = current_app.config.get("OUTPUT_FOLDER") or os.path.join(current_app.instance_path, "recordings")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
+@dataclass
+class RecordingEntry:
+    display_name: str
+    safe_name: str
+    filename: str
+    full_path: str
+    token: str
+    size_bytes: int
+    modified_at: datetime
+
+
+def _safe_show_map() -> dict[str, str]:
+    mapping: dict[str, str] = {}
+    for show in Show.query.order_by(Show.show_name, Show.host_last_name).all():
+        display = show_display_title(show)
+        safe = display.replace(" ", "_")
+        mapping[safe] = display
+    return mapping
+
+
+def _parse_recording_label(filename: str) -> str | None:
+    match = re.match(r"(.+)_\d{2}-\d{2}-\d{2}_RAWDATA", filename)
+    if match:
+        return match.group(1)
+    return None
+
+
+def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) -> list[RecordingEntry]:
+    root = _recordings_root()
+    show_map = _safe_show_map()
+    allowed_safe_names: set[str] | None = None
+
+    if show_id:
+        show = Show.query.get(show_id)
+        if show:
+            display = show_display_title(show)
+            allowed_safe_names = {display.replace(" ", "_")}
+
+    if dj_id:
+        dj = DJ.query.get(dj_id)
+        if dj:
+            dj_safe = {show_display_title(show).replace(" ", "_") for show in dj.shows}
+            allowed_safe_names = dj_safe if allowed_safe_names is None else allowed_safe_names & dj_safe
+
+    entries: list[RecordingEntry] = []
+    for current_root, _, files in os.walk(root):
+        for filename in files:
+            if not filename.lower().endswith((".mp3", ".wav", ".m4a", ".aac")):
+                continue
+            full = os.path.join(current_root, filename)
+            safe_label = _parse_recording_label(filename) or os.path.splitext(filename)[0]
+            if current_root != root:
+                folder_name = os.path.basename(current_root)
+                safe_label = folder_name.replace(" ", "_")
+            if allowed_safe_names is not None and safe_label not in allowed_safe_names:
+                continue
+            display = show_map.get(safe_label, safe_label.replace("_", " "))
+            stat = os.stat(full)
+            entries.append(
+                RecordingEntry(
+                    display_name=display,
+                    safe_name=safe_label,
+                    filename=filename,
+                    full_path=full,
+                    token=base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8"),
+                    size_bytes=stat.st_size,
+                    modified_at=datetime.fromtimestamp(stat.st_mtime),
+                )
+            )
+    entries.sort(key=lambda item: item.modified_at, reverse=True)
+    return entries
+
+
 @main_bp.route("/psa/player")
 def psa_player():
     psa_root = _psa_library_root()
@@ -392,6 +476,118 @@ def dj_tools():
     resp = make_response(render_template("dj_tools.html"))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
+
+
+@main_bp.route("/help/tutorial")
+def tutorial_page():
+    return render_template("tutorial.html")
+
+
+@main_bp.route("/dj/handoff", methods=["GET", "POST"])
+@login_required
+def dj_handoff_notes():
+    shows = [
+        {"id": show.id, "display": show_display_title(show)}
+        for show in Show.query.order_by(Show.show_name, Show.host_last_name).all()
+    ]
+    if request.method == "POST":
+        notes = (request.form.get("notes") or "").strip()
+        show_id = request.form.get("show_id", type=int)
+        if not notes:
+            flash("Please add a handoff note before saving.", "warning")
+            return redirect(url_for("main.dj_handoff_notes"))
+        show_name = None
+        if show_id:
+            show = Show.query.get(show_id)
+            show_name = show_display_title(show) if show else None
+        note = DJHandoffNote(
+            author_name=session.get("display_name") or session.get("user_email") or "Staff",
+            author_email=session.get("user_email"),
+            show_name=show_name,
+            notes=notes,
+        )
+        db.session.add(note)
+        db.session.commit()
+        flash("Handoff note saved.", "success")
+        return redirect(url_for("main.dj_handoff_notes"))
+
+    notes = DJHandoffNote.query.order_by(DJHandoffNote.created_at.desc()).limit(50).all()
+    return render_template("dj_handoff.html", notes=notes, shows=shows)
+
+
+@main_bp.route("/recordings")
+@permission_required({"logs:view"})
+def recordings_manage():
+    show_id = request.args.get("show_id", type=int)
+    dj_id = request.args.get("dj_id", type=int)
+    entries = _collect_recordings(show_id=show_id, dj_id=dj_id)
+    shows = [
+        {"id": show.id, "display": show_display_title(show)}
+        for show in Show.query.order_by(Show.show_name, Show.host_last_name).all()
+    ]
+    djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+    return render_template(
+        "recordings_manage.html",
+        recordings=entries,
+        shows=shows,
+        djs=djs,
+        selected_show_id=show_id,
+        selected_dj_id=dj_id,
+    )
+
+
+@main_bp.route("/recordings/file/<path:token>")
+@permission_required({"logs:view"})
+def recordings_file(token: str):
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        abort(404)
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    root = os.path.normcase(os.path.abspath(os.path.normpath(_recordings_root())))
+    if not full.startswith(root) or not os.path.isfile(full):
+        abort(404)
+    resp = send_file(full, conditional=True)
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+@main_bp.route("/recordings/download")
+@permission_required({"logs:view"})
+def recordings_download():
+    show_id = request.args.get("show_id", type=int)
+    dj_id = request.args.get("dj_id", type=int)
+    entries = _collect_recordings(show_id=show_id, dj_id=dj_id)
+    if not entries:
+        flash("No recordings found for that filter.", "warning")
+        return redirect(url_for("main.recordings_manage", show_id=show_id, dj_id=dj_id))
+    label = "recordings"
+    if show_id:
+        show = Show.query.get(show_id)
+        if show:
+            label = show_display_title(show)
+    elif dj_id:
+        dj = DJ.query.get(dj_id)
+        if dj:
+            label = f"{dj.first_name}_{dj.last_name}"
+
+    tmp = NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp_path = tmp.name
+    tmp.close()
+
+    with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for entry in entries:
+            arcname = os.path.join(entry.display_name.replace(" ", "_"), entry.filename)
+            archive.write(entry.full_path, arcname=arcname)
+
+    response = send_file(
+        tmp_path,
+        mimetype="application/zip",
+        as_attachment=True,
+        download_name=f"{label.replace(' ', '_')}_recordings.zip",
+    )
+    response.call_on_close(lambda: os.unlink(tmp_path))
+    return response
 
 
 @main_bp.route("/media/file/<path:token>")
