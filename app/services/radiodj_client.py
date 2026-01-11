@@ -1,0 +1,201 @@
+import os
+import shutil
+from pathlib import Path
+from typing import Optional
+
+import requests
+from flask import current_app
+
+from app.logger import init_logger
+
+logger = init_logger()
+
+
+class RadioDJClient:
+    """
+    Minimal helper for interacting with RadioDJ's REST API (if available)
+    and staging files into the RadioDJ import folder.
+    """
+
+    def __init__(self):
+        self.base_url = current_app.config.get("RADIODJ_API_BASE_URL")
+        self.api_key = current_app.config.get("RADIODJ_API_KEY")
+        self.import_folder = Path(current_app.config.get("RADIODJ_IMPORT_FOLDER"))
+        self.import_folder.mkdir(parents=True, exist_ok=True)
+        nas_root = Path(current_app.config.get("NAS_ROOT"))
+        nas_root.mkdir(parents=True, exist_ok=True)
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.base_url and self.api_key)
+
+    def _headers(self) -> dict:
+        return {"Authorization": f"Bearer {self.api_key}"} if self.api_key else {}
+
+    def list_psas(self) -> list:
+        if not self.enabled:
+            logger.info("RadioDJ API disabled; returning empty PSA list.")
+            return []
+        resp = requests.get(f"{self.base_url}/psas", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def update_psa_metadata(self, psa_id: str, metadata: dict) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.patch(
+            f"{self.base_url}/psas/{psa_id}",
+            headers=self._headers(),
+            json=metadata,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        return resp.json()
+
+    def enable_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.post(f"{self.base_url}/psas/{psa_id}/enable", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def disable_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.post(f"{self.base_url}/psas/{psa_id}/disable", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def delete_psa(self, psa_id: str) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        resp = requests.delete(f"{self.base_url}/psas/{psa_id}", headers=self._headers(), timeout=10)
+        resp.raise_for_status()
+        return resp.json()
+
+    def search_tracks(self, keyword: str) -> list:
+        if not self.enabled:
+            logger.warning("RadioDJ API disabled; track search skipped")
+            return []
+        try:
+            resp = requests.get(
+                f"{self.base_url}/tracks/search",
+                headers=self._headers(),
+                params={"q": keyword},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return resp.json() or []
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ search failed: %s", exc)
+            return []
+
+    def insert_track_top(self, track_id: str) -> None:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        # Try modern endpoint first
+        try:
+            resp = requests.post(
+                f"{self.base_url}/playlist/insert-top",
+                headers=self._headers(),
+                json={"track_id": track_id},
+                timeout=10,
+            )
+            if resp.status_code == 404:
+                raise RuntimeError("legacy fallback")
+            resp.raise_for_status()
+            return
+        except Exception:
+            # Fallback to SetItem command style
+            try:
+                resp = requests.get(
+                    f"{self.base_url}/SetItem",
+                    params={"auth": self.api_key, "command": "LoadTrackToTop", "arg": track_id},
+                    timeout=10,
+                )
+                resp.raise_for_status()
+            except Exception as exc:  # noqa: BLE001
+                logger.error("RadioDJ insert fallback failed: %s", exc)
+                raise
+
+    def set_autodj(self, enabled: bool) -> dict:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        try:
+            resp = requests.get(
+                f"{self.base_url}/SetItem",
+                params={
+                    "auth": self.api_key,
+                    "command": "EnableAutoDJ",
+                    "arg": 1 if enabled else 0,
+                },
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return {"status": "ok", "enabled": enabled, "raw": resp.text}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ AutoDJ toggle failed: %s", exc)
+            raise
+
+    def now_playing(self) -> Optional[dict]:
+        """
+        Fetch the current on-air metadata from RadioDJ (if enabled).
+        Expected payload shape (best-effort):
+        {
+            "artist": str,
+            "title": str,
+            "album": str,
+            "duration": float,
+            "elapsed": float,
+        }
+        """
+        if not self.enabled:
+            return None
+        try:
+            resp = requests.get(f"{self.base_url}/nowplaying", headers=self._headers(), timeout=6)
+            resp.raise_for_status()
+            return resp.json() or {}
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ now playing fetch failed: %s", exc)
+            return None
+
+    def import_file(self, source_path: str, target_name: Optional[str] = None) -> Path:
+        """
+        Stage a file into the RadioDJ import folder (local handoff).
+        """
+        path = Path(source_path)
+        if not path.exists():
+            raise FileNotFoundError(source_path)
+
+        target = self.import_folder / (target_name or path.name)
+        shutil.copy(path, target)
+        logger.info("Imported %s into RadioDJ import folder", target)
+        return target
+
+
+def import_news_or_calendar(kind: str) -> Path:
+    """
+    Copy the requested NAS file into the RadioDJ import folder.
+    kind: 'news' | 'community_calendar'
+    """
+    client = RadioDJClient()
+    if kind == "news":
+        source = current_app.config["NAS_NEWS_FILE"]
+        target_name = "wlmc_news.mp3"
+    elif kind == "community_calendar":
+        source = current_app.config["NAS_COMMUNITY_CALENDAR_FILE"]
+        target_name = "wlmc_comm_calendar.mp3"
+    else:
+        raise ValueError(f"Unknown import kind: {kind}")
+
+    return client.import_file(source, target_name=target_name)
+
+
+def search_track_by_term(term: str) -> list:
+    client = RadioDJClient()
+    return client.search_tracks(term)
+
+
+def insert_track_top(track_id: str) -> None:
+    client = RadioDJClient()
+    client.insert_track_top(track_id)

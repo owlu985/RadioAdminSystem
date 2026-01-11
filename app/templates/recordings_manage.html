@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Recordings Manager</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h3 class="mb-1">Recordings Manager</h3>
+            <p class="text-muted mb-0">Find, preview, and download show recordings.</p>
+        </div>
+    </div>
+
+    <div class="help-tip mb-3">
+        Filter by show or DJ to narrow the list. Use the download button to grab a zip of all matching recordings.
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Filters</div>
+        <div class="card-body">
+            <form method="get" class="row g-3 align-items-end">
+                <div class="col-md-4">
+                    <label class="form-label">Show</label>
+                    <select class="form-select" name="show_id">
+                        <option value="">All shows</option>
+                        {% for show in shows %}
+                            <option value="{{ show.id }}" {% if selected_show_id == show.id %}selected{% endif %}>{{ show.display }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">DJ</label>
+                    <select class="form-select" name="dj_id">
+                        <option value="">All DJs</option>
+                        {% for dj in djs %}
+                            <option value="{{ dj.id }}" {% if selected_dj_id == dj.id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4 d-flex gap-2">
+                    <button class="btn btn-primary" type="submit">Apply filters</button>
+                    <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_manage') }}">Clear</a>
+                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show_id=selected_show_id, dj_id=selected_dj_id) }}">Download all</a>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Recordings</div>
+        <div class="card-body p-0">
+            {% if recordings %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Show</th>
+                                <th>File</th>
+                                <th>Last modified</th>
+                                <th>Preview</th>
+                                <th>Download</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for rec in recordings %}
+                                <tr>
+                                    <td>{{ rec.display_name }}</td>
+                                    <td>{{ rec.filename }}</td>
+                                    <td>{{ rec.modified_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                                    <td>
+                                        <audio controls preload="none" style="max-width:240px;">
+                                            <source src="{{ url_for('main.recordings_file', token=rec.token) }}">
+                                        </audio>
+                                    </td>
+                                    <td>
+                                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.recordings_file', token=rec.token) }}" download>Download</a>
+                                    </td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="p-3 text-muted">No recordings match your filters.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+</body>
+</html>
