@@ -115,7 +115,7 @@ class ShowRun(db.Model):
 
     show_name = db.Column(db.String(128), nullable=False)
 
-    start_time = db.Column(db.DateTime, nullable=False)
+    start_time = db.Column(db.DateTime, nullable=False, index=True)
     end_time = db.Column(db.DateTime, nullable=True)
 
     created_at = db.Column(
