@@ -8,8 +8,14 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
-    <link href="https://cdn.jsdelivr.net/gh/keshikan/DSEG@master/css/dseg.css" rel="stylesheet">
     <style>
+        @font-face {
+            font-family: 'DSEG14 Classic Mini Light';
+            src: url("{{ url_for('static', filename='DSEG14ClassicMini-Light.ttf') }}") format('truetype');
+            font-weight: 300;
+            font-style: normal;
+            font-display: swap;
+        }
         body, html {
             height: 100%;
             margin: 0;
