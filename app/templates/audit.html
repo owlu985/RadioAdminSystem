@@ -161,14 +161,14 @@
                 </tbody></table>`;
         } else {
             container.innerHTML = `<table class="table table-sm table-bordered">
-                <thead><tr><th>File</th><th>Title</th><th>Artist</th><th>Explicit</th><th>Clean Available</th><th>Lyrics</th><th>Error</th></tr></thead>
+                <thead><tr><th>Title</th><th>Artist</th><th>Explicit</th><th>Clean Available</th><th>Clean Link</th><th>Lyrics</th><th>Error</th></tr></thead>
                 <tbody>
                 ${results.map(r => `<tr>
-                    <td style="max-width:400px;">${r.path}</td>
                     <td>${r.title || ''}</td>
                     <td>${r.artist || ''}</td>
                     <td>${r.explicit}</td>
                     <td>${r.clean_available}</td>
+                    <td>${r.clean_link ? `<a href="${r.clean_link}" target="_blank" rel="noopener">Link</a>` : ''}</td>
                     <td>${r.lyrics_flagged ? (r.lyrics_matches || []).join(', ') : ''}</td>
                     <td>${r.error || r.lyrics_error || ''}</td>
                 </tr>`).join('')}

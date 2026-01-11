@@ -80,13 +80,18 @@ def _itunes_search(title: str, artist: str, rate_limit_s: float = 0.5):
 def _explicit_from_itunes(api_results: list[dict]) -> dict:
     explicit_found = False
     clean_available = False
+    clean_link = None
     for item in api_results:
         explicitness = item.get("trackExplicitness") or item.get("collectionExplicitness")
+        track_url = item.get("trackViewUrl") or item.get("collectionViewUrl")
         if explicitness == "explicit":
             explicit_found = True
-        if explicitness == "notExplicit":
+        if explicitness == "cleaned":
+            explicit_found = True
             clean_available = True
-    return {"explicit": explicit_found, "clean_available": clean_available}
+            if track_url and not clean_link:
+                clean_link = track_url
+    return {"explicit": explicit_found, "clean_available": clean_available, "clean_link": clean_link}
 
 
 def audit_explicit_music(
@@ -124,11 +129,11 @@ def audit_explicit_music(
         if lyrics_check:
             lyrics_result = _lyrics_check(title, artist, rate_limit_s=rate_limit_s)
         results.append({
-            "path": path,
             "title": title,
             "artist": artist,
             "explicit": explicit_result["explicit"],
             "clean_available": explicit_result["clean_available"],
+            "clean_link": explicit_result["clean_link"],
             "lyrics_flagged": lyrics_result["flagged"] if lyrics_result else False,
             "lyrics_matches": lyrics_result["matches"] if lyrics_result else [],
             "lyrics_error": lyrics_result["error"] if lyrics_result else None,
@@ -202,11 +207,11 @@ def _run_job(app, job_id: str, action: str, params: dict):
                     if lyrics_check:
                         lyrics_result = _lyrics_check(title, artist, rate_limit_s=rate)
                     results.append({
-                        "path": path,
                         "title": title,
                         "artist": artist,
                         "explicit": explicit_result["explicit"],
                         "clean_available": explicit_result["clean_available"],
+                        "clean_link": explicit_result["clean_link"],
                         "lyrics_flagged": lyrics_result["flagged"] if lyrics_result else False,
                         "lyrics_matches": lyrics_result["matches"] if lyrics_result else [],
                         "lyrics_error": lyrics_result["error"] if lyrics_result else None,
