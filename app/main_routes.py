@@ -1220,13 +1220,15 @@ def audit_page():
         if action == "explicit":
             rate = float(request.form.get("rate_limit") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"])
             limit = int(request.form.get("max_files") or current_app.config["AUDIT_MUSIC_MAX_FILES"])
-            explicit_results = audit_explicit_music(rate_limit_s=rate, max_files=limit)
+            lyrics_check = request.form.get("lyrics_check") == "1"
+            explicit_results = audit_explicit_music(rate_limit_s=rate, max_files=limit, lyrics_check=lyrics_check)
     return render_template(
         "audit.html",
         recordings_results=recordings_results,
         explicit_results=explicit_results,
         default_rate=current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"],
         default_limit=current_app.config["AUDIT_MUSIC_MAX_FILES"],
+        default_lyrics=current_app.config.get("AUDIT_LYRICS_CHECK_ENABLED", False),
     )
 
 

@@ -66,7 +66,7 @@ from app.services.archivist_db import (
 )
 from sqlalchemy import func
 from app.logger import init_logger
-from app.services.audit import start_audit_job, get_audit_status
+from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
 import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
@@ -951,9 +951,12 @@ def start_audit():
     action = data.get("action")
     if action not in {"recordings", "explicit"}:
         return jsonify({"status": "error", "message": "invalid action"}), 400
+    max_files = data.get("max_files")
     params = {
         "folder": data.get("folder"),
         "rate": float(data.get("rate") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"]),
+        "max_files": int(max_files) if max_files not in (None, "") else None,
+        "lyrics_check": bool(data.get("lyrics_check")),
     }
     job_id = start_audit_job(action, params)
     return jsonify({"status": "queued", "job_id": job_id})
@@ -962,6 +965,20 @@ def start_audit():
 @api_bp.route("/audit/status/<job_id>")
 def audit_status(job_id):
     return jsonify(get_audit_status(job_id))
+
+
+@api_bp.route("/audit/runs")
+def audit_runs():
+    limit = request.args.get("limit", default=20, type=int)
+    return jsonify(list_audit_runs(limit=limit))
+
+
+@api_bp.route("/audit/runs/<int:run_id>")
+def audit_run_detail(run_id):
+    run = get_audit_run(run_id)
+    if not run:
+        return jsonify({"status": "error", "message": "not found"}), 404
+    return jsonify(run)
 
 
 @api_bp.route("/djs")

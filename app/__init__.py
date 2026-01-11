@@ -276,6 +276,20 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "audit_run" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS audit_run (
+                            id INTEGER PRIMARY KEY,
+                            action VARCHAR(32) NOT NULL,
+                            status VARCHAR(32) NOT NULL,
+                            params_json TEXT,
+                            results_json TEXT,
+                            created_at DATETIME NOT NULL,
+                            completed_at DATETIME
+                        )
+                        """
+                    ))
                 if "social_post" not in insp.get_table_names():
                     conn.execute(text(
                         """
