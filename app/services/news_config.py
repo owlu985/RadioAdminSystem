@@ -1,8 +1,9 @@
 import json
 import os
-import json
 from typing import List, Dict
 from flask import current_app
+from sqlalchemy import inspect
+from app.models import NewsType, db
 
 
 def _apply_defaults(items: List[Dict]) -> List[Dict]:
@@ -16,7 +17,7 @@ def _apply_defaults(items: List[Dict]) -> List[Dict]:
     return items
 
 
-def load_news_types() -> List[Dict]:
+def _load_news_types_from_json() -> List[Dict]:
     path = current_app.config["NEWS_TYPES_CONFIG"]
     if not os.path.exists(path):
         return []
@@ -25,6 +26,20 @@ def load_news_types() -> List[Dict]:
     if isinstance(data, list):
         data = _apply_defaults(data)
     return data
+
+
+def load_news_types() -> List[Dict]:
+    try:
+        inspector = inspect(db.engine)
+        if "news_type" not in inspector.get_table_names():
+            return _load_news_types_from_json()
+        types = NewsType.query.order_by(NewsType.label).all()
+    except Exception:  # noqa: BLE001
+        return _load_news_types_from_json()
+
+    if types:
+        return [t.as_dict() for t in types]
+    return _load_news_types_from_json()
 
 
 def get_news_type(key: str) -> Dict | None:

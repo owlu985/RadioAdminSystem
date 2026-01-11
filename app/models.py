@@ -225,6 +225,57 @@ class DJHandoffNote(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class NewsType(db.Model):
+    __tablename__ = "news_type"
+
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(64), unique=True, nullable=False)
+    label = db.Column(db.String(128), nullable=False)
+    filename = db.Column(db.String(200), nullable=False)
+    frequency = db.Column(db.String(32), default="daily", nullable=False)
+    rotation_day = db.Column(db.Integer, nullable=True)
+    active_days = db.Column(db.String(32), nullable=True)
+    artist = db.Column(db.String(128), nullable=True)
+    album = db.Column(db.String(128), nullable=True)
+    title_template = db.Column(db.String(200), nullable=True)
+    date_format = db.Column(db.String(32), nullable=True)
+    is_active = db.Column(db.Boolean, default=True, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    def as_dict(self) -> dict:
+        return {
+            "id": self.id,
+            "key": self.key,
+            "label": self.label,
+            "filename": self.filename,
+            "frequency": self.frequency,
+            "rotation_day": self.rotation_day,
+            "active_days": self.active_days,
+            "metadata": {
+                "artist": self.artist,
+                "album": self.album,
+                "title_template": self.title_template,
+                "date_format": self.date_format,
+            },
+            "is_active": self.is_active,
+        }
+
+
+class NewsCast(db.Model):
+    __tablename__ = "news_cast"
+
+    id = db.Column(db.Integer, primary_key=True)
+    news_type_id = db.Column(db.Integer, db.ForeignKey("news_type.id"), nullable=False)
+    air_date = db.Column(db.Date, nullable=False)
+    audio_filename = db.Column(db.String(255), nullable=True)
+    script_filename = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    news_type = db.relationship("NewsType", backref="casts")
+
+
 class MusicAnalysis(db.Model):
     __tablename__ = "music_analysis"
 

@@ -18,9 +18,47 @@
     <div class="d-flex justify-content-between align-items-center mb-3">
         <h2 class="section-title">News Dashboard</h2>
         <div>
-            <a href="{{ url_for('news.upload_news') }}" class="btn btn-primary">Upload/Queue</a>
+            <a href="{{ url_for('news.upload_news') }}" class="btn btn-primary">Manage Newscasts</a>
+            <a href="{{ url_for('news.news_settings') }}" class="btn btn-outline-secondary">Metadata & Schedule</a>
             <a href="{{ url_for('main.dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
         </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        {% for card in status_cards %}
+            <div class="col-lg-4">
+                <div class="card h-100">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span>{{ card.type.label }}</span>
+                        <span class="badge bg-light text-dark">{{ card.type.key }}</span>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-2">
+                            <div class="text-muted">Schedule</div>
+                            <div>{{ card.schedule_label }}</div>
+                        </div>
+                        <div class="mb-2">
+                            <div class="text-muted">Next Air Date</div>
+                            <div>{{ card.next_date or 'Not scheduled' }}</div>
+                        </div>
+                        <div class="d-flex gap-3">
+                            <span class="badge {% if card.audio_ready %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                {{ 'Audio ready' if card.audio_ready else 'Audio missing' }}
+                            </span>
+                            <span class="badge {% if card.script_ready %}bg-success{% else %}bg-warning text-dark{% endif %}">
+                                {{ 'Script ready' if card.script_ready else 'Script missing' }}
+                            </span>
+                        </div>
+                    </div>
+                    <div class="card-footer d-flex flex-wrap gap-2">
+                        <a class="btn btn-sm btn-outline-primary" href="{{ url_for('news.upload_news') }}">Upload audio/script</a>
+                        {% if card.next_date %}
+                            <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('news.edit_script', news_type_id=card.type.id, date=card.next_date) }}">Edit script</a>
+                        {% endif %}
+                    </div>
+                </div>
+            </div>
+        {% endfor %}
     </div>
 
     <div class="card mb-4">
@@ -29,7 +67,7 @@
             <div class="table-responsive">
                 <table class="table table-sm table-hover mb-0 align-middle table-fixed">
                     <thead class="table-light">
-                        <tr><th style="width: 15%">Date</th><th style="width: 18%">Type</th><th style="width: 20%">Audio</th><th style="width: 22%">Scripts</th><th style="width: 25%">Preview</th></tr>
+                        <tr><th style="width: 15%">Date</th><th style="width: 18%">Type</th><th style="width: 20%">Audio</th><th style="width: 22%">Script</th><th style="width: 25%">Preview</th></tr>
                     </thead>
                     <tbody>
                     {% if upcoming %}
@@ -39,23 +77,14 @@
                             <td>{{ item.label }}</td>
                             <td>{% if item.audio_url %}<span class="text-success">Ready</span>{% else %}<span class="text-muted">Missing</span>{% endif %}</td>
                             <td>
-                                {% if item.scripts %}
-                                    <ul class="mb-0 ps-3">
-                                        {% for s in item.scripts %}
-                                            <li><a href="{{ s.url }}" target="_blank">{{ s.name }}</a></li>
-                                        {% endfor %}
-                                    </ul>
+                                {% if item.script_url %}
+                                    <a href="{{ item.script_url }}" target="_blank">View script</a>
+                                    {% if item.script_preview %}
+                                        <div class="text-muted small mt-1">{{ item.script_preview }}</div>
+                                    {% endif %}
                                 {% else %}
                                     <span class="text-muted">No scripts</span>
                                 {% endif %}
-                                <form class="mt-2" method="post" action="{{ url_for('news.upload_script_only') }}" enctype="multipart/form-data">
-                                    <input type="hidden" name="news_type" value="{{ item.key }}">
-                                    <input type="hidden" name="date" value="{{ item.date }}">
-                                    <div class="input-group input-group-sm">
-                                        <input type="file" name="script_file" class="form-control" accept=".txt,.doc,.pdf,.docx">
-                                        <button class="btn btn-outline-primary" type="submit">Attach script</button>
-                                    </div>
-                                </form>
                             </td>
                             <td>
                                 {% if item.audio_url %}
@@ -91,12 +120,8 @@
                             <td>{{ item.label }}</td>
                             <td>{% if item.audio_url %}<a href="{{ item.audio_url }}" target="_blank">Download</a>{% else %}<span class="text-muted">Missing</span>{% endif %}</td>
                             <td>
-                                {% if item.scripts %}
-                                    <ul class="mb-0 ps-3">
-                                        {% for s in item.scripts %}
-                                            <li><a href="{{ s.url }}" target="_blank">{{ s.name }}</a></li>
-                                        {% endfor %}
-                                    </ul>
+                                {% if item.script_url %}
+                                    <a href="{{ item.script_url }}" target="_blank">View script</a>
                                 {% else %}
                                     <span class="text-muted">No scripts</span>
                                 {% endif %}
@@ -116,6 +141,19 @@
                     </tbody>
                 </table>
             </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header">Landmark events feed (optional)</div>
+        <div class="card-body">
+            {% if events_feed_url %}
+                <p class="mb-1">Configured feed URL:</p>
+                <a href="{{ events_feed_url }}" target="_blank" rel="noopener">{{ events_feed_url }}</a>
+                <div class="text-muted mt-2">Use this as a reference for any future event imports. No automated sync is enabled yet.</div>
+            {% else %}
+                <p class="text-muted mb-0">No feed URL saved. If you locate a JSON/ICS endpoint for Landmark events, add it in Metadata & Schedule.</p>
+            {% endif %}
         </div>
     </div>
 </div>
