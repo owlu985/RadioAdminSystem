@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>News Metadata & Schedule</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    {% include '_flash.html' %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">News Metadata & Schedule</h2>
+            <p class="text-muted mb-0">Configure newscast types, metadata, and schedule frequency.</p>
+        </div>
+        <a href="{{ url_for('news.news_dashboard') }}" class="btn btn-secondary">Back to Dashboard</a>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Add or update a news type</div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                <input type="hidden" name="action" value="save">
+                <input type="hidden" name="news_type_id" value="{{ edit_type.id if edit_type else '' }}">
+                <div class="col-md-4">
+                    <label class="form-label">Key</label>
+                    <input type="text" class="form-control" name="key" placeholder="daily_news" value="{{ edit_type.key if edit_type else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Label</label>
+                    <input type="text" class="form-control" name="label" placeholder="Daily News" value="{{ edit_type.label if edit_type else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Output filename</label>
+                    <input type="text" class="form-control" name="filename" placeholder="DailyNews.mp3" value="{{ edit_type.filename if edit_type else '' }}" required>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Frequency</label>
+                    <select class="form-select" name="frequency">
+                        <option value="daily" {% if edit_type and edit_type.frequency == 'daily' %}selected{% endif %}>Daily</option>
+                        <option value="weekly" {% if edit_type and edit_type.frequency == 'weekly' %}selected{% endif %}>Weekly</option>
+                        <option value="custom" {% if edit_type and edit_type.frequency == 'custom' %}selected{% endif %}>Custom days</option>
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Rotation day (weekly)</label>
+                    <select class="form-select" name="rotation_day">
+                        <option value="">Select day</option>
+                        {% for label in day_labels %}
+                            <option value="{{ loop.index0 }}" {% if edit_type and edit_type.rotation_day == loop.index0 %}selected{% endif %}>{{ label }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Active days (custom)</label>
+                    <div class="d-flex flex-wrap gap-2">
+                        {% for label in day_labels %}
+                            <div class="form-check">
+                                {% set is_checked = edit_type and edit_type.active_days and (loop.index0|string) in edit_type.active_days.split(',') %}
+                                <input class="form-check-input" type="checkbox" name="active_days" value="{{ loop.index0 }}" id="day{{ loop.index0 }}" {% if is_checked %}checked{% endif %}>
+                                <label class="form-check-label" for="day{{ loop.index0 }}">{{ label }}</label>
+                            </div>
+                        {% endfor %}
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Metadata artist</label>
+                    <input type="text" class="form-control" name="artist" placeholder="Station name" value="{{ edit_type.artist if edit_type else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Metadata album</label>
+                    <input type="text" class="form-control" name="album" placeholder="News block label" value="{{ edit_type.album if edit_type else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Title template</label>
+                    <input type="text" class="form-control" name="title_template" placeholder="DAILY NEWS {date}" value="{{ edit_type.title_template if edit_type else '' }}">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">Date format</label>
+                    <input type="text" class="form-control" name="date_format" placeholder="%m-%d-%Y" value="{{ edit_type.date_format if edit_type else '' }}">
+                </div>
+                <div class="col-md-4 form-check mt-4">
+                    <input class="form-check-input" type="checkbox" name="is_active" id="is_active" {% if edit_type is none or edit_type.is_active %}checked{% endif %}>
+                    <label class="form-check-label" for="is_active">Active</label>
+                </div>
+                <div class="col-12">
+                    <button type="submit" class="btn btn-primary">Save type</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Landmark events feed (optional)</div>
+        <div class="card-body">
+            <form method="post" class="row g-3">
+                <input type="hidden" name="action" value="events_feed">
+                <div class="col-md-8">
+                    <label class="form-label">Events feed URL</label>
+                    <input type="url" class="form-control" name="events_feed_url" value="{{ events_feed_url or '' }}" placeholder="https://www.landmark.edu/.../events.json or .ics">
+                    <div class="form-text">If you locate a JSON/ICS feed for Landmark events, store it here to enable optional imports later.</div>
+                </div>
+                <div class="col-md-4 d-flex align-items-end">
+                    <button type="submit" class="btn btn-outline-primary">Save feed URL</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Existing news types</div>
+        <div class="card-body table-responsive">
+            <table class="table table-hover align-middle">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Label</th>
+                        <th>Filename</th>
+                        <th>Frequency</th>
+                        <th>Status</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for nt in types %}
+                        <tr>
+                            <td>{{ nt.key }}</td>
+                            <td>{{ nt.label }}</td>
+                            <td>{{ nt.filename }}</td>
+                            <td>{{ nt.frequency }}</td>
+                            <td>{{ 'Active' if nt.is_active else 'Disabled' }}</td>
+                            <td>
+                                <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('news.news_settings', edit_id=nt.id) }}">Edit</a>
+                                <form method="post" class="d-inline">
+                                    <input type="hidden" name="action" value="delete">
+                                    <input type="hidden" name="news_type_id" value="{{ nt.id }}">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit">Delete</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% else %}
+                        <tr><td colspan="6" class="text-muted">No news types yet.</td></tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>

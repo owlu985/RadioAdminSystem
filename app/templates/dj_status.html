@@ -1,0 +1,315 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DJ Status</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700&display=swap" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/gh/keshikan/DSEG@master/css/dseg.css" rel="stylesheet">
+    <style>
+        body, html {
+            height: 100%;
+            margin: 0;
+            color: #f8f9fa;
+            background: #0b1021;
+            background-image: url('{{ station_background }}');
+            background-size: cover;
+            background-position: center;
+            background-repeat: no-repeat;
+        }
+        .overlay {
+            backdrop-filter: blur(3px);
+            background: rgba(0,0,0,0.30);
+            min-height: 100%;
+        }
+        .clock {
+            font-size: 6.2rem;
+            font-weight: 700;
+            letter-spacing: 0.1rem;
+            font-family: 'DSEG14 Classic Mini Light', 'DSEG14 Classic Mini', 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            color: #ff2d2d;
+            background: #000;
+            padding: 0.4rem 1.2rem;
+            border-radius: 1.75rem;
+            display: inline-block;
+        }
+        .overlay .text-muted {
+            color: rgba(255, 255, 255, 0.8) !important;
+        }
+        .card {
+            background-color: rgba(0, 0, 0, 0.45);
+            color: #f8f9fa;
+        }
+        .card-header {
+            color: #f8f9fa;
+        }
+        .card-body {
+            color: #f8f9fa;
+        }
+        .weather-grid .tile {
+            background-color: rgba(255, 255, 255, 0.06);
+            border-radius: 0.5rem;
+            padding: 0.5rem 0.75rem;
+            color: #f8f9fa;
+            min-width: 110px;
+        }
+        .weather-grid small {
+            color: rgba(255,255,255,0.8);
+        }
+        .weather-card-body {
+            max-height: min(65vh, 525px);
+            overflow: hidden;
+        }
+        .status-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 0.75rem;
+        }
+        .status-tile {
+            background: rgba(255, 255, 255, 0.08);
+            border-radius: 0.5rem;
+            padding: 0.85rem;
+            font-size: 1.1rem;
+            font-weight: 600;
+        }
+        .status-label {
+            font-size: 0.9rem;
+            color: rgba(255,255,255,0.8);
+        }
+        .status-value {
+            font-size: 1.4rem;
+        }
+        .text-neon-blue {
+            color: #4de0ff;
+        }
+        .flash-red {
+            color: #ff4d4d;
+            font-weight: 800;
+            animation: flash 1s linear infinite;
+        }
+        @keyframes flash {
+            0%, 50% { opacity: 1; }
+            75% { opacity: 0.2; }
+            100% { opacity: 1; }
+        }
+        @media (max-width: 767px) {
+            .clock {
+                font-size: 4.25rem;
+            }
+            .weather-card-body {
+                max-height: none;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="overlay d-flex flex-column justify-content-center align-items-center p-3 text-center">
+    <div class="mb-3">
+        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-height:90px; width:auto; object-fit:contain;">
+        <div class="fw-bold fs-4">{{ station_name }}</div>
+        <div class="text-muted">{{ station_slogan }}</div>
+    </div>
+
+    <div class="clock" id="clock">--:--:--</div>
+
+    <div class="row g-3 mt-4 w-100" style="max-width: 1200px;">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Station Status</div>
+                <div class="card-body">
+                    <div class="status-grid mb-3" id="statusGrid">
+                        <div class="status-tile">
+                            <div class="status-label">Stream</div>
+                            <div class="status-value" id="streamUp">...</div>
+                        </div>
+                        <div class="status-tile">
+                            <div class="status-label">Probe</div>
+                            <div class="status-value" id="probeClass">...</div>
+                        </div>
+                    </div>
+                    <div class="status-grid" id="nowNext">
+                        <div class="status-tile">
+                            <div class="status-label">Current</div>
+                            <div class="status-value" id="currentShow">Loading...</div>
+                            <div class="small" id="currentWindow"></div>
+                        </div>
+                        <div class="status-tile">
+                            <div class="status-label">Next</div>
+                            <div class="status-value" id="nextShow">Loading...</div>
+                            <div class="small" id="nextWindow"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Weather</div>
+                <div class="card-body weather-card-body" id="weatherCard">
+                    <div class="d-flex align-items-center mb-2">
+                        <div class="display-6 me-3" id="currentTemp">--</div>
+                        <div>
+                            <div class="fw-semibold" id="currentCond">Loading...</div>
+                            <div class="small text-muted" id="currentIcon"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2">
+                        <div class="fw-semibold">Next 1/2/4/8 hours</div>
+                        <div class="d-flex flex-wrap gap-2 weather-grid" id="hourlyWeather"></div>
+                    </div>
+                    <div>
+                        <div class="fw-semibold">Next 3 days</div>
+                        <div class="d-flex flex-wrap gap-2 weather-grid" id="dailyWeather"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    function updateClock() {
+        const now = new Date();
+        const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
+        const hh = String(est.getHours()).padStart(2, '0');
+        const mm = String(est.getMinutes()).padStart(2, '0');
+        const ss = String(est.getSeconds()).padStart(2, '0');
+        document.getElementById('clock').textContent = `${hh}:${mm}:${ss}`;
+    }
+    setInterval(updateClock, 1000);
+    updateClock();
+
+    async function refreshStatus() {
+        try {
+            const res = await fetch('/api/stream/status');
+            const data = await res.json();
+            const streamElem = document.getElementById('streamUp');
+            streamElem.textContent = data.stream_up ? 'Online' : 'Offline';
+            streamElem.style.color = data.stream_up ? '#2ecc71' : '#ff4d4d';
+
+            const probeElem = document.getElementById('probeClass');
+            probeElem.className = 'status-value';
+            probeElem.style.color = '';
+            if (data.probe) {
+                let label = 'No data';
+                if (data.probe.classification === 'automation' || data.probe.classification === 'off_air') {
+                    label = 'AUTO';
+                    probeElem.classList.add('text-neon-blue');
+                } else if (data.probe.classification === 'live_show') {
+                    label = 'LIVE SHOW';
+                    probeElem.style.color = '#2ecc71';
+                } else if (data.probe.classification === 'dead_air') {
+                    label = 'DEAD AIR';
+                    probeElem.classList.add('flash-red');
+                }
+                probeElem.textContent = label;
+            } else {
+                probeElem.textContent = 'No data';
+            }
+        } catch (e) {
+            document.getElementById('streamUp').textContent = 'Error';
+            document.getElementById('probeClass').textContent = '';
+        }
+    }
+    setInterval(refreshStatus, 5000);
+    refreshStatus();
+
+    function renderTiles(containerId, items, formatter) {
+        const container = document.getElementById(containerId);
+        container.innerHTML = '';
+        if (!items || !items.length) {
+            const span = document.createElement('div');
+            span.className = 'text-muted';
+            span.textContent = 'No data';
+            container.appendChild(span);
+            return;
+        }
+        items.forEach(item => {
+            const tile = document.createElement('div');
+            tile.className = 'tile';
+            tile.innerHTML = formatter(item);
+            container.appendChild(tile);
+        });
+    }
+
+    async function refreshWeather() {
+        try {
+            const res = await fetch('/api/weather/tempest');
+            const data = await res.json();
+            if (!res.ok || data.status === 'error') {
+                throw new Error(data.message || 'Weather unavailable');
+            }
+            document.getElementById('currentTemp').textContent =
+                data.current?.temp !== undefined && data.current?.temp !== null ? `${Math.round(data.current.temp)}°` : '--';
+            document.getElementById('currentCond').textContent = data.current?.condition || '—';
+            document.getElementById('currentIcon').textContent = data.current?.icon || '';
+
+            renderTiles('hourlyWeather', data.next_hours, (h) => {
+                const t = h.temp !== undefined && h.temp !== null ? `${Math.round(h.temp)}°` : '--';
+                return `<div class="fw-semibold">${h.time || ''}</div><small>${h.condition || ''}</small><div>${t}</div>`;
+            });
+
+            renderTiles('dailyWeather', data.next_days, (d) => {
+                const high = d.high !== undefined && d.high !== null ? `${Math.round(d.high)}°` : '--';
+                const low = d.low !== undefined && d.low !== null ? `${Math.round(d.low)}°` : '--';
+                return `<div class="fw-semibold">${d.day || ''}</div><small>${d.condition || ''}</small><div>${high} / ${low}</div>`;
+            });
+        } catch (e) {
+            document.getElementById('currentTemp').textContent = '--';
+            document.getElementById('currentCond').textContent = 'Weather unavailable';
+            document.getElementById('currentIcon').textContent = '';
+            renderTiles('hourlyWeather', [], () => '');
+            renderTiles('dailyWeather', [], () => '');
+        }
+    }
+    refreshWeather();
+    setInterval(refreshWeather, 300000);
+
+    async function refreshNowPlaying() {
+        try {
+            const res = await fetch('/api/now');
+            const data = await res.json();
+            const currentElem = document.getElementById('currentShow');
+            const currentWindow = document.getElementById('currentWindow');
+
+            if (data.status === 'off_air') {
+                currentElem.textContent = 'AUTO';
+                currentElem.classList.add('text-neon-blue');
+                currentWindow.textContent = '';
+            } else if (data.show) {
+                const hostLabel = data.absence && data.absence.replacement ? `${data.absence.replacement} (cover)` : data.show.host;
+                currentElem.innerHTML = `${data.show.name}<br><span class="small text-muted">${hostLabel}</span>`;
+                currentElem.classList.remove('text-neon-blue');
+                currentWindow.textContent = `${data.show.window.start_time} - ${data.show.window.end_time}`;
+            } else {
+                currentElem.textContent = '—';
+                currentElem.classList.remove('text-neon-blue');
+                currentWindow.textContent = '';
+            }
+
+            const nextShow = data.next_show;
+            const nextElem = document.getElementById('nextShow');
+            const nextWindow = document.getElementById('nextWindow');
+            if (nextShow) {
+                const nextHost = nextShow.absence && nextShow.absence.replacement ? `${nextShow.absence.replacement} (cover)` : nextShow.host;
+                nextElem.innerHTML = `${nextShow.name}<br><span class="small text-muted">${nextHost}</span>`;
+                nextWindow.textContent = `${nextShow.window.start_time} - ${nextShow.window.end_time}`;
+            } else {
+                nextElem.textContent = '—';
+                nextWindow.textContent = '';
+            }
+        } catch (e) {
+            document.getElementById('currentShow').textContent = 'Error';
+            document.getElementById('currentWindow').textContent = '';
+            document.getElementById('nextShow').textContent = '—';
+            document.getElementById('nextWindow').textContent = '';
+        }
+    }
+    setInterval(refreshNowPlaying, 5000);
+    refreshNowPlaying();
+</script>
+</body>
+</html>
