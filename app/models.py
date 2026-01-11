@@ -370,6 +370,18 @@ class ArchivistRipResult(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class AuditRun(db.Model):
+    __tablename__ = "audit_run"
+
+    id = db.Column(db.Integer, primary_key=True)
+    action = db.Column(db.String(32), nullable=False)
+    status = db.Column(db.String(32), nullable=False)
+    params_json = db.Column(db.Text, nullable=True)
+    results_json = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    completed_at = db.Column(db.DateTime, nullable=True)
+
+
 class SocialPost(db.Model):
     __tablename__ = "social_post"
 
