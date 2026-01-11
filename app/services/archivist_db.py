@@ -100,6 +100,7 @@ def _normalize_row(row: Dict[str, str]):
         # Store label in album so it is searchable in the existing UI
         "album": label or lower.get("album") or None,
         "catalog_number": catalog_number or None,
+        "price_range": price or None,
         "notes": combined_notes,
         "extra": json.dumps(row, ensure_ascii=False),
     }
@@ -151,6 +152,7 @@ def search_archivist(query: str, limit: int = 200):
                 ArchivistEntry.artist.ilike(like),
                 ArchivistEntry.album.ilike(like),
                 ArchivistEntry.catalog_number.ilike(like),
+                ArchivistEntry.price_range.ilike(like),
             )
         )
     return q.order_by(ArchivistEntry.artist.asc().nulls_last(), ArchivistEntry.title.asc().nulls_last()).limit(limit).all()
@@ -164,6 +166,7 @@ def lookup_album(query: str, limit: int = 5):
             ArchivistEntry.album.ilike(like),
             ArchivistEntry.title.ilike(like),
             ArchivistEntry.catalog_number.ilike(like),
+            ArchivistEntry.price_range.ilike(like),
         )
     )
     return q.order_by(ArchivistEntry.artist.asc().nulls_last()).limit(limit).all()
@@ -193,10 +196,12 @@ def analyze_album_rip(
         last_start = 0
         for start, end in silences:
             if start - last_start >= min_track_ms:
-                segments.append({"start_ms": last_start, "end_ms": start})
+                segments.append({"start_ms": last_start, "end_ms": start, "duration_ms": start - last_start})
                 last_start = end
         if duration_ms - last_start >= max(min_track_ms // 2, 30_000):
-            segments.append({"start_ms": last_start, "end_ms": duration_ms})
+            segments.append(
+                {"start_ms": last_start, "end_ms": duration_ms, "duration_ms": duration_ms - last_start}
+            )
         return {"duration_ms": duration_ms, "segments": segments}
     except Exception:
         return None

@@ -252,8 +252,26 @@ def create_app(config_class=Config):
                             artist VARCHAR(255),
                             album VARCHAR(255),
                             catalog_number VARCHAR(128),
+                            price_range VARCHAR(64),
                             notes TEXT,
                             extra TEXT,
+                            created_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                else:
+                    archivist_cols = {c['name'] for c in insp.get_columns('archivist_entry')}
+                    if "price_range" not in archivist_cols:
+                        conn.execute(text("ALTER TABLE archivist_entry ADD COLUMN price_range VARCHAR(64)"))
+                if "archivist_rip_result" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS archivist_rip_result (
+                            id INTEGER PRIMARY KEY,
+                            filename VARCHAR(255),
+                            duration_ms INTEGER,
+                            segments_json TEXT,
+                            settings_json TEXT,
                             created_at DATETIME NOT NULL
                         )
                         """

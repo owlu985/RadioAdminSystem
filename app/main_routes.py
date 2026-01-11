@@ -40,6 +40,7 @@ from .models import (
     DJ,
     LiveReadCard,
     ArchivistEntry,
+    ArchivistRipResult,
     SocialPost,
     LogSheet,
     DJHandoffNote,
@@ -1274,28 +1275,9 @@ def delete_live_read(card_id: int):
     return redirect(url_for("main.live_read_cards"))
 
 
-@main_bp.route("/archivist", methods=["GET", "POST"])
+@main_bp.route("/archivist")
 @permission_required({"music:view"})
 def archivist_page():
-    import_count = None
-    if request.method == "POST":
-        file = request.files.get("archive_file")
-        if not file or file.filename == "":
-            flash("Please choose a CSV/TSV file to import.", "warning")
-        else:
-            try:
-                upload_dir = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
-                count = import_archivist_csv(
-                    file,
-                    current_app.config.get("ARCHIVIST_DB_PATH"),
-                    upload_dir,
-                )
-                import_count = count
-                flash(f"Imported {count} rows into the archivist database.", "success")
-            except Exception as exc:  # noqa: BLE001
-                logger.error(f"Failed to import archivist data: {exc}")
-                flash("Import failed. Please check the file format.", "danger")
-
     query = (request.args.get("q") or "").strip()
     show_all = request.args.get("show_all") == "1" or query == "%"
     results = []
@@ -1304,13 +1286,32 @@ def archivist_page():
         results = search_archivist(query or "%", limit=limit)
 
     total = ArchivistEntry.query.count()
+    raw_results = ArchivistRipResult.query.order_by(ArchivistRipResult.created_at.desc()).limit(10).all()
+    rip_results = []
+    for item in raw_results:
+        segments = []
+        if item.segments_json:
+            try:
+                segments = json.loads(item.segments_json)
+            except json.JSONDecodeError:
+                segments = []
+        rip_results.append(
+            {
+                "id": item.id,
+                "filename": item.filename,
+                "duration_ms": item.duration_ms or 0,
+                "settings_json": item.settings_json or "",
+                "segments": segments,
+                "track_count": len(segments),
+            }
+        )
     return render_template(
         "archivist.html",
         results=results,
         query=query,
         total=total,
-        import_count=import_count,
         show_all=show_all,
+        rip_results=rip_results,
     )
 
 
@@ -2016,6 +2017,23 @@ def settings():
 
     if request.method == 'POST':
         try:
+            if request.form.get("archivist_import") == "1":
+                file = request.files.get("archivist_file")
+                if not file or file.filename == "":
+                    flash("Please choose a CSV/TSV file to import.", "warning")
+                    return redirect(url_for('main.settings'))
+                try:
+                    upload_dir = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
+                    count = import_archivist_csv(
+                        file,
+                        current_app.config.get("ARCHIVIST_DB_PATH"),
+                        upload_dir,
+                    )
+                    flash(f"Imported {count} rows into the archivist database.", "success")
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(f"Failed to import archivist data: {exc}")
+                    flash("Import failed. Please check the file format.", "danger")
+                return redirect(url_for('main.settings'))
             updated_settings = {
                 'ADMIN_USERNAME': request.form['admin_username'],
                 'ADMIN_PASSWORD': request.form['admin_password'],

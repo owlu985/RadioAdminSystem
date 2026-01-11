@@ -353,8 +353,20 @@ class ArchivistEntry(db.Model):
     artist = db.Column(db.String(255), nullable=True)
     album = db.Column(db.String(255), nullable=True)
     catalog_number = db.Column(db.String(128), nullable=True)
+    price_range = db.Column(db.String(64), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     extra = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ArchivistRipResult(db.Model):
+    __tablename__ = "archivist_rip_result"
+
+    id = db.Column(db.Integer, primary_key=True)
+    filename = db.Column(db.String(255), nullable=True)
+    duration_ms = db.Column(db.Integer, nullable=True)
+    segments_json = db.Column(db.Text, nullable=True)
+    settings_json = db.Column(db.Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 

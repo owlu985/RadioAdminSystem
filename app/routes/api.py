@@ -23,6 +23,7 @@ from app.models import (
     DJAbsence,
     HostedAudio,
     MarathonEvent,
+    ArchivistRipResult,
     db,
 )
 from app.utils import (
@@ -384,6 +385,7 @@ def archivist_album_info():
             "title": r.title,
             "album": r.album,
             "catalog_number": r.catalog_number,
+            "price_range": r.price_range,
             "notes": r.notes,
         }
         for r in rows
@@ -427,6 +429,20 @@ def archivist_album_rip():
     result = analyze_album_rip(path, silence_thresh_db=threshold, min_gap_ms=min_gap_ms, min_track_ms=min_track_ms)
     if not result:
         return jsonify({"status": "error", "message": "analysis_unavailable"}), 400
+    try:
+        db.session.add(
+            ArchivistRipResult(
+                filename=os.path.basename(path),
+                duration_ms=result.get("duration_ms"),
+                segments_json=json.dumps(result.get("segments", [])),
+                settings_json=json.dumps(
+                    {"silence_thresh_db": threshold, "min_gap_ms": min_gap_ms, "min_track_ms": min_track_ms}
+                ),
+            )
+        )
+        db.session.commit()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Failed to store rip result: %s", exc)
     return jsonify({"status": "ok", **result, "source_path": path})
 
 

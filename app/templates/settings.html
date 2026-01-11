@@ -86,7 +86,7 @@
             </div>
         </div>
         <div class="col-md-9">
-            <form method="post">
+            <form method="post" enctype="multipart/form-data">
                 <div id="tab-general" class="tab-pane active">
                     <div class="card mb-3">
                         <div class="card-header">Admin Access</div>
@@ -545,6 +545,16 @@
                                 <div class="col-md-6">
                                     <label for="archivist_upload_dir" class="form-label">Archivist Upload Directory</label>
                                     <input type="text" name="archivist_upload_dir" id="archivist_upload_dir" class="form-control" value="{{ archivist_upload_dir }}" placeholder="Folder for uploaded catalog CSVs">
+                                </div>
+                            </div>
+                            <div class="card border-0 bg-light mb-3">
+                                <div class="card-body">
+                                    <h6 class="card-title mb-2">Archivist Catalog Import</h6>
+                                    <div class="d-flex flex-column flex-md-row gap-2 align-items-md-center">
+                                        <input type="file" name="archivist_file" accept=".csv,.tsv,text/csv,text/tab-separated-values" class="form-control">
+                                        <button type="submit" name="archivist_import" value="1" class="btn btn-outline-primary">Import CSV/TSV</button>
+                                    </div>
+                                    <div class="form-text mt-2">Imports Artist, Title, Album, Catalog, and PriceRange columns from the archivist catalog.</div>
                                 </div>
                             </div>
                             <div class="row g-3 mb-3">
