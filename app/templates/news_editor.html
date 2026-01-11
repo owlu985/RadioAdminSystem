@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>News Script Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    {% include '_flash.html' %}
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Script Editor</h2>
+            <p class="text-muted mb-0">{{ news_type.label }} · {{ target_date }}</p>
+        </div>
+        <a href="{{ url_for('news.upload_news') }}" class="btn btn-secondary">Back to Manage</a>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Edit script text</div>
+        <div class="card-body">
+            <form method="post">
+                <input type="hidden" name="news_type_id" value="{{ news_type.id }}">
+                <input type="hidden" name="date" value="{{ target_date }}">
+                <div class="mb-3">
+                    <textarea class="form-control" name="content" rows="16" placeholder="Write the script here...">{{ content }}</textarea>
+                </div>
+                <button class="btn btn-primary" type="submit">Save script</button>
+                <a class="btn btn-outline-secondary" href="{{ url_for('news.news_dashboard') }}">Back to Dashboard</a>
+            </form>
+        </div>
+    </div>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
