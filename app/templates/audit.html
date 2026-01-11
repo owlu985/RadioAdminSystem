@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Audits</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1">Audits</h2>
+            <div class="text-muted">Run background checks for recordings and explicit content. Results are stored for later review.</div>
+        </div>
+        <a class="btn btn-secondary btn-sm" href="{{ url_for('main.dashboard') }}">Back to Dashboard</a>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Recording Classification Audit</div>
+                <div class="card-body">
+                    <form id="recordingsForm">
+                        <div class="mb-2">
+                            <label class="form-label">Recordings folder (optional)</label>
+                            <input type="text" class="form-control" name="recordings_folder" placeholder="{{ config['OUTPUT_FOLDER'] }}">
+                            <div class="form-text">Leave blank to audit the default recordings output folder.</div>
+                        </div>
+                        <button type="submit" class="btn btn-primary">Run audit</button>
+                    </form>
+                    <div class="progress mt-3" style="height: 8px; display:none;" id="recProgressWrap">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="recProgress" role="progressbar" style="width: 0%;"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="recStatus"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header">Explicit Music Audit (iTunes + optional lyrics)</div>
+                <div class="card-body">
+                    <form id="explicitForm">
+                        <div class="row g-2 mb-2">
+                            <div class="col-md-4">
+                                <label class="form-label">Rate limit (seconds)</label>
+                                <input type="number" step="0.1" class="form-control" name="rate_limit" value="{{ default_rate }}">
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label">Max files</label>
+                                <input type="number" class="form-control" name="max_files" value="{{ default_limit }}">
+                            </div>
+                            <div class="col-md-4 d-flex align-items-end">
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="lyrics_check" id="lyrics_check" {% if default_lyrics %}checked{% endif %}>
+                                    <label class="form-check-label" for="lyrics_check">Lyrics check</label>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="form-text">Explicit is flagged if any explicit version exists on iTunes. Lyrics check searches for FCC words.</div>
+                        <button type="submit" class="btn btn-primary mt-2">Run audit</button>
+                    </form>
+                    <div class="progress mt-3" style="height: 8px; display:none;" id="expProgressWrap">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" id="expProgress" role="progressbar" style="width: 0%;"></div>
+                    </div>
+                    <div class="small text-muted mt-2" id="expStatus"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mt-4">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Recent audit runs</span>
+            <button class="btn btn-sm btn-outline-secondary" type="button" onclick="loadAuditRuns()">Refresh</button>
+        </div>
+        <div class="card-body">
+            <div class="table-responsive">
+                <table class="table table-sm align-middle mb-0" id="auditRunsTable">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Type</th>
+                            <th>Status</th>
+                            <th>Started</th>
+                            <th>Completed</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr><td colspan="6" class="text-muted text-center">Loading…</td></tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <h4 class="mt-4">Recording Audit Results</h4>
+    <div class="table-responsive" id="recResults"></div>
+
+    <h4 class="mt-4">Explicit Music Audit Results</h4>
+    <div class="table-responsive" id="expResults"></div>
+</div>
+<script>
+    async function startAudit(action, payload, progressWrapId, progressId, resultsContainerId, statusId) {
+        const wrap = document.getElementById(progressWrapId);
+        const bar = document.getElementById(progressId);
+        const status = document.getElementById(statusId);
+        wrap.style.display = 'block';
+        bar.style.width = '0%';
+        status.textContent = 'Starting...';
+        const res = await fetch('/api/audit/start', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({action, ...payload})
+        });
+        const data = await res.json();
+        if (!data.job_id) {
+            alert(data.message || 'Failed to start audit');
+            return;
+        }
+        const jobId = data.job_id;
+        const poll = async () => {
+            const r = await fetch(`/api/audit/status/${jobId}`);
+            const s = await r.json();
+            const total = s.total || 1;
+            const prog = Math.min(100, Math.floor((s.progress || 0) * 100 / total));
+            bar.style.width = `${prog}%`;
+            status.textContent = `${s.status || 'running'} — ${s.progress || 0}/${s.total || '?'} processed`;
+            if (s.status === 'completed' || s.status === 'error') {
+                wrap.style.display = 'none';
+                status.textContent = s.status === 'error' ? (s.error || 'error') : 'Completed';
+                renderResults(resultsContainerId, s.results || [], action);
+                loadAuditRuns();
+                return;
+            }
+            setTimeout(poll, 2000);
+        };
+        poll();
+    }
+
+    function renderResults(containerId, results, action) {
+        const container = document.getElementById(containerId);
+        if (!results || !results.length) {
+            container.innerHTML = "<p class='text-muted'>No results.</p>";
+            return;
+        }
+        if (action === 'recordings') {
+            container.innerHTML = `<table class="table table-sm table-bordered">
+                <thead><tr><th>File</th><th>Classification</th><th>Reason</th><th>Avg dB</th><th>Silence</th><th>Automation</th></tr></thead>
+                <tbody>
+                ${results.map(r => `<tr>
+                    <td style="max-width:400px;">${r.path}</td>
+                    <td>${r.classification}</td>
+                    <td>${r.reason}</td>
+                    <td>${r.avg_db}</td>
+                    <td>${r.silence_ratio}</td>
+                    <td>${r.automation_ratio}</td>
+                </tr>`).join('')}
+                </tbody></table>`;
+        } else {
+            container.innerHTML = `<table class="table table-sm table-bordered">
+                <thead><tr><th>File</th><th>Title</th><th>Artist</th><th>Explicit</th><th>Clean Available</th><th>Lyrics</th><th>Error</th></tr></thead>
+                <tbody>
+                ${results.map(r => `<tr>
+                    <td style="max-width:400px;">${r.path}</td>
+                    <td>${r.title || ''}</td>
+                    <td>${r.artist || ''}</td>
+                    <td>${r.explicit}</td>
+                    <td>${r.clean_available}</td>
+                    <td>${r.lyrics_flagged ? (r.lyrics_matches || []).join(', ') : ''}</td>
+                    <td>${r.error || r.lyrics_error || ''}</td>
+                </tr>`).join('')}
+                </tbody></table>`;
+        }
+    }
+
+    async function loadAuditRuns() {
+        const table = document.querySelector('#auditRunsTable tbody');
+        const res = await fetch('/api/audit/runs?limit=20');
+        const data = await res.json();
+        if (!data.length) {
+            table.innerHTML = '<tr><td colspan="6" class="text-muted text-center">No runs yet.</td></tr>';
+            return;
+        }
+        table.innerHTML = data.map(run => `
+            <tr>
+                <td>${run.id}</td>
+                <td>${run.action}</td>
+                <td>${run.status}</td>
+                <td>${run.created_at}</td>
+                <td>${run.completed_at || ''}</td>
+                <td><button class="btn btn-sm btn-outline-primary" onclick="loadAuditRun(${run.id})">Load</button></td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadAuditRun(runId) {
+        const res = await fetch(`/api/audit/runs/${runId}`);
+        const data = await res.json();
+        if (data.action === 'recordings') {
+            renderResults('recResults', data.results || [], 'recordings');
+        } else if (data.action === 'explicit') {
+            renderResults('expResults', data.results || [], 'explicit');
+        }
+    }
+
+    document.getElementById('recordingsForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const folder = this.recordings_folder.value || null;
+        startAudit('recordings', {folder}, 'recProgressWrap', 'recProgress', 'recResults', 'recStatus');
+    });
+
+    document.getElementById('explicitForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        const rate_limit = this.rate_limit.value || {{ default_rate }};
+        const max_files = this.max_files.value || {{ default_limit }};
+        const lyrics_check = this.lyrics_check.checked;
+        startAudit('explicit', {rate: rate_limit, max_files, lyrics_check}, 'expProgressWrap', 'expProgress', 'expResults', 'expStatus');
+    });
+
+    loadAuditRuns();
+</script>
+</body>
+{% include '_footer.html' %}
+</html>

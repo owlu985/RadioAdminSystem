@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>My Profile</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <h2>My Profile</h2>
+    </div>
+    <form method="post">
+        <div class="card">
+            <div class="card-body">
+                <dl class="row mb-0">
+                    <dt class="col-sm-3">Name</dt>
+                    <dd class="col-sm-9">{{ user.display_name or user.email }}</dd>
+
+                    <dt class="col-sm-3">Login Email</dt>
+                    <dd class="col-sm-9">{{ user.email }}</dd>
+
+                    <dt class="col-sm-3">Notification Email</dt>
+                    <dd class="col-sm-9">
+                        <div class="input-group input-group-sm">
+                            <input type="email" class="form-control" name="notification_email" value="{{ user.notification_email or '' }}" placeholder="Optional notification email">
+                            <button class="btn btn-primary" type="submit">Save</button>
+                        </div>
+                        <div class="text-muted small">Used for notifications; does not change OAuth login.</div>
+                    </dd>
+
+                    <dt class="col-sm-3">Role</dt>
+                    <dd class="col-sm-9">{{ role|title }}</dd>
+
+                    <dt class="col-sm-3">Permissions</dt>
+                    <dd class="col-sm-9">
+                        {% if perms %}
+                            <ul class="mb-0">
+                                {% for perm in perms %}
+                                    <li>{{ perm }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% else %}
+                            <span class="text-muted">Inherited from role</span>
+                        {% endif %}
+                    </dd>
+
+                    <dt class="col-sm-3">Account Created</dt>
+                    <dd class="col-sm-9">{{ (user.created_at or user.requested_at)|default('N/A') }}</dd>
+                </dl>
+            </div>
+        </div>
+    </form>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
