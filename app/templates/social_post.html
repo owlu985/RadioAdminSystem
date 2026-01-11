@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Social Posting</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+  <div class="d-flex justify-content-between align-items-center mb-3 flex-wrap gap-2">
+    <div>
+      <h2 class="mb-0">Social Posting</h2>
+      <small class="text-muted">{% if config.SOCIAL_SEND_ENABLED %}Live delivery{% else %}Simulated delivery{% endif %} | {% if config.SOCIAL_DRY_RUN %}Dry-run enabled{% else %}Dry-run disabled{% endif %}</small>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header">Compose</div>
+    <div class="card-body">
+      <form method="post" class="row g-3" enctype="multipart/form-data">
+        <div class="col-12">
+          <label class="form-label" for="content">Message</label>
+          <textarea class="form-control" id="content" name="content" rows="4" required placeholder="What do you want to post?"></textarea>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="image_url">Image URL (optional)</label>
+          <input type="url" class="form-control" name="image_url" id="image_url" placeholder="https://...">
+        </div>
+        <div class="col-md-6">
+          <label class="form-label" for="image_file">Upload Image (optional)</label>
+          <input type="file" class="form-control" name="image_file" id="image_file" accept="image/*">
+          <div class="form-text">Uploaded images are hosted by RAMS and used when posting if provided.</div>
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Platforms</label>
+          <div class="d-flex flex-wrap gap-3">
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="facebook" id="pf-facebook" {% if platform_tokens.facebook %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.facebook else '' }}" for="pf-facebook">Facebook</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="instagram" id="pf-instagram" disabled><label class="form-check-label text-muted" for="pf-instagram">Instagram (simulated)</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="twitter" id="pf-twitter" {% if platform_tokens.twitter %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.twitter else '' }}" for="pf-twitter">Twitter/X</label></div>
+            <div class="form-check"><input class="form-check-input" type="checkbox" name="platforms" value="bluesky" id="pf-bluesky" {% if platform_tokens.bluesky %}checked{% else %}disabled{% endif %}><label class="form-check-label text-{{ 'muted' if not platform_tokens.bluesky else '' }}" for="pf-bluesky">Bluesky</label></div>
+          </div>
+          <div class="form-text">If no platform is selected, all are assumed. Posts are simulated unless delivery is enabled in Settings.</div>
+        </div>
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary">Queue Post</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">Recent posts</div>
+    <div class="card-body p-0">
+      <div class="table-responsive">
+        <table class="table table-sm align-middle mb-0">
+          <thead><tr><th>Created</th><th>Content</th><th>Platforms</th><th>Status</th></tr></thead>
+          <tbody>
+            {% for post in posts %}
+              <tr>
+                <td style="white-space:nowrap">{{ post.created_at }}</td>
+                <td style="max-width:360px; white-space:pre-wrap">{{ post.content }}</td>
+                <td>
+                  {% set pfs = post.platforms %}
+                  {% if pfs %}{{ pfs }}{% else %}<span class="text-muted">-</span>{% endif %}
+                </td>
+                <td>
+                  <span class="badge {% if post.status == 'simulated' %}bg-secondary{% elif post.status == 'queued' %}bg-info text-dark{% else %}bg-light text-dark{% endif %}">{{ post.status }}</span>
+                  {% if post.status_map %}
+                    <div class="small text-muted mt-1">{% for k,v in post.status_map.items() %}<span class="me-2">{{ k }}: {{ v }}</span>{% endfor %}</div>
+                  {% endif %}
+                </td>
+              </tr>
+            {% else %}
+              <tr><td colspan="4" class="text-center text-muted py-3">No posts yet.</td></tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+{% include '_footer.html' %}
+</body>
+</html>
