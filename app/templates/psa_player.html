@@ -1112,6 +1112,20 @@
         renderQueue();
     });
 
+    radiodjOverrideBtn.addEventListener('click', async () => {
+        const nextMode = controlMode === 'rams' ? 'radiodj' : 'rams';
+        const ok = await setNowPlayingOverride(nextMode === 'radiodj');
+        if (!ok) {
+            if (radiodjQueueStatus) {
+                radiodjQueueStatus.textContent = 'Unable to update now-playing override.';
+            }
+            return;
+        }
+        controlMode = nextMode;
+        updateControlModeUI();
+        renderQueue();
+    });
+
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
     categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
     document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
