@@ -8,7 +8,7 @@ import os
 import shutil
 import json
 import base64
-from typing import Optional
+from typing import Optional, TypedDict
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -174,6 +174,14 @@ def _set_now_playing_from_item(state: NowPlayingState, item: PlaybackQueueItem |
     state.started_at = datetime.utcnow() if item else None
     state.updated_at = datetime.utcnow()
     db.session.add(state)
+
+
+class PlaybackQueueItem(TypedDict, total=False):
+    name: str
+    artist: str
+    album: str
+    duration: float
+    source: str
 
 
 def _serialize_show_run(run: ShowRun) -> dict:
