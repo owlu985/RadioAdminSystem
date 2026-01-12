@@ -24,6 +24,7 @@ from app.models import (
     HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
+    NowPlayingState,
     db,
 )
 from app.utils import (
@@ -94,6 +95,57 @@ def _psa_root() -> str:
     return root
 
 
+def _media_roots() -> list[str]:
+    roots = []
+    psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    if psa_root:
+        roots.append(psa_root)
+    music_root = current_app.config.get("NAS_MUSIC_ROOT")
+    if music_root:
+        roots.append(music_root)
+    assets_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if assets_root:
+        roots.append(assets_root)
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    roots.append(voice_root)
+    return roots
+
+
+def _decode_media_token(token: str) -> Optional[str]:
+    if not token:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    allowed = False
+    for root in _media_roots():
+        root_abs = os.path.normcase(os.path.abspath(os.path.normpath(root)))
+        if full.startswith(root_abs):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(full):
+        return None
+    return full
+
+
+def _get_now_playing_state() -> NowPlayingState:
+    state = NowPlayingState.query.first()
+    if not state:
+        state = NowPlayingState()
+        db.session.add(state)
+        db.session.commit()
+    return state
+
+
+def _override_enabled() -> bool:
+    if current_app.config.get("NOW_PLAYING_OVERRIDE_ENABLED"):
+        return True
+    state = NowPlayingState.query.first()
+    return bool(state.override_enabled) if state else False
+
+
 def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
     host_label = show_host_names(show)
     if absence and absence.replacement_name:
@@ -138,16 +190,19 @@ def now_playing():
     now = datetime.utcnow()
     show = get_current_show()
     absence = active_absence_for_show(show, now=now) if show else None
+    override_enabled = _override_enabled()
 
     if not show:
-        rdj = RadioDJClient()
-        rdj_payload = rdj.now_playing()
         base = {
             "status": "off_air",
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
+            "override_enabled": override_enabled,
         }
-        if rdj_payload:
-            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+        if override_enabled and current_app.config.get("RADIODJ_HOOK_ENABLED"):
+            rdj = RadioDJClient()
+            rdj_payload = rdj.now_playing()
+            if rdj_payload:
+                base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -183,6 +238,7 @@ def now_playing():
         "status": "on_air",
         "show": _serialize_show(show, absence=absence),
         "run": _serialize_show_run(run),
+        "override_enabled": override_enabled,
         "absence": {
             "status": absence.status,
             "replacement": absence.replacement_name,
@@ -216,13 +272,29 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
-    rdj = RadioDJClient()
-    rdj_payload = rdj.now_playing()
-    if rdj_payload:
-        base = base or {}
-        base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
-        return jsonify(base)
+    if base and base.get("override_enabled") and current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        rdj = RadioDJClient()
+        rdj_payload = rdj.now_playing()
+        if rdj_payload:
+            base = base or {}
+            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+            return jsonify(base)
     return jsonify(base or {"status": "off_air"})
+
+
+@api_bp.route("/now/override", methods=["GET", "POST"])
+def now_override():
+    state = _get_now_playing_state()
+    if request.method == "POST":
+        payload = request.get_json(force=True, silent=True) or {}
+        enabled = payload.get("enabled")
+        if enabled is None:
+            return jsonify({"status": "error", "message": "enabled required"}), 400
+        enabled_flag = str(enabled).lower() in {"1", "true", "yes", "on"}
+        state.override_enabled = enabled_flag
+        state.updated_at = datetime.utcnow()
+        db.session.commit()
+    return jsonify({"status": "ok", "override_enabled": state.override_enabled})
 
 
 @api_bp.route("/probe", methods=["POST"])
@@ -1017,6 +1089,46 @@ def list_psas():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
     return jsonify({"status": "ok", "psas": items})
+
+
+@api_bp.route("/radiodj/now-playing")
+def radiodj_now_playing():
+    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        return jsonify({"status": "disabled", "track": None}), 503
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "disabled", "track": None}), 503
+    payload = client.now_playing()
+    if not payload:
+        return jsonify({"status": "empty", "track": None})
+    return jsonify({"status": "ok", "track": payload})
+
+
+@api_bp.route("/radiodj/queue", methods=["POST"])
+def radiodj_queue():
+    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
+    payload = request.get_json(force=True, silent=True) or {}
+    items = payload.get("items") or []
+    if not items:
+        return jsonify({"status": "error", "message": "items_required"}), 400
+    results = []
+    for item in items:
+        token = (item or {}).get("token") if isinstance(item, dict) else None
+        name = (item or {}).get("name") if isinstance(item, dict) else None
+        path = _decode_media_token(token or "")
+        if not path:
+            results.append({"name": name or "Unknown", "status": "error", "message": "invalid_token"})
+            continue
+        try:
+            target = client.import_file(path)
+            results.append({"name": name or os.path.basename(path), "status": "ok", "target": str(target)})
+        except Exception as exc:  # noqa: BLE001
+            results.append({"name": name or os.path.basename(path), "status": "error", "message": str(exc)})
+    return jsonify({"status": "ok", "results": results})
 
 
 @api_bp.route("/radiodj/import/<kind>", methods=["POST"])
