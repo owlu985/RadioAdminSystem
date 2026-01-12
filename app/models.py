@@ -507,6 +507,26 @@ class HostedAudio(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class ImagingAsset(db.Model):
+    __tablename__ = "imaging_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.String(512), nullable=False)
+    category = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PsaAsset(db.Model):
+    __tablename__ = "psa_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.String(512), nullable=False)
+    category = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class AutomationRule(db.Model):
     __tablename__ = "automation_rule"
 
