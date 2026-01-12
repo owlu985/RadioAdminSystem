@@ -1,5 +1,4 @@
-from datetime import datetime
-import time
+import csv
 from datetime import datetime, timedelta
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort
 import os
@@ -59,7 +58,7 @@ from app.services.music_search import (
     cover_art_candidates,
     enrich_metadata_external,
 )
-from app.services.media_library import list_media
+from app.services.media_library import list_media, load_media_meta, save_media_meta, _media_roots
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -430,12 +429,37 @@ def music_search():
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     folder = request.args.get("folder")
+    genre = request.args.get("genre")
+    mood = request.args.get("mood")
+    year = request.args.get("year")
+    explicit_raw = request.args.get("explicit")
+    explicit = None
+    if explicit_raw is not None and explicit_raw != "":
+        explicit = str(explicit_raw).lower() in {"1", "true", "yes", "y"}
     refresh = request.args.get("refresh", type=int, default=0)
     if refresh:
         get_music_index(refresh=True)
     if not q:
-        return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
-    payload = search_music(q, page=page, per_page=per_page, folder=folder)
+        return jsonify({
+            "items": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "folders": [],
+            "genres": [],
+            "moods": [],
+            "years": [],
+        })
+    payload = search_music(
+        q,
+        page=page,
+        per_page=per_page,
+        folder=folder,
+        genre=genre,
+        year=year,
+        mood=mood,
+        explicit=explicit,
+    )
     return jsonify(payload)
 
 
@@ -654,6 +678,45 @@ def psa_library():
     query = request.args.get("q")
     payload = list_media(query=query, category=category, kind=kind, page=page, per_page=per_page)
     return jsonify(payload)
+
+
+@api_bp.route("/psa/cue", methods=["GET", "POST"])
+def psa_cue():
+    token = request.values.get("token")
+    payload = request.get_json(force=True, silent=True) or {}
+    token = token or payload.get("token")
+    if not token:
+        return jsonify({"status": "error", "message": "token required"}), 400
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return jsonify({"status": "error", "message": "invalid token"}), 400
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    allowed = False
+    for _, root, _ in _media_roots():
+        root_abs = os.path.normcase(os.path.abspath(os.path.normpath(root)))
+        if full.startswith(root_abs):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(full):
+        return jsonify({"status": "error", "message": "file not found"}), 404
+
+    if request.method == "GET":
+        meta = load_media_meta(full)
+        cue = {k: meta.get(k) for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]}
+        cue = {k: v for k, v in cue.items() if v is not None}
+        return jsonify({"status": "ok", "cue": cue})
+
+    cue_payload = payload.get("cue") or {}
+    cue_updates = {
+        k: cue_payload.get(k)
+        for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]
+        if cue_payload.get(k) is not None
+    }
+    meta = save_media_meta(full, cue_updates)
+    cue = {k: meta.get(k) for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]}
+    cue = {k: v for k, v in cue.items() if v is not None}
+    return jsonify({"status": "ok", "cue": cue})
 
 
 @api_bp.route("/music/scan/library")
