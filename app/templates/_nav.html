@@ -36,6 +36,7 @@
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Library</a>
             <ul class="dropdown-menu">
+              {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.library_editor_page') }}">Library Editor</a></li>{% endif %}
               {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.music_search_page') }}">Music Search</a></li>{% endif %}
               {% if can_view('music:view') %}<li><a class="dropdown-item" href="{{ url_for('main.library_editor_page') }}">Library Editor</a></li>{% endif %}
               {% if can_view('dj:manage') %}<li><a class="dropdown-item" href="{{ url_for('main.list_djs') }}">DJs</a></li>{% endif %}

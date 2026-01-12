@@ -996,11 +996,22 @@ def music_search_page():
     return render_template("music_search.html", saved_searches=saved)
 
 
-@main_bp.route("/music/library/editor")
+@main_bp.route("/library/editor")
 @permission_required({"music:view"})
 def library_editor_page():
-    library_index = build_library_editor_index()
-    return render_template("library_editor.html", library_index=library_index)
+    email = session.get("user_email") or None
+    saved = []
+    if email:
+        saved = (
+            db.session.query(SavedSearch)
+            .filter(
+                (SavedSearch.created_by == email) | (SavedSearch.created_by.is_(None))
+            )
+            .order_by(SavedSearch.created_at.desc())
+            .limit(25)
+            .all()
+        )
+    return render_template("library_editor.html", saved_searches=saved)
 
 
 def _safe_music_path(path: str) -> str:
