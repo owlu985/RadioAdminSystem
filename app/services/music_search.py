@@ -5,6 +5,7 @@ import time
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from flask import current_app
+import re
 import requests
 
 try:
@@ -25,6 +26,23 @@ from app.models import db, MusicAnalysis, MusicCue
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
 _MUSIC_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
+
+
+def _parse_year(value: Optional[object]) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, (list, tuple)) and value:
+        value = value[0]
+    if isinstance(value, (int, float)):
+        year = int(value)
+        return str(year) if year > 0 else None
+    text = str(value).strip()
+    if not text:
+        return None
+    match = re.search(r"(19|20)\d{2}", text)
+    if match:
+        return match.group(0)
+    return None
 
 
 def _walk_music():
@@ -352,10 +370,12 @@ def _read_tags(path: str) -> Dict:
 
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
+        data["year"] = _parse_year(data.get("year"))
         return data
     except Exception:
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
+        data["year"] = _parse_year(data.get("year"))
         return data
 
 

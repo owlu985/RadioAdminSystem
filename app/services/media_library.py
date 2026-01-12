@@ -183,6 +183,7 @@ def list_media(
         items.append({
             "name": entry["name"],
             "url": url_for("main.media_file", token=token),
+            "token": token,
             "duration": duration,
             "category": entry["category"],
             "kind": entry["kind"],

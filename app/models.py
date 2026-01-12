@@ -189,6 +189,14 @@ class StreamProbe(db.Model):
     show_run = db.relationship("ShowRun", backref="probes")
 
 
+class NowPlayingState(db.Model):
+    __tablename__ = "now_playing_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    override_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IcecastStat(db.Model):
     __tablename__ = "icecast_stat"
 
@@ -467,6 +475,26 @@ class HostedAudio(db.Model):
     description = db.Column(db.Text, nullable=True)
     file_url = db.Column(db.String(512), nullable=False)
     backdrop_url = db.Column(db.String(512), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class ImagingAsset(db.Model):
+    __tablename__ = "imaging_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.String(512), nullable=False)
+    category = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PsaAsset(db.Model):
+    __tablename__ = "psa_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    title = db.Column(db.String(255), nullable=False)
+    path = db.Column(db.String(512), nullable=False)
+    category = db.Column(db.String(255), nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 

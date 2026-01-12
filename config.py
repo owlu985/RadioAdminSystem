@@ -105,6 +105,8 @@ class Config:
     RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")
     RADIODJ_API_BASE_URL = None
     RADIODJ_API_KEY = None
+    RADIODJ_HOOK_ENABLED = False
+    NOW_PLAYING_OVERRIDE_ENABLED = False
 
     # Audits
     AUDIT_ITUNES_RATE_LIMIT_SECONDS = 3.1
