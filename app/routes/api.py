@@ -94,6 +94,41 @@ def _psa_root() -> str:
     return root
 
 
+def _media_roots() -> list[str]:
+    roots = []
+    psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    if psa_root:
+        roots.append(psa_root)
+    music_root = current_app.config.get("NAS_MUSIC_ROOT")
+    if music_root:
+        roots.append(music_root)
+    assets_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if assets_root:
+        roots.append(assets_root)
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    roots.append(voice_root)
+    return roots
+
+
+def _decode_media_token(token: str) -> Optional[str]:
+    if not token:
+        return None
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    allowed = False
+    for root in _media_roots():
+        root_abs = os.path.normcase(os.path.abspath(os.path.normpath(root)))
+        if full.startswith(root_abs):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(full):
+        return None
+    return full
+
+
 def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
     host_label = show_host_names(show)
     if absence and absence.replacement_name:
@@ -1017,6 +1052,42 @@ def list_psas():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
     return jsonify({"status": "ok", "psas": items})
+
+
+@api_bp.route("/radiodj/now-playing")
+def radiodj_now_playing():
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "disabled", "track": None}), 503
+    payload = client.now_playing()
+    if not payload:
+        return jsonify({"status": "empty", "track": None})
+    return jsonify({"status": "ok", "track": payload})
+
+
+@api_bp.route("/radiodj/queue", methods=["POST"])
+def radiodj_queue():
+    client = RadioDJClient()
+    if not client.enabled:
+        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
+    payload = request.get_json(force=True, silent=True) or {}
+    items = payload.get("items") or []
+    if not items:
+        return jsonify({"status": "error", "message": "items_required"}), 400
+    results = []
+    for item in items:
+        token = (item or {}).get("token") if isinstance(item, dict) else None
+        name = (item or {}).get("name") if isinstance(item, dict) else None
+        path = _decode_media_token(token or "")
+        if not path:
+            results.append({"name": name or "Unknown", "status": "error", "message": "invalid_token"})
+            continue
+        try:
+            target = client.import_file(path)
+            results.append({"name": name or os.path.basename(path), "status": "ok", "target": str(target)})
+        except Exception as exc:  # noqa: BLE001
+            results.append({"name": name or os.path.basename(path), "status": "error", "message": str(exc)})
+    return jsonify({"status": "ok", "results": results})
 
 
 @api_bp.route("/radiodj/import/<kind>", methods=["POST"])
