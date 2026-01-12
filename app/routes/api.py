@@ -57,14 +57,7 @@ from app.services.music_search import (
     cover_art_candidates,
     enrich_metadata_external,
 )
-from app.services.media_library import (
-    export_asset_metadata,
-    get_asset_metadata,
-    import_asset_metadata,
-    list_media,
-    resolve_media_token,
-    save_asset_metadata,
-)
+from app.services.media_library import list_media, load_media_meta, save_media_meta, _media_roots
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -585,61 +578,43 @@ def psa_library():
     return jsonify(payload)
 
 
-@api_bp.route("/psa/metadata", methods=["GET", "PATCH"])
-def psa_metadata():
+@api_bp.route("/psa/cue", methods=["GET", "POST"])
+def psa_cue():
     token = request.values.get("token")
+    payload = request.get_json(force=True, silent=True) or {}
+    token = token or payload.get("token")
     if not token:
         return jsonify({"status": "error", "message": "token required"}), 400
-    entry = resolve_media_token(token)
-    if not entry:
-        return jsonify({"status": "error", "message": "media not found"}), 404
-    kind = entry.get("kind")
-    if kind not in {"psa", "imaging"}:
-        return jsonify({"status": "error", "message": "metadata not supported"}), 400
-    if request.method == "GET":
-        metadata = get_asset_metadata(entry["path"], kind)
-        return jsonify({"status": "ok", "metadata": metadata, "path": entry["path"], "kind": kind})
-    payload = request.get_json(force=True, silent=True) or {}
-    updated = save_asset_metadata(entry["path"], kind, payload)
-    return jsonify({"status": "ok", "metadata": updated, "path": entry["path"], "kind": kind})
-
-
-@api_bp.route("/psa/metadata/export")
-def psa_metadata_export():
-    kind = request.args.get("kind")
-    if kind == "all":
-        kind = None
-    if kind and kind not in {"psa", "imaging"}:
-        return jsonify({"status": "error", "message": "invalid kind"}), 400
-    rows = export_asset_metadata(kind=kind)
-    output = io.StringIO()
-    writer = csv.DictWriter(
-        output,
-        fieldnames=["kind", "path", "filename", "title", "category", "expires_on", "usage_rules"],
-    )
-    writer.writeheader()
-    for row in rows:
-        writer.writerow(row)
-    filename = "psa_imaging_metadata.csv" if not kind else f"{kind}_metadata.csv"
-    return Response(
-        output.getvalue(),
-        mimetype="text/csv",
-        headers={"Content-Disposition": f"attachment; filename={filename}"},
-    )
-
-
-@api_bp.route("/psa/metadata/import", methods=["POST"])
-def psa_metadata_import():
-    upload = request.files.get("file")
-    if not upload:
-        return jsonify({"status": "error", "message": "file required"}), 400
     try:
-        content = upload.stream.read().decode("utf-8-sig")
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
     except Exception:
-        return jsonify({"status": "error", "message": "unable to read file"}), 400
-    reader = csv.DictReader(io.StringIO(content))
-    result = import_asset_metadata(reader)
-    return jsonify(result)
+        return jsonify({"status": "error", "message": "invalid token"}), 400
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    allowed = False
+    for _, root, _ in _media_roots():
+        root_abs = os.path.normcase(os.path.abspath(os.path.normpath(root)))
+        if full.startswith(root_abs):
+            allowed = True
+            break
+    if not allowed or not os.path.isfile(full):
+        return jsonify({"status": "error", "message": "file not found"}), 404
+
+    if request.method == "GET":
+        meta = load_media_meta(full)
+        cue = {k: meta.get(k) for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]}
+        cue = {k: v for k, v in cue.items() if v is not None}
+        return jsonify({"status": "ok", "cue": cue})
+
+    cue_payload = payload.get("cue") or {}
+    cue_updates = {
+        k: cue_payload.get(k)
+        for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]
+        if cue_payload.get(k) is not None
+    }
+    meta = save_media_meta(full, cue_updates)
+    cue = {k: meta.get(k) for k in ["cue_in", "intro", "loop_in", "loop_out", "start_next", "outro", "cue_out"]}
+    cue = {k: v for k, v in cue.items() if v is not None}
+    return jsonify({"status": "ok", "cue": cue})
 
 
 @api_bp.route("/music/scan/library")

@@ -58,6 +58,27 @@ def _read_index_file() -> Dict:
         return {"files": {}, "generated_at": None}
 
 
+def load_media_meta(path: str) -> Dict:
+    meta_path = os.path.splitext(path)[0] + ".json"
+    if not os.path.exists(meta_path):
+        return {}
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            return json.load(fh) or {}
+    except Exception:
+        return {}
+
+
+def save_media_meta(path: str, updates: Dict) -> Dict:
+    meta_path = os.path.splitext(path)[0] + ".json"
+    meta = load_media_meta(path)
+    meta.update(updates)
+    os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+    with open(meta_path, "w", encoding="utf-8") as fh:
+        json.dump(meta, fh)
+    return meta
+
+
 def _write_index_file(payload: Dict) -> None:
     path = _media_index_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
@@ -270,14 +291,7 @@ def list_media(
     for entry in index.get("files", {}).values():
         path = entry["path"]
         duration = None
-        meta: Dict = {}
-        meta_path = os.path.splitext(path)[0] + ".json"
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as fh:
-                    meta = json.load(fh)
-            except Exception:
-                meta = {}
+        meta = load_media_meta(path)
         try:
             import mutagen  # type: ignore
 
@@ -324,6 +338,7 @@ def list_media(
             "name": entry["name"],
             "title": title,
             "url": url_for("main.media_file", token=token),
+            "token": token,
             "duration": duration,
             "category": effective_category,
             "library_category": entry.get("category"),
