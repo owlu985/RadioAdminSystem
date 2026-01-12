@@ -24,12 +24,13 @@
         <div class="col-lg-4">
             <div class="card">
                 <div class="card-body text-center">
+                    {% set fallback_art = url_for('static', filename='logo.png') %}
                     {% if track.cover_embedded %}
-                        <img src="/music/cover?path={{ track.path|urlencode }}" alt="cover" class="img-fluid rounded mb-3" style="max-height:260px;">
+                        <img src="/music/cover?path={{ track.path|urlencode }}" alt="cover" class="img-fluid rounded mb-3" style="max-height:260px;" onerror="this.onerror=null;this.src='{{ fallback_art }}';">
                     {% elif track.cover_path %}
-                        <img src="/music/stream?path={{ track.cover_path|urlencode }}" alt="cover" class="img-fluid rounded mb-3" style="max-height:260px;">
+                        <img src="/music/stream?path={{ track.cover_path|urlencode }}" alt="cover" class="img-fluid rounded mb-3" style="max-height:260px;" onerror="this.onerror=null;this.src='{{ fallback_art }}';">
                     {% else %}
-                        <div class="text-muted mb-3">No cover art</div>
+                        <img src="{{ fallback_art }}" alt="cover fallback" class="img-fluid rounded mb-3" style="max-height:260px;">
                     {% endif %}
                     <audio controls preload="none" class="w-100" src="/music/stream?path={{ track.path|urlencode }}"></audio>
                 </div>
@@ -51,6 +52,25 @@
         <div class="col-lg-8">
             <div class="card">
                 <div class="card-body">
+                    <div class="border rounded p-3 mb-3 bg-light">
+                        <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+                            <h4 class="mb-0">{{ track.title or 'Untitled Track' }}</h4>
+                            {% if track.explicit is not none %}
+                                {% if track.explicit %}
+                                    <span class="badge bg-danger">Explicit</span>
+                                {% else %}
+                                    <span class="badge bg-success">Clean</span>
+                                {% endif %}
+                            {% else %}
+                                <span class="badge bg-secondary">Unrated</span>
+                            {% endif %}
+                        </div>
+                        <div class="text-muted">
+                            <strong>{{ track.artist or 'Unknown Artist' }}</strong>
+                            {% if track.album %} · {{ track.album }}{% endif %}
+                            {% if track.year %} · {{ track.year }}{% endif %}
+                        </div>
+                    </div>
                     <div class="row g-2 small">
                         <div class="col-md-6"><strong>Title:</strong> {{ track.title }}</div>
                         <div class="col-md-6"><strong>Artist:</strong> {{ track.artist }}</div>
