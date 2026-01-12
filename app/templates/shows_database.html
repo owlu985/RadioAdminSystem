@@ -8,6 +8,7 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons/font/bootstrap-icons.css" rel="stylesheet">
 </head>
 <body>
+{% include '_nav.html' %}
 
 {% with messages = get_flashed_messages(with_categories=true) %}
     {% if messages %}
@@ -47,8 +48,11 @@
     <table class="table table-bordered mt-4" id="showTable">
         <thead>
             <tr>
-                <th>Host First Name</th>
-                <th>Host Last Name</th>
+                <th>Show</th>
+                <th>Hosts</th>
+                <th>Genre</th>
+                <th>Description</th>
+                <th>Regular Host</th>
                 <th>Start Date</th>
                 <th>End Date</th>
                 <th>Start Time</th>
@@ -60,21 +64,38 @@
         <tbody>
             {% for show in shows.items %}
             <tr>
-                <td>{{ show.host_first_name }}</td>
-                <td>{{ show.host_last_name }}</td>
+                <td>{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</td>
+                <td>
+                    {% if show.djs and show.djs|length > 0 %}
+                        {% set names = [] %}
+                        {% for dj in show.djs %}
+                            {% set _ = names.append(dj.first_name ~ ' ' ~ dj.last_name) %}
+                        {% endfor %}
+                        {{ names|join(', ') }}
+                    {% else %}
+                        {{ show.host_first_name }} {{ show.host_last_name }}
+                    {% endif %}
+                </td>
+                <td>{{ show.genre or '-' }}</td>
+                <td style="max-width: 260px;">{{ show.description or '-' }}</td>
+                <td>
+                    {% if show.is_regular_host %}
+                        <span class="badge bg-success">Yes</span>
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Guest/Special</span>
+                    {% endif %}
+                </td>
                 <td>{{ show.start_date.strftime('%m/%d/%Y') }}</td>
                 <td>{{ show.end_date.strftime('%m/%d/%Y') }}</td>
                 <td>{{ show.start_time.strftime('%I:%M %p') }}</td>
                 <td>{{ show.end_time.strftime('%I:%M %p') }}</td>
                 <td>
-                    {% if show.days_of_week == "mon" %}Monday
-                    {% elif show.days_of_week == "tue" %}Tuesday
-                    {% elif show.days_of_week == "wed" %}Wednesday
-                    {% elif show.days_of_week == "thu" %}Thursday
-                    {% elif show.days_of_week == "fri" %}Friday
-                    {% elif show.days_of_week == "sat" %}Saturday
-                    {% elif show.days_of_week == "sun" %}Sunday
-                    {% endif %}
+                    {% set day_map = {'mon':'Monday','tue':'Tuesday','wed':'Wednesday','thu':'Thursday','fri':'Friday','sat':'Saturday','sun':'Sunday'} %}
+                    {% set labels = [] %}
+                    {% for d in (show.days_of_week or '').split(',') if d %}
+                        {% set _ = labels.append(day_map.get(d, d)) %}
+                    {% endfor %}
+                    {{ labels|join(', ') }}
                 </td>
                 <td>
                     <a href="{{ url_for('main.edit_show', id=show.id) }}" class="btn btn-warning btn-sm" aria-label="Edit Show">Edit</a>
@@ -129,5 +150,6 @@
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% include '_footer.html' %}
 </body>
 </html>
