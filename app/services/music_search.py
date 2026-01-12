@@ -911,27 +911,16 @@ def search_music(
             "composer": entry.get("composer"),
         }
         analysis = MusicAnalysis.query.filter_by(path=path).first()
-        cue_obj = MusicCue.query.filter_by(path=path).first()
-        cues = None
-        if cue_obj:
-            cues = {
-                "cue_in": cue_obj.cue_in,
-                "intro": cue_obj.intro,
-                "loop_in": cue_obj.loop_in,
-                "loop_out": cue_obj.loop_out,
-                "hook_in": cue_obj.hook_in,
-                "hook_out": cue_obj.hook_out,
-                "start_next": cue_obj.start_next,
-                "outro": cue_obj.outro,
-                "cue_out": cue_obj.cue_out,
-            }
         payload = tags.copy()
-        cover_path = os.path.splitext(path)[0] + ".jpg"
         payload.update({
             "duration_seconds": analysis.duration_seconds if analysis else None,
             "folder": entry.get("folder"),
-            "cues": cues,
-            "cover_path": cover_path if os.path.exists(cover_path) else None,
+            "genre": entry.get("genre"),
+            "mood": entry.get("mood"),
+            "year": entry.get("year"),
+            "explicit": entry.get("explicit"),
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
         })
         items.append(payload)
 

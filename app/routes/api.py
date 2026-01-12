@@ -200,14 +200,6 @@ class PlaybackQueueItem(TypedDict, total=False):
     source: str
 
 
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
-
-
 def _serialize_show_run(run: ShowRun) -> dict:
     return {
         "id": run.id,
