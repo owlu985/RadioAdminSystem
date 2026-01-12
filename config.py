@@ -97,6 +97,7 @@ class Config:
     MUSIC_INDEX_TTL = 60
     MEDIA_INDEX_TTL = 60
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
+    IMAGING_LIBRARY_PATH = os.path.join(NAS_ROOT, "imaging")
     MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")
     TRANSCODE_ALAC_TO_MP3 = True

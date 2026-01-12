@@ -1,16 +1,19 @@
 import base64
+from datetime import date, datetime
 import json
 import os
 import time
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, Iterable, List, Optional, Tuple
 
 from flask import current_app, url_for
 
+from app.models import ImagingAsset, PsaAsset, db
 from app.services.music_search import load_cue  # type: ignore[attr-defined]
 
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
 _MEDIA_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
+ASSET_METADATA_KINDS = {"psa", "imaging"}
 
 
 def _media_index_path() -> str:
@@ -22,6 +25,9 @@ def _media_roots() -> List[Tuple[str, str, str]]:
     psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
     if psa_root:
         roots.append(("PSA", psa_root, "psa"))
+    imaging_root = current_app.config.get("IMAGING_LIBRARY_PATH") or os.path.join(current_app.instance_path, "imaging")
+    if imaging_root:
+        roots.append(("Imaging", imaging_root, "imaging"))
     music_root = current_app.config.get("NAS_MUSIC_ROOT")
     if music_root:
         roots.append(("Music", music_root, "music"))
@@ -50,6 +56,27 @@ def _read_index_file() -> Dict:
             return json.load(fh) or {"files": {}, "generated_at": None}
     except Exception:
         return {"files": {}, "generated_at": None}
+
+
+def load_media_meta(path: str) -> Dict:
+    meta_path = os.path.splitext(path)[0] + ".json"
+    if not os.path.exists(meta_path):
+        return {}
+    try:
+        with open(meta_path, "r", encoding="utf-8") as fh:
+            return json.load(fh) or {}
+    except Exception:
+        return {}
+
+
+def save_media_meta(path: str, updates: Dict) -> Dict:
+    meta_path = os.path.splitext(path)[0] + ".json"
+    meta = load_media_meta(path)
+    meta.update(updates)
+    os.makedirs(os.path.dirname(meta_path), exist_ok=True)
+    with open(meta_path, "w", encoding="utf-8") as fh:
+        json.dump(meta, fh)
+    return meta
 
 
 def _write_index_file(payload: Dict) -> None:
@@ -94,6 +121,145 @@ def build_media_index(existing: Optional[Dict] = None) -> Dict:
     return payload
 
 
+def _asset_model(kind: str):
+    if kind == "psa":
+        return PsaAsset
+    if kind == "imaging":
+        return ImagingAsset
+    return None
+
+
+def _parse_metadata_date(value) -> Optional[date]:
+    if not value:
+        return None
+    if isinstance(value, date) and not isinstance(value, datetime):
+        return value
+    if isinstance(value, datetime):
+        return value.date()
+    if isinstance(value, str):
+        value = value.strip()
+        if not value:
+            return None
+        try:
+            return datetime.fromisoformat(value).date()
+        except ValueError:
+            for fmt in ("%Y-%m-%d", "%m/%d/%Y", "%Y/%m/%d"):
+                try:
+                    return datetime.strptime(value, fmt).date()
+                except ValueError:
+                    continue
+    return None
+
+
+def _normalize_text(value) -> Optional[str]:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        cleaned = value.strip()
+        return cleaned if cleaned else None
+    return str(value)
+
+
+def _serialize_asset(asset) -> Dict[str, Optional[str]]:
+    return {
+        "title": asset.title,
+        "category": asset.category,
+        "expires_on": asset.expires_on.isoformat() if asset.expires_on else None,
+        "usage_rules": asset.usage_rules,
+    }
+
+
+def get_asset_metadata(path: str, kind: str) -> Dict[str, Optional[str]]:
+    model = _asset_model(kind)
+    if not model:
+        return {}
+    asset = model.query.filter_by(path=path).first()
+    if not asset:
+        return {}
+    return _serialize_asset(asset)
+
+
+def save_asset_metadata(path: str, kind: str, payload: Dict) -> Dict[str, Optional[str]]:
+    model = _asset_model(kind)
+    if not model:
+        raise ValueError("Unsupported asset kind.")
+    asset = model.query.filter_by(path=path).first()
+    if not asset:
+        asset = model(path=path)
+    asset.title = _normalize_text(payload.get("title"))
+    asset.category = _normalize_text(payload.get("category"))
+    asset.expires_on = _parse_metadata_date(payload.get("expires_on") or payload.get("expiry"))
+    asset.usage_rules = _normalize_text(payload.get("usage_rules") or payload.get("usage"))
+    db.session.add(asset)
+    db.session.commit()
+    return _serialize_asset(asset)
+
+
+def export_asset_metadata(kind: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
+    index = get_media_index()
+    rows: List[Dict[str, Optional[str]]] = []
+    for entry in index.get("files", {}).values():
+        entry_kind = entry.get("kind")
+        if entry_kind not in ASSET_METADATA_KINDS:
+            continue
+        if kind and entry_kind != kind:
+            continue
+        metadata = get_asset_metadata(entry["path"], entry_kind)
+        rows.append({
+            "kind": entry_kind,
+            "path": entry["path"],
+            "filename": entry.get("name"),
+            "title": metadata.get("title"),
+            "category": metadata.get("category"),
+            "expires_on": metadata.get("expires_on"),
+            "usage_rules": metadata.get("usage_rules"),
+        })
+    return rows
+
+
+def import_asset_metadata(rows: Iterable[Dict[str, Optional[str]]]) -> Dict[str, object]:
+    index = get_media_index()
+    path_lookup = {os.path.normpath(path): entry for path, entry in index.get("files", {}).items()}
+    updated = 0
+    skipped = 0
+    errors: List[str] = []
+    for row in rows:
+        kind = (row.get("kind") or "").strip().lower()
+        if kind not in ASSET_METADATA_KINDS:
+            errors.append(f"Unsupported kind: {row.get('kind')}")
+            continue
+        path = (row.get("path") or "").strip()
+        if not path:
+            filename = (row.get("filename") or "").strip()
+            match = next(
+                (entry for entry in path_lookup.values() if entry.get("name") == filename and entry.get("kind") == kind),
+                None,
+            )
+            if match:
+                path = match["path"]
+        norm_path = os.path.normpath(path) if path else ""
+        entry = path_lookup.get(norm_path)
+        if not entry:
+            skipped += 1
+            continue
+        try:
+            save_asset_metadata(entry["path"], kind, row)
+            updated += 1
+        except Exception as exc:
+            errors.append(f"{entry.get('name')}: {exc}")
+    return {"status": "ok", "updated": updated, "skipped": skipped, "errors": errors}
+
+
+def resolve_media_token(token: str) -> Optional[Dict]:
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+    norm = os.path.normpath(decoded)
+    index = get_media_index()
+    return index.get("files", {}).get(norm)
+
+
 def get_media_index(refresh: bool = False) -> Dict:
     ttl = current_app.config.get("MEDIA_INDEX_TTL", 60)
     cached = _MEDIA_INDEX_CACHE.get("data")
@@ -121,35 +287,11 @@ def list_media(
     per_page: int = 50,
 ) -> Dict:
     index = get_media_index()
-    files = list(index.get("files", {}).values())
-    all_categories = sorted({f.get("category") for f in files if f.get("category")})
-    if kind:
-        files = [f for f in files if f.get("kind") == kind]
-    if category:
-        files = [f for f in files if f.get("category") == category]
-    if query:
-        q = query.lower()
-        files = [f for f in files if q in f.get("name", "").lower()]
-
-    total = len(files)
-    page = max(1, page)
-    per_page = max(1, min(per_page, 100))
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_files = files[start:end]
-
     items: List[Dict] = []
-    for entry in page_files:
+    for entry in index.get("files", {}).values():
         path = entry["path"]
         duration = None
-        meta: Dict = {}
-        meta_path = os.path.splitext(path)[0] + ".json"
-        if os.path.exists(meta_path):
-            try:
-                with open(meta_path, "r", encoding="utf-8") as fh:
-                    meta = json.load(fh)
-            except Exception:
-                meta = {}
+        meta = load_media_meta(path)
         try:
             import mutagen  # type: ignore
 
@@ -180,18 +322,55 @@ def list_media(
         })
         cues = {k: v for k, v in cues.items() if v is not None}
         token = base64.urlsafe_b64encode(path.encode("utf-8")).decode("utf-8")
+        asset_meta: Dict[str, Optional[str]] = {}
+        if entry.get("kind") in ASSET_METADATA_KINDS:
+            asset_meta = get_asset_metadata(path, entry["kind"])
+            if not asset_meta:
+                asset_meta = {
+                    "title": meta.get("title"),
+                    "category": meta.get("category"),
+                    "expires_on": meta.get("expires_on") or meta.get("expiry"),
+                    "usage_rules": meta.get("usage_rules") or meta.get("usage"),
+                }
+        effective_category = asset_meta.get("category") or entry.get("category")
+        title = asset_meta.get("title")
         items.append({
             "name": entry["name"],
+            "title": title,
             "url": url_for("main.media_file", token=token),
+            "token": token,
             "duration": duration,
-            "category": entry["category"],
+            "category": effective_category,
+            "library_category": entry.get("category"),
             "kind": entry["kind"],
             "loop": bool(meta.get("loop")),
             "cues": cues,
+            "expires_on": asset_meta.get("expires_on"),
+            "usage_rules": asset_meta.get("usage_rules"),
+            "token": token,
         })
 
+    if kind:
+        items = [f for f in items if f.get("kind") == kind]
+    all_categories = sorted({f.get("category") for f in items if f.get("category")})
+    if category:
+        items = [f for f in items if f.get("category") == category]
+    if query:
+        q = query.lower()
+        items = [
+            f for f in items
+            if q in (f.get("title") or "").lower() or q in f.get("name", "").lower()
+        ]
+
+    total = len(items)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_files = items[start:end]
+
     return {
-        "items": items,
+        "items": page_files,
         "total": total,
         "page": page,
         "per_page": per_page,
