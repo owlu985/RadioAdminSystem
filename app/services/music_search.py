@@ -143,6 +143,7 @@ def _read_tags(path: str) -> Dict:
         "disc": None,
         "copyright": None,
         "bitrate": None,
+        "explicit": None,
         "cover_embedded": False,
     }
     if not mutagen:
@@ -198,6 +199,41 @@ def _read_tags(path: str) -> Dict:
             return coerced[0] if coerced else None
         return coerced
 
+    def _parse_explicit(val):
+        if val is None:
+            return None
+        coerced = _coerce(val)
+        if isinstance(coerced, list) and coerced:
+            coerced = coerced[0]
+        if isinstance(coerced, (int, float)):
+            if int(coerced) == 2:
+                return True
+            if int(coerced) == 1:
+                return False
+        if isinstance(coerced, tuple) and len(coerced) == 2 and all(isinstance(x, (int, float)) for x in coerced):
+            if int(coerced[0]) == 2:
+                return True
+            if int(coerced[0]) == 1:
+                return False
+        if isinstance(coerced, bytes):
+            try:
+                coerced = coerced.decode("utf-8", errors="ignore")
+            except Exception:
+                return None
+        if isinstance(coerced, str):
+            lowered = coerced.strip().lower()
+            if lowered.isdigit():
+                val_num = int(lowered)
+                if val_num == 2:
+                    return True
+                if val_num == 1:
+                    return False
+            if "explicit" in lowered:
+                return True
+            if "clean" in lowered or "not explicit" in lowered:
+                return False
+        return None
+
     try:
         audio_easy = mutagen.File(path, easy=True)
         if audio_easy:
@@ -221,6 +257,12 @@ def _read_tags(path: str) -> Dict:
                 val = audio_easy.tags.get(key) if audio_easy.tags else None
                 if val:
                     data[target] = _first_text(val)
+            if audio_easy.tags and data.get("explicit") is None:
+                for key in ["itunesadvisory", "explicit", "contentadvisory"]:
+                    if key in audio_easy.tags:
+                        data["explicit"] = _parse_explicit(audio_easy.tags.get(key))
+                        if data["explicit"] is not None:
+                            break
 
         if path.lower().endswith((".m4a", ".mp4")):
             try:
@@ -261,6 +303,13 @@ def _read_tags(path: str) -> Dict:
                 mp4_tags = mp4.tags or {}
                 if "covr" in mp4_tags:
                     data["cover_embedded"] = True
+                if data.get("explicit") is None:
+                    for atom in ["rtng", "----:com.apple.iTunes:ITUNESADVISORY", "----:com.apple.iTunes:Explicit"]:
+                        val = mp4_tags.get(atom)
+                        if val is not None:
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
 
                 atom_map = {
                     "title": ["©nam", "----:com.apple.iTunes:TITLE"],
@@ -314,6 +363,15 @@ def _read_tags(path: str) -> Dict:
                             if not data.get("album") and "album" in lower_val:
                                 data["album"] = coerced
 
+                if data.get("explicit") is None:
+                    for key, val in mp4_tags.items():
+                        if not isinstance(key, str):
+                            continue
+                        if "advisory" in key.lower() or "explicit" in key.lower():
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
+
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
@@ -347,6 +405,8 @@ def _read_tags(path: str) -> Dict:
                             data["copyright"] = text_val
                         if not data.get("year") and any(hint in lkey for hint in ["day", "year", "date"]):
                             data["year"] = text_val
+                        if data.get("explicit") is None and ("explicit" in lkey or "advisory" in lkey):
+                            data["explicit"] = _parse_explicit(text_val)
             except Exception:
                 pass
 
