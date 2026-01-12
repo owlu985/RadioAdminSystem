@@ -85,6 +85,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             tags.get("album_artist"),
             tags.get("album"),
             tags.get("composer"),
+            tags.get("genre"),
+            tags.get("year"),
         ])).lower()
         entry = {
             "path": full,
@@ -93,6 +95,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "album_artist": tags.get("album_artist"),
             "album": tags.get("album"),
             "composer": tags.get("composer"),
+            "genre": tags.get("genre"),
+            "year": tags.get("year"),
             "folder": folder,
             "mtime": stat.st_mtime,
             "size": stat.st_size,
@@ -128,6 +132,102 @@ def get_music_index(refresh: bool = False) -> Dict:
     return payload
 
 
+def _library_media_roots() -> List[Tuple[str, str]]:
+    roots: List[Tuple[str, str]] = []
+    psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    if psa_root:
+        roots.append(("PSA", psa_root))
+    imaging_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if imaging_root:
+        roots.append(("Imaging", imaging_root))
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    if voice_root:
+        roots.append(("Voice Tracks", voice_root))
+    return roots
+
+
+def build_library_editor_index() -> Dict:
+    index = get_music_index()
+    entries = list(index.get("files", {}).values())
+    artists_map: Dict[str, Dict[str, Dict]] = {}
+    for entry in entries:
+        path = entry.get("path") or ""
+        title = entry.get("title") or os.path.splitext(os.path.basename(path))[0]
+        artist = entry.get("artist") or "Unknown Artist"
+        album = entry.get("album") or "Unknown Album"
+        year = entry.get("year")
+        genre = entry.get("genre")
+        artist_bucket = artists_map.setdefault(artist, {})
+        album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
+        if not album_bucket.get("year") and year:
+            album_bucket["year"] = year
+        if not album_bucket.get("genre") and genre:
+            album_bucket["genre"] = genre
+        album_bucket["tracks"].append({
+            "title": title,
+            "path": path,
+            "artist": artist,
+            "album": album,
+            "year": year,
+            "genre": genre,
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
+        })
+
+    music_artists = []
+    for artist_name in sorted(artists_map.keys(), key=lambda name: name.lower()):
+        albums_map = artists_map[artist_name]
+        albums_payload = []
+        for album_name in sorted(albums_map.keys(), key=lambda name: name.lower()):
+            album_payload = albums_map[album_name]
+            tracks = album_payload.get("tracks", [])
+            tracks.sort(
+                key=lambda track: (
+                    track.get("disc_num") or 0,
+                    track.get("track_num") or 0,
+                    (track.get("title") or "").lower(),
+                )
+            )
+            albums_payload.append({
+                "name": album_name,
+                "year": album_payload.get("year"),
+                "genre": album_payload.get("genre"),
+                "tracks": tracks,
+            })
+        music_artists.append({"name": artist_name, "albums": albums_payload})
+
+    psa_imaging = []
+    for label, root in _library_media_roots():
+        if not root:
+            continue
+        os.makedirs(root, exist_ok=True)
+        items = []
+        for base, _, files in os.walk(root):
+            for fname in files:
+                if not fname.lower().endswith(AUDIO_EXTS):
+                    continue
+                full = os.path.normpath(os.path.join(base, fname))
+                tags = _read_tags(full)
+                title = tags.get("title") or os.path.splitext(fname)[0]
+                items.append({
+                    "title": title,
+                    "path": full,
+                    "artist": tags.get("artist"),
+                    "album": tags.get("album"),
+                    "year": tags.get("year"),
+                    "genre": tags.get("genre"),
+                    "folder": os.path.relpath(base, root).replace(os.sep, "/"),
+                })
+        items.sort(key=lambda item: (item.get("title") or "").lower())
+        psa_imaging.append({"category": label, "items": items})
+
+    return {
+        "music": music_artists,
+        "psa_imaging": psa_imaging,
+        "generated_at": time.time(),
+    }
+
+
 def _read_tags(path: str) -> Dict:
     base_title = os.path.splitext(os.path.basename(path))[0]
     data = {
@@ -138,11 +238,16 @@ def _read_tags(path: str) -> Dict:
         "album": None,
         "composer": None,
         "isrc": None,
+        "genre": None,
+        "mood": None,
+        "explicit": None,
         "year": None,
+        "genre": None,
         "track": None,
         "disc": None,
         "copyright": None,
         "bitrate": None,
+        "explicit": None,
         "cover_embedded": False,
     }
     if not mutagen:
@@ -198,6 +303,41 @@ def _read_tags(path: str) -> Dict:
             return coerced[0] if coerced else None
         return coerced
 
+    def _parse_explicit(val):
+        if val is None:
+            return None
+        coerced = _coerce(val)
+        if isinstance(coerced, list) and coerced:
+            coerced = coerced[0]
+        if isinstance(coerced, (int, float)):
+            if int(coerced) == 2:
+                return True
+            if int(coerced) == 1:
+                return False
+        if isinstance(coerced, tuple) and len(coerced) == 2 and all(isinstance(x, (int, float)) for x in coerced):
+            if int(coerced[0]) == 2:
+                return True
+            if int(coerced[0]) == 1:
+                return False
+        if isinstance(coerced, bytes):
+            try:
+                coerced = coerced.decode("utf-8", errors="ignore")
+            except Exception:
+                return None
+        if isinstance(coerced, str):
+            lowered = coerced.strip().lower()
+            if lowered.isdigit():
+                val_num = int(lowered)
+                if val_num == 2:
+                    return True
+                if val_num == 1:
+                    return False
+            if "explicit" in lowered:
+                return True
+            if "clean" in lowered or "not explicit" in lowered:
+                return False
+        return None
+
     try:
         audio_easy = mutagen.File(path, easy=True)
         if audio_easy:
@@ -214,6 +354,7 @@ def _read_tags(path: str) -> Dict:
                 ("isrc", "isrc"),
                 ("date", "year"),
                 ("year", "year"),
+                ("genre", "genre"),
                 ("tracknumber", "track"),
                 ("discnumber", "disc"),
                 ("copyright", "copyright"),
@@ -221,6 +362,12 @@ def _read_tags(path: str) -> Dict:
                 val = audio_easy.tags.get(key) if audio_easy.tags else None
                 if val:
                     data[target] = _first_text(val)
+            if audio_easy.tags and data.get("explicit") is None:
+                for key in ["itunesadvisory", "explicit", "contentadvisory"]:
+                    if key in audio_easy.tags:
+                        data["explicit"] = _parse_explicit(audio_easy.tags.get(key))
+                        if data["explicit"] is not None:
+                            break
 
         if path.lower().endswith((".m4a", ".mp4")):
             try:
@@ -238,6 +385,7 @@ def _read_tags(path: str) -> Dict:
                     ("isrc", "isrc"),
                     ("date", "year"),
                     ("year", "year"),
+                    ("genre", "genre"),
                     ("tracknumber", "track"),
                     ("discnumber", "disc"),
                     ("copyright", "copyright"),
@@ -261,6 +409,13 @@ def _read_tags(path: str) -> Dict:
                 mp4_tags = mp4.tags or {}
                 if "covr" in mp4_tags:
                     data["cover_embedded"] = True
+                if data.get("explicit") is None:
+                    for atom in ["rtng", "----:com.apple.iTunes:ITUNESADVISORY", "----:com.apple.iTunes:Explicit"]:
+                        val = mp4_tags.get(atom)
+                        if val is not None:
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
 
                 atom_map = {
                     "title": ["©nam", "----:com.apple.iTunes:TITLE"],
@@ -270,6 +425,7 @@ def _read_tags(path: str) -> Dict:
                     "composer": ["©wrt", "----:com.apple.iTunes:COMPOSER"],
                     "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
                     "year": ["©day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "genre": ["©gen", "gnre", "----:com.apple.iTunes:GENRE"],
                     "track": ["trkn"],
                     "disc": ["disk"],
                     "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
@@ -314,6 +470,15 @@ def _read_tags(path: str) -> Dict:
                             if not data.get("album") and "album" in lower_val:
                                 data["album"] = coerced
 
+                if data.get("explicit") is None:
+                    for key, val in mp4_tags.items():
+                        if not isinstance(key, str):
+                            continue
+                        if "advisory" in key.lower() or "explicit" in key.lower():
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
+
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
@@ -347,13 +512,23 @@ def _read_tags(path: str) -> Dict:
                             data["copyright"] = text_val
                         if not data.get("year") and any(hint in lkey for hint in ["day", "year", "date"]):
                             data["year"] = text_val
+                        if not data.get("genre") and "genre" in lkey:
+                            data["genre"] = text_val
             except Exception:
                 pass
 
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
     except Exception:
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
@@ -648,6 +823,10 @@ def search_music(
     page: int = 1,
     per_page: int = 50,
     folder: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[str] = None,
+    mood: Optional[str] = None,
+    explicit: Optional[bool] = None,
 ) -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
@@ -659,6 +838,28 @@ def search_music(
 
     if query_lower and query_lower not in {"%", "*"}:
         entries = [e for e in entries if query_lower in (e.get("search") or "")]
+
+    def _norm(val: Optional[str]) -> str:
+        return (val or "").strip().lower()
+
+    base_entries = entries[:]
+    genre_map = {(_norm(e.get("genre"))): e.get("genre") for e in base_entries if e.get("genre")}
+    mood_map = {(_norm(e.get("mood"))): e.get("mood") for e in base_entries if e.get("mood")}
+    genres = sorted(genre_map.values(), key=lambda v: _norm(v))
+    moods = sorted(mood_map.values(), key=lambda v: _norm(v))
+    years = sorted({str(e.get("year")) for e in base_entries if e.get("year")})
+
+    if genre:
+        genre_norm = _norm(genre)
+        entries = [e for e in entries if _norm(e.get("genre")) == genre_norm]
+    if mood:
+        mood_norm = _norm(mood)
+        entries = [e for e in entries if _norm(e.get("mood")) == mood_norm]
+    if year:
+        year_str = str(year).strip()
+        entries = [e for e in entries if str(e.get("year") or "").strip() == year_str]
+    if explicit is not None:
+        entries = [e for e in entries if bool(e.get("explicit")) is explicit]
 
     entries.sort(
         key=lambda e: (
@@ -694,6 +895,12 @@ def search_music(
         payload.update({
             "duration_seconds": analysis.duration_seconds if analysis else None,
             "folder": entry.get("folder"),
+            "genre": entry.get("genre"),
+            "mood": entry.get("mood"),
+            "year": entry.get("year"),
+            "explicit": entry.get("explicit"),
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
         })
         items.append(payload)
 
@@ -704,6 +911,9 @@ def search_music(
         "page": page,
         "per_page": per_page,
         "folders": folders,
+        "genres": genres,
+        "moods": moods,
+        "years": years,
     }
 
 
@@ -808,6 +1018,7 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
                 "composer": "©wrt",
                 "isrc": "----:com.apple.iTunes:ISRC",
                 "year": "©day",
+                "genre": "©gen",
                 "copyright": "cprt",
             }
 
@@ -852,7 +1063,7 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
                 "track": "tracknumber",
                 "disc": "discnumber",
             }
-            for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]:
+            for field in ["title", "artist", "album", "composer", "isrc", "year", "genre", "track", "disc", "copyright"]:
                 tag_key = key_map.get(field, field)
                 if updates.get(field) is None:
                     continue
