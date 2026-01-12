@@ -479,6 +479,13 @@ def dj_tools():
     return resp
 
 
+@main_bp.route("/dj/show-automator")
+def show_automator():
+    resp = make_response(render_template("show_automator.html"))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
 @main_bp.route("/help/tutorial")
 def tutorial_page():
     return render_template("tutorial.html")
