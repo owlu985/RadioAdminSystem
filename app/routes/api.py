@@ -23,8 +23,6 @@ from app.models import (
     HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
-    PlaybackSession,
-    PlaybackQueueItem,
     NowPlayingState,
     db,
 )
@@ -232,6 +230,22 @@ def _decode_media_token(token: str) -> Optional[str]:
     return full
 
 
+def _get_now_playing_state() -> NowPlayingState:
+    state = NowPlayingState.query.first()
+    if not state:
+        state = NowPlayingState()
+        db.session.add(state)
+        db.session.commit()
+    return state
+
+
+def _override_enabled() -> bool:
+    if current_app.config.get("NOW_PLAYING_OVERRIDE_ENABLED"):
+        return True
+    state = NowPlayingState.query.first()
+    return bool(state.override_enabled) if state else False
+
+
 def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
     host_label = show_host_names(show)
     if absence and absence.replacement_name:
@@ -276,16 +290,19 @@ def now_playing():
     now = datetime.utcnow()
     show = get_current_show()
     absence = active_absence_for_show(show, now=now) if show else None
+    override_enabled = _override_enabled()
 
     if not show:
-        rdj = RadioDJClient()
-        rdj_payload = rdj.now_playing()
         base = {
             "status": "off_air",
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
+            "override_enabled": override_enabled,
         }
-        if rdj_payload:
-            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+        if override_enabled and current_app.config.get("RADIODJ_HOOK_ENABLED"):
+            rdj = RadioDJClient()
+            rdj_payload = rdj.now_playing()
+            if rdj_payload:
+                base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -321,6 +338,7 @@ def now_playing():
         "status": "on_air",
         "show": _serialize_show(show, absence=absence),
         "run": _serialize_show_run(run),
+        "override_enabled": override_enabled,
         "absence": {
             "status": absence.status,
             "replacement": absence.replacement_name,
@@ -354,13 +372,29 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
-    rdj = RadioDJClient()
-    rdj_payload = rdj.now_playing()
-    if rdj_payload:
-        base = base or {}
-        base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
-        return jsonify(base)
+    if base and base.get("override_enabled") and current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        rdj = RadioDJClient()
+        rdj_payload = rdj.now_playing()
+        if rdj_payload:
+            base = base or {}
+            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+            return jsonify(base)
     return jsonify(base or {"status": "off_air"})
+
+
+@api_bp.route("/now/override", methods=["GET", "POST"])
+def now_override():
+    state = _get_now_playing_state()
+    if request.method == "POST":
+        payload = request.get_json(force=True, silent=True) or {}
+        enabled = payload.get("enabled")
+        if enabled is None:
+            return jsonify({"status": "error", "message": "enabled required"}), 400
+        enabled_flag = str(enabled).lower() in {"1", "true", "yes", "on"}
+        state.override_enabled = enabled_flag
+        state.updated_at = datetime.utcnow()
+        db.session.commit()
+    return jsonify({"status": "ok", "override_enabled": state.override_enabled})
 
 
 @api_bp.route("/probe", methods=["POST"])
@@ -1223,6 +1257,8 @@ def list_psas():
 
 @api_bp.route("/radiodj/now-playing")
 def radiodj_now_playing():
+    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        return jsonify({"status": "disabled", "track": None}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "disabled", "track": None}), 503
@@ -1234,6 +1270,8 @@ def radiodj_now_playing():
 
 @api_bp.route("/radiodj/queue", methods=["POST"])
 def radiodj_queue():
+    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
+        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "error", "message": "radiodj_disabled"}), 503

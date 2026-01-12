@@ -218,6 +218,14 @@ class StreamProbe(db.Model):
     show_run = db.relationship("ShowRun", backref="probes")
 
 
+class NowPlayingState(db.Model):
+    __tablename__ = "now_playing_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    override_enabled = db.Column(db.Boolean, default=False, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
 class IcecastStat(db.Model):
     __tablename__ = "icecast_stat"
 

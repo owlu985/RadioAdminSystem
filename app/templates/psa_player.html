@@ -538,6 +538,17 @@
         }
     }
 
+    function setRadioDJAvailability(enabled) {
+        if (radiodjOverrideBtn) {
+            radiodjOverrideBtn.disabled = !enabled;
+        }
+        if (!enabled && controlMode === 'radiodj') {
+            controlMode = 'rams';
+            updateControlModeUI();
+            renderQueue();
+        }
+    }
+
     function resetTimers() {
         const text = '00:00.00';
         timerEls.forEach(el => {
@@ -558,6 +569,36 @@
         togglePauseBtn.textContent = 'Pause';
     }
 
+    async function setNowPlayingOverride(enabled) {
+        try {
+            const res = await fetch('/api/now/override', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({enabled})
+            });
+            if (!res.ok) {
+                return false;
+            }
+            return true;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    async function loadOverrideState() {
+        try {
+            const res = await fetch('/api/now/override');
+            const data = await res.json();
+            if (res.ok && typeof data.override_enabled === 'boolean') {
+                controlMode = data.override_enabled ? 'radiodj' : 'rams';
+                updateControlModeUI();
+                renderQueue();
+            }
+        } catch (err) {
+            // ignore
+        }
+    }
+
     async function loadRadioDJNowPlaying() {
         if (!radiodjStatus || !radiodjTrack) return;
         try {
@@ -571,16 +612,20 @@
                 const label = [artist, title].filter(Boolean).join(' - ') || album || 'Now playing';
                 radiodjTrack.textContent = label;
                 radiodjStatus.classList.remove('text-danger');
+                setRadioDJAvailability(true);
             } else if (data.status === 'disabled') {
                 radiodjTrack.textContent = 'RadioDJ integration disabled.';
                 radiodjStatus.classList.add('text-danger');
+                setRadioDJAvailability(false);
             } else {
                 radiodjTrack.textContent = 'No now-playing data.';
                 radiodjStatus.classList.remove('text-danger');
+                setRadioDJAvailability(true);
             }
         } catch (err) {
             radiodjTrack.textContent = 'Unable to reach RadioDJ.';
             radiodjStatus.classList.add('text-danger');
+            setRadioDJAvailability(false);
         }
     }
 
@@ -652,15 +697,6 @@
     function addToQueue(item) {
         queue.push(item);
         if (controlMode === 'rams' && queue.length === 1 && activePlayer().paused) {
-            startFrom(0);
-        }
-        renderQueue();
-    }
-
-    function insertToQueue(item, idx) {
-        const insertIdx = Math.max(0, Math.min(queue.length, idx));
-        queue.splice(insertIdx, 0, item);
-        if (queue.length === 1 && activePlayer().paused) {
             startFrom(0);
         }
         renderQueue();
@@ -1006,6 +1042,20 @@
         renderQueue();
     });
 
+    radiodjOverrideBtn.addEventListener('click', async () => {
+        const nextMode = controlMode === 'rams' ? 'radiodj' : 'rams';
+        const ok = await setNowPlayingOverride(nextMode === 'radiodj');
+        if (!ok) {
+            if (radiodjQueueStatus) {
+                radiodjQueueStatus.textContent = 'Unable to update now-playing override.';
+            }
+            return;
+        }
+        controlMode = nextMode;
+        updateControlModeUI();
+        renderQueue();
+    });
+
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
     categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
     document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
@@ -1059,6 +1109,7 @@
     }
     loadPSAs();
     updateControlModeUI();
+    loadOverrideState();
     loadRadioDJNowPlaying();
     setInterval(loadRadioDJNowPlaying, 15000);
 
