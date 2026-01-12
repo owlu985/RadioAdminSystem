@@ -22,6 +22,38 @@
             background: #000;
             color: #fff !important;
         }
+        .wave-container {height:220px; background:linear-gradient(180deg,#f8f9fa,#ffffff); border-radius:10px; padding:12px; position:relative; overflow-x:auto; overflow-y:hidden; border:1px solid rgba(0,0,0,0.08);}
+        .wave-inner {position:relative; height:100%; min-width:100%;}
+        .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
+        #cueMarkers {position:absolute; inset:0; pointer-events:none;}
+        #cueMarkers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
+        .cue-btn.active .text-muted {color:#fff !important;}
+        .talk-overlay {
+            position:absolute;
+            inset:0;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            background:rgba(0,0,0,0.45);
+            color:#fff;
+            border-radius:8px;
+            text-align:center;
+            z-index:5;
+        }
+        .talk-overlay-panel {
+            padding:18px 24px;
+            border:2px solid rgba(255,255,255,0.4);
+            border-radius:12px;
+            background:rgba(0,0,0,0.6);
+            min-width:220px;
+        }
+        .talk-overlay-row {
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            font-size:1.2rem;
+        }
+        .talk-overlay-row strong {font-size:1.6rem;}
     </style>
 </head>
 <body>
@@ -33,7 +65,7 @@
             <div class="text-muted">Queue and play music, PSAs, imaging, and show assets directly in the browser.</div>
             <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
         </div>
-        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}{% if imaging_root %} • {{ imaging_root }}{% endif %}</div>
     </div>
     <div class="row g-3">
         <div class="col-lg-6">
@@ -41,6 +73,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Available Media</span>
                     <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="bulkMetadata">Metadata CSV</button>
                         <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
                         <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
                         <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
@@ -80,8 +113,23 @@
                         </div>
                     </div>
                     <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
-                    <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
-                    <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
+                    <div class="position-relative">
+                        <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
+                        <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
+                        <div id="talkOverlay" class="talk-overlay d-none">
+                            <div class="talk-overlay-panel">
+                                <div class="text-uppercase text-muted small mb-2">Talk-Up Mode</div>
+                                <div class="talk-overlay-row">
+                                    <span>Intro</span>
+                                    <strong id="talkOverlayIntro">0.0s</strong>
+                                </div>
+                                <div class="talk-overlay-row mt-2">
+                                    <span>Outro</span>
+                                    <strong id="talkOverlayOutro">0.0s</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
                     <div class="d-flex align-items-center justify-content-between mb-2">
                         <div class="d-flex flex-column gap-1">
                             <div class="form-check mb-0">
@@ -94,15 +142,44 @@
                             </div>
                         </div>
                         <div class="d-flex gap-2">
+                            <button class="btn btn-outline-dark btn-sm" id="toggleTalkup">Talk-Up Mode</button>
                             <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
                             <button class="btn btn-outline-secondary btn-sm" id="stopRecord" disabled>Stop</button>
+                        </div>
+                    </div>
+                    <div class="border rounded p-2 mb-2 bg-light">
+                        <div class="fw-semibold mb-2">Voice Track Tools</div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-sm-6">
+                                <label class="form-label small mb-1" for="vtTitle">Title</label>
+                                <input class="form-control form-control-sm" id="vtTitle" placeholder="Voice track title">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label small mb-1" for="vtHost">Show/Host</label>
+                                <input class="form-control form-control-sm" id="vtHost" placeholder="DJ or show name">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-1" for="vtNotes">Notes</label>
+                                <input class="form-control form-control-sm" id="vtNotes" placeholder="Talk-up notes or script">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap mb-2">
+                            <button class="btn btn-outline-dark btn-sm" id="vtImport">Import VT</button>
+                            <input type="file" id="vtFile" accept="audio/*" class="d-none">
+                            <div class="text-muted small" id="vtMeta">No voicetrack loaded.</div>
+                        </div>
+                        <div class="wave-container mb-2" id="vtWave">
+                            <div class="wave-inner" id="vtWaveInner">
+                                <canvas id="vtWaveCanvas" height="170" style="width:100%; height:170px;"></canvas>
+                            </div>
                         </div>
                     </div>
                     <div id="vtPending" class="alert alert-info d-none py-2 px-3 mb-2">
                         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
                             <div>Pending voice track ready. Add to queue?</div>
                             <div class="d-flex gap-2">
-                                <button class="btn btn-sm btn-outline-success" id="vtConfirm">Confirm</button>
+                                <select class="form-select form-select-sm" id="vtInsertPosition" style="max-width:180px;"></select>
+                                <button class="btn btn-sm btn-outline-success" id="vtConfirm">Insert</button>
                                 <button class="btn btn-sm btn-outline-danger" id="vtDelete">Delete</button>
                             </div>
                         </div>
@@ -124,11 +201,119 @@
                         <button class="btn btn-outline-primary btn-sm" id="overlayPlay">Play Overlay</button>
                     </div>
                     <div class="text-muted small">Use the overlay deck for ad-hoc beds or carts; it does not affect the queue.</div>
+                    <hr>
+                    <div class="mb-2 fw-semibold">Cue Editor</div>
+                    <div class="text-muted small mb-2">Select a library or queue item to set cue points.</div>
+                    <div class="text-muted small mb-2" id="cueItemLabel">No item selected.</div>
+                    <audio id="cuePlayer" controls preload="metadata" class="w-100 mb-2" disabled></audio>
+                    <div class="wave-container mb-2" id="cueWave">
+                        <div class="wave-inner" id="cueWaveInner">
+                            <canvas id="cueWaveCanvas" height="170" style="width:100%; height:170px;"></canvas>
+                            <div id="cueNeedle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
+                            <div id="cueMarkers"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-cue_in" data-cue="cue_in">
+                            <span class="fw-semibold cue-swatch" data-cue="cue_in">■</span>
+                            Start <span class="text-muted" id="time-cue_in"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-intro" data-cue="intro">
+                            <span class="fw-semibold cue-swatch" data-cue="intro">■</span>
+                            Intro <span class="text-muted" id="time-intro"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-loop_in" data-cue="loop_in">
+                            <span class="fw-semibold cue-swatch" data-cue="loop_in">■</span>
+                            Loop In <span class="text-muted" id="time-loop_in"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-loop_out" data-cue="loop_out">
+                            <span class="fw-semibold cue-swatch" data-cue="loop_out">■</span>
+                            Loop Out <span class="text-muted" id="time-loop_out"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-start_next" data-cue="start_next">
+                            <span class="fw-semibold cue-swatch" data-cue="start_next">■</span>
+                            Next <span class="text-muted" id="time-start_next"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-outro" data-cue="outro">
+                            <span class="fw-semibold cue-swatch" data-cue="outro">■</span>
+                            Outro <span class="text-muted" id="time-outro"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-cue_out" data-cue="cue_out">
+                            <span class="fw-semibold cue-swatch" data-cue="cue_out">■</span>
+                            End <span class="text-muted" id="time-cue_out"></span>
+                        </button>
+                    </div>
+                    <div class="mb-2 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueStepBack">« Step</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueToggle">Play/Pause</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueStepForward">Step »</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="cueSet">Set</button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="cueRemove">Remove</button>
+                        <button type="button" class="btn btn-outline-success btn-sm" id="cueSave">Save Cues</button>
+                    </div>
                 </div>
             </div>
         </div>
     </div>
 </div>
+<dialog id="metadataDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Asset Metadata</strong>
+            <button type="button" class="btn-close" id="metadataClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-2">
+                <label for="metadataTitle" class="form-label">Title</label>
+                <input type="text" id="metadataTitle" class="form-control form-control-sm" placeholder="Optional display title">
+            </div>
+            <div class="mb-2">
+                <label for="metadataCategory" class="form-label">Category</label>
+                <input type="text" id="metadataCategory" class="form-control form-control-sm" placeholder="Leave blank to use folder category">
+            </div>
+            <div class="mb-2">
+                <label for="metadataExpiry" class="form-label">Expiry</label>
+                <input type="date" id="metadataExpiry" class="form-control form-control-sm">
+            </div>
+            <div class="mb-2">
+                <label for="metadataUsage" class="form-label">Usage rules</label>
+                <textarea id="metadataUsage" class="form-control form-control-sm" rows="3" placeholder="Rotation or usage notes"></textarea>
+            </div>
+            <div class="text-muted small" id="metadataPath"></div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="metadataCancel">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="metadataSave">Save</button>
+        </div>
+    </form>
+</dialog>
+<dialog id="bulkDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Bulk Metadata Import/Export</strong>
+            <button type="button" class="btn-close" id="bulkClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-3">
+                <label for="bulkKind" class="form-label">Scope</label>
+                <select id="bulkKind" class="form-select form-select-sm">
+                    <option value="all">All PSA + Imaging</option>
+                    <option value="psa">PSA only</option>
+                    <option value="imaging">Imaging only</option>
+                </select>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="bulkDownload">Download CSV</button>
+                <input type="file" id="bulkUpload" class="form-control form-control-sm" accept=".csv,text/csv">
+                <button type="button" class="btn btn-outline-success btn-sm" id="bulkUploadBtn">Upload CSV</button>
+            </div>
+            <div class="text-muted small" id="bulkStatus">Export to fill in titles/categories, then re-upload to apply changes.</div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="bulkCancel">Done</button>
+        </div>
+    </form>
+</dialog>
 {% include '_footer.html' %}
 <script>
     let library = [];
@@ -140,6 +325,7 @@
     const libraryPrev = document.getElementById('libraryPrev');
     const libraryNext = document.getElementById('libraryNext');
     const psaSearch = document.getElementById('psaSearch');
+    const metadataKinds = new Set(['psa', 'imaging']);
     const top40 = document.getElementById('top40');
     const loopBetween = document.getElementById('loopBetween');
     const togglePauseBtn = document.getElementById('togglePause');
@@ -154,6 +340,9 @@
     const radiodjQueueStatus = document.getElementById('radiodjQueueStatus');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
+    const talkOverlay = document.getElementById('talkOverlay');
+    const talkOverlayIntro = document.getElementById('talkOverlayIntro');
+    const talkOverlayOutro = document.getElementById('talkOverlayOutro');
     const queue = [];
     const players = [
         { el: document.getElementById('psaAudioA'), item: null },
@@ -170,6 +359,7 @@
     let prestartedIdx = null;
     let pendingVT = null;
     let pendingVTUrl = null;
+    let pendingVTBlob = null;
     let libraryPage = 1;
     let libraryTotal = 0;
     const libraryPerPage = 50;
@@ -178,6 +368,58 @@
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
+
+    const metadataDialog = document.getElementById('metadataDialog');
+    const metadataTitle = document.getElementById('metadataTitle');
+    const metadataCategory = document.getElementById('metadataCategory');
+    const metadataExpiry = document.getElementById('metadataExpiry');
+    const metadataUsage = document.getElementById('metadataUsage');
+    const metadataPath = document.getElementById('metadataPath');
+    const bulkDialog = document.getElementById('bulkDialog');
+    const bulkKind = document.getElementById('bulkKind');
+    const bulkStatus = document.getElementById('bulkStatus');
+
+    function openDialog(dialog) {
+        if (!dialog) return;
+        if (dialog.showModal) {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', 'open');
+        }
+    }
+
+    function closeDialog(dialog) {
+        if (!dialog) return;
+        if (dialog.close) {
+            dialog.close();
+        } else {
+            dialog.removeAttribute('open');
+        }
+    }
+
+    async function openMetadataEditor(item) {
+        editingItem = item;
+        metadataTitle.value = item.title || '';
+        metadataCategory.value = item.category || '';
+        metadataExpiry.value = item.expires_on || '';
+        metadataUsage.value = item.usage_rules || '';
+        metadataPath.textContent = item.name ? `File: ${item.name}` : '';
+        if (item.token) {
+            try {
+                const res = await fetch(`/api/psa/metadata?token=${encodeURIComponent(item.token)}`);
+                const data = await res.json();
+                if (data.status === 'ok' && data.metadata) {
+                    metadataTitle.value = data.metadata.title || '';
+                    metadataCategory.value = data.metadata.category || item.category || '';
+                    metadataExpiry.value = data.metadata.expires_on || '';
+                    metadataUsage.value = data.metadata.usage_rules || '';
+                }
+            } catch (err) {
+                // ignore
+            }
+        }
+        openDialog(metadataDialog);
+    }
 
     function renderCategories(cats) {
         const options = cats || [];
@@ -188,24 +430,35 @@
         psaList.innerHTML = '';
         const term = filter.toLowerCase();
         const cat = categoryFilter.value;
-        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
+        library.filter(item => {
+            const title = (item.title || item.name || '').toLowerCase();
+            return title.includes(term) && (!cat || item.category === cat);
+        }).forEach(item => {
             const li = document.createElement('li');
             li.className = 'list-group-item';
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.loop) meta.push('loop');
             if (item.category) meta.push(item.category);
+            if (item.expires_on) meta.push(`expires ${item.expires_on}`);
+            const displayName = item.title || item.name;
+            const subtitle = item.title ? `<small class="text-muted">${item.name}</small><br>` : '';
+            const usage = item.usage_rules ? `<small class="text-muted">Usage: ${item.usage_rules}</small><br>` : '';
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <strong>${item.name}</strong><br>
+                    <strong>${displayName}</strong><br>
+                    ${subtitle}
+                    ${usage}
                     ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
                     <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    <button class="btn btn-sm btn-outline-secondary" data-cue>Cues</button>
                     ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
                 </div>
             </div>`;
             li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
+            li.querySelector('[data-cue]').addEventListener('click', () => selectCueItem(item));
             psaList.appendChild(li);
         });
         if (!psaList.children.length) {
@@ -231,10 +484,16 @@
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
+            if (item.metadata && item.metadata.host) meta.push(item.metadata.host);
+            if (item.metadata && item.metadata.notes) meta.push(item.metadata.notes);
             const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
+            const displayName = item.title || item.name;
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-                <div>${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
-                <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
+                <div>${item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : ''}${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+                <div class="d-flex gap-2">
+                    <button class="btn btn-sm btn-outline-secondary" data-cue>Edit</button>
+                    <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
+                </div>
             </div>`;
             li.dataset.index = idx;
             li.tabIndex = 0;
@@ -304,6 +563,7 @@
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = 'Outro: 0.0s';
         outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        updateTalkOverlay(null);
         loopBetween.checked = false;
         loopBetween.disabled = true;
         togglePauseBtn.textContent = 'Pause';
@@ -421,6 +681,7 @@
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroVal}s`;
         outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        updateTalkOverlay(cues, 0, 0);
 
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
         loopBetween.disabled = !hasLoop;
@@ -673,6 +934,7 @@
             outroBadge.textContent = 'Outro: 0.0s';
             outroBadge.classList.remove('countdown-flash','text-bg-danger');
         }
+        updateTalkOverlay(cues, player.currentTime, player.duration);
 
         // Auto-advance when start_next cue is hit.
         if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
@@ -766,6 +1028,18 @@
         if (!url) return;
         overlayPlayer.src = url;
         overlayPlayer.play();
+    });
+    document.getElementById('toggleTalkup').addEventListener('click', () => {
+        talkUpMode = !talkUpMode;
+        document.getElementById('toggleTalkup').classList.toggle('btn-dark', talkUpMode);
+        document.getElementById('toggleTalkup').classList.toggle('btn-outline-dark', !talkUpMode);
+        updateTalkOverlay(currentItem ? (currentItem.cues || {}) : null, activePlayer().currentTime || 0, activePlayer().duration || 0);
+    });
+
+    radiodjOverrideBtn.addEventListener('click', () => {
+        controlMode = controlMode === 'rams' ? 'radiodj' : 'rams';
+        updateControlModeUI();
+        renderQueue();
     });
 
     radiodjOverrideBtn.addEventListener('click', async () => {
@@ -865,6 +1139,120 @@
     // Voice track recording
     const startRecBtn = document.getElementById('startRecord');
     const stopRecBtn = document.getElementById('stopRecord');
+    const vtFile = document.getElementById('vtFile');
+    const vtImport = document.getElementById('vtImport');
+    const vtMeta = document.getElementById('vtMeta');
+    const vtWaveCanvas = document.getElementById('vtWaveCanvas');
+    const vtWaveInner = document.getElementById('vtWaveInner');
+    const vtInsertPosition = document.getElementById('vtInsertPosition');
+    const vtTitle = document.getElementById('vtTitle');
+    const vtHost = document.getElementById('vtHost');
+    const vtNotes = document.getElementById('vtNotes');
+
+    function vtDisplayMeta(text) {
+        vtMeta.textContent = text;
+    }
+
+    function updateVTInsertOptions() {
+        if (!vtInsertPosition) return;
+        const options = [];
+        options.push({ value: 'next', label: 'Next up' });
+        options.push({ value: 'end', label: 'End of queue' });
+        queue.forEach((item, idx) => {
+            options.push({ value: `after-${idx}`, label: `After: ${item.name}` });
+        });
+        vtInsertPosition.innerHTML = options.map(opt => `<option value="${opt.value}">${opt.label}</option>`).join('');
+    }
+
+    function collectVTMeta() {
+        return {
+            title: vtTitle.value.trim(),
+            host: vtHost.value.trim(),
+            notes: vtNotes.value.trim(),
+        };
+    }
+
+    function syncPendingVTMeta() {
+        if (!pendingVT) return;
+        const meta = collectVTMeta();
+        const title = meta.title || 'Voice Track';
+        pendingVT.name = title;
+        pendingVT.metadata = meta;
+        vtDisplayMeta(`${title}${pendingVT.duration ? ` • ${pendingVT.duration.toFixed(1)}s` : ''}`);
+        renderQueue();
+    }
+
+    async function decodeAudioBufferFromBlob(blob) {
+        const arrayBuffer = await blob.arrayBuffer();
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        return await ctx.decodeAudioData(arrayBuffer);
+    }
+
+    function drawWaveform(buffer, canvas, container) {
+        if (!buffer || !canvas || !container) return;
+        const width = Math.max(container.clientWidth || 600, 600);
+        const height = canvas.height;
+        canvas.width = width;
+        canvas.style.width = `${width}px`;
+        container.style.width = `${width}px`;
+        const ctx = canvas.getContext('2d');
+        ctx.clearRect(0, 0, width, height);
+        const data = buffer.getChannelData(0);
+        const step = Math.ceil(data.length / width);
+        const amp = height / 2;
+        ctx.fillStyle = '#f1f3f5';
+        ctx.fillRect(0, 0, width, height);
+        ctx.strokeStyle = '#0d6efd';
+        ctx.beginPath();
+        for (let i = 0; i < width; i++) {
+            let min = 1.0;
+            let max = -1.0;
+            for (let j = 0; j < step; j++) {
+                const datum = data[(i * step) + j];
+                if (datum < min) min = datum;
+                if (datum > max) max = datum;
+            }
+            ctx.moveTo(i, (1 + min) * amp);
+            ctx.lineTo(i, (1 + max) * amp);
+        }
+        ctx.stroke();
+    }
+
+    function updatePendingVTFromBlob(blob, duration = null) {
+        pendingVTBlob = blob;
+        if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
+        pendingVTUrl = URL.createObjectURL(blob);
+        const meta = collectVTMeta();
+        const title = meta.title || 'Voice Track';
+        pendingVT = {
+            name: title,
+            url: pendingVTUrl,
+            category: 'Voice Tracks',
+            kind: 'voicetrack',
+            duration,
+            metadata: meta,
+        };
+        document.getElementById('vtPending').classList.remove('d-none');
+        vtDisplayMeta(`${title}${duration ? ` • ${duration.toFixed(1)}s` : ''}`);
+    }
+
+    vtImport.addEventListener('click', () => vtFile.click());
+    vtFile.addEventListener('change', async (e) => {
+        const file = e.target.files[0];
+        if (!file) return;
+        try {
+            const buffer = await decodeAudioBufferFromBlob(file);
+            drawWaveform(buffer, vtWaveCanvas, vtWaveInner);
+            updatePendingVTFromBlob(file, buffer.duration);
+        } catch (err) {
+            alert('Unable to import this audio file.');
+        }
+    });
+
+    [vtTitle, vtHost, vtNotes].forEach(field => {
+        field.addEventListener('input', syncPendingVTMeta);
+    });
+
     startRecBtn.addEventListener('click', async () => {
         if (recorder) return;
         try {
@@ -874,10 +1262,10 @@
             recorder.ondataavailable = (e) => { if (e.data.size > 0) recordChunks.push(e.data); };
             recorder.onstop = () => {
                 const blob = new Blob(recordChunks, { type: 'audio/webm' });
-                if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
-                pendingVTUrl = URL.createObjectURL(blob);
-                pendingVT = { name: 'Voice Track', url: pendingVTUrl, category: 'Voice Tracks', kind: 'voicetrack' };
-                document.getElementById('vtPending').classList.remove('d-none');
+                decodeAudioBufferFromBlob(blob).then(buffer => {
+                    drawWaveform(buffer, vtWaveCanvas, vtWaveInner);
+                    updatePendingVTFromBlob(blob, buffer.duration);
+                }).catch(() => updatePendingVTFromBlob(blob, null));
                 recorder = null;
                 stopRecBtn.disabled = true;
                 startRecBtn.disabled = false;
@@ -894,7 +1282,17 @@
 
     document.getElementById('vtConfirm').addEventListener('click', () => {
         if (pendingVT) {
-            addToQueue(pendingVT);
+            const value = vtInsertPosition.value;
+            if (value === 'next') {
+                insertToQueue(pendingVT, 1);
+            } else if (value === 'end') {
+                addToQueue(pendingVT);
+            } else if (value.startsWith('after-')) {
+                const idx = parseInt(value.replace('after-', ''), 10);
+                insertToQueue(pendingVT, idx + 1);
+            } else {
+                addToQueue(pendingVT);
+            }
         }
         document.getElementById('vtPending').classList.add('d-none');
         pendingVT = null;
@@ -902,9 +1300,204 @@
     document.getElementById('vtDelete').addEventListener('click', () => {
         if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
         pendingVTUrl = null;
+        pendingVTBlob = null;
         pendingVT = null;
         document.getElementById('vtPending').classList.add('d-none');
     });
+
+    function updateTalkOverlay(cues, currentTime = 0, duration = 0) {
+        if (!talkUpMode || !cues) {
+            talkOverlay.classList.add('d-none');
+            return;
+        }
+        const intro = cues.intro || 0;
+        const outro = cues.outro || 0;
+        const introRemaining = Math.max(0, intro - currentTime);
+        const outroRemaining = Math.max(0, outro - currentTime);
+        talkOverlayIntro.textContent = `${introRemaining.toFixed(1)}s`;
+        talkOverlayOutro.textContent = `${outroRemaining.toFixed(1)}s`;
+        talkOverlay.classList.toggle('d-none', !intro && !outro);
+        talkOverlayIntro.classList.toggle('text-warning', introRemaining > 0 && introRemaining <= 5);
+        talkOverlayOutro.classList.toggle('text-warning', outroRemaining > 0 && outroRemaining <= 5);
+    }
+
+    function fmtCueTime(t) {
+        if (t === '' || t === null || t === undefined || isNaN(t)) return '';
+        const ms = Math.floor((t % 1) * 100);
+        const total = Math.floor(t);
+        const min = Math.floor(total/60).toString().padStart(2,'0');
+        const sec = (total % 60).toString().padStart(2,'0');
+        return `${min}:${sec}.${ms.toString().padStart(2,'0')}`;
+    }
+
+    function paintCueSwatches() {
+        document.querySelectorAll('.cue-swatch').forEach(el => {
+            const key = el.dataset.cue;
+            if (key && cueColorMap[key]) {
+                el.style.color = cueColorMap[key];
+            }
+        });
+    }
+
+    function selectCueButton(key) {
+        cueSelected = key;
+        cueFields.forEach(f => {
+            const btn = document.getElementById(`btn-${f}`);
+            if (btn) btn.classList.toggle('active', f === key);
+        });
+        updateCueMarkers();
+    }
+
+    function updateCueMarkers() {
+        cueMarkers.innerHTML = '';
+        cueFields.forEach(field => {
+            const val = parseFloat(cueInputs[field]?.value);
+            const label = document.getElementById(`time-${field}`);
+            if (label) label.textContent = val ? fmtCueTime(val) : '';
+            if (!cuePlayer.duration || isNaN(val)) return;
+            const pct = (val / cuePlayer.duration) * 100;
+            if (pct < 0 || pct > 100) return;
+            const marker = document.createElement('div');
+            marker.className = 'marker handle';
+            marker.dataset.cue = field;
+            marker.style.left = `${pct}%`;
+            marker.style.background = cueColorMap[field] || '#0d6efd';
+            cueMarkers.appendChild(marker);
+        });
+    }
+
+    function updateCueNeedle() {
+        if (!cuePlayer || !cuePlayer.duration || !cueNeedle) return;
+        const pct = (cuePlayer.currentTime / cuePlayer.duration) * 100;
+        cueNeedle.style.left = `${pct}%`;
+    }
+
+    function nudgeCue(delta) {
+        if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
+        const wasPlaying = !cuePlayer.paused;
+        cuePlayer.currentTime = Math.max(0, Math.min(cuePlayer.duration || 0, cuePlayer.currentTime + delta));
+        updateCueNeedle();
+        if (wasPlaying) cuePlayer.play().catch(() => {});
+    }
+
+    async function drawCueWaveformFromUrl(url) {
+        try {
+            const res = await fetch(url);
+            const arrayBuffer = await res.arrayBuffer();
+            const ctx = new (window.AudioContext || window.webkitAudioContext)();
+            const buffer = await ctx.decodeAudioData(arrayBuffer);
+            cueBaseWidth = Math.max(cueWave.clientWidth || 600, 600);
+            cueWaveCanvas.width = cueBaseWidth;
+            cueWaveCanvas.style.width = `${cueBaseWidth}px`;
+            cueWaveInner.style.width = `${cueBaseWidth}px`;
+            cueMarkers.style.width = `${cueBaseWidth}px`;
+            drawWaveform(buffer, cueWaveCanvas, cueWaveInner);
+        } catch (err) {
+            const ctx = cueWaveCanvas.getContext('2d');
+            ctx.clearRect(0,0,cueWaveCanvas.width, cueWaveCanvas.height);
+            ctx.fillStyle = '#6c757d';
+            ctx.fillText('Waveform unavailable', 10, cueWaveCanvas.height/2);
+        }
+    }
+
+    function selectCueItem(item) {
+        if (!item) return;
+        cueItem = item;
+        cueItemLabel.textContent = `${item.name} (${item.category || 'media'})`;
+        cuePlayer.disabled = false;
+        cuePlayer.src = item.url;
+        cuePlayer.load();
+        cueFields.forEach(field => {
+            cueInputs[field].value = item.cues && item.cues[field] != null ? Number(item.cues[field]).toFixed(2) : '';
+        });
+        updateCueMarkers();
+        drawCueWaveformFromUrl(item.url);
+    }
+
+    cueFields.forEach(field => {
+        cueInputs[field] = document.createElement('input');
+    });
+
+    document.querySelectorAll('.cue-btn').forEach(btn => {
+        btn.addEventListener('click', () => selectCueButton(btn.dataset.cue));
+    });
+    document.getElementById('cueStepBack').addEventListener('click', () => nudgeCue(-0.05));
+    document.getElementById('cueStepForward').addEventListener('click', () => nudgeCue(0.05));
+    document.getElementById('cueToggle').addEventListener('click', () => {
+        if (cuePlayer.paused) cuePlayer.play(); else cuePlayer.pause();
+    });
+    document.getElementById('cueSet').addEventListener('click', () => {
+        if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
+        cueInputs[cueSelected].value = cuePlayer.currentTime.toFixed(2);
+        updateCueMarkers();
+    });
+    document.getElementById('cueRemove').addEventListener('click', () => {
+        cueInputs[cueSelected].value = '';
+        updateCueMarkers();
+    });
+    document.getElementById('cueSave').addEventListener('click', async () => {
+        if (!cueItem || !cueItem.token) return;
+        const payload = {};
+        cueFields.forEach(field => {
+            const val = parseFloat(cueInputs[field].value);
+            if (!isNaN(val)) payload[field] = val;
+        });
+        try {
+            const res = await fetch('/api/psa/cue', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: cueItem.token, cue: payload }),
+            });
+            const data = await res.json();
+            if (data.status === 'ok') {
+                cueItem.cues = data.cue || payload;
+                renderQueue();
+                renderLibrary(document.getElementById('psaSearch').value || '');
+            } else {
+                alert('Unable to save cues.');
+            }
+        } catch (err) {
+            alert('Unable to save cues.');
+        }
+    });
+
+    cuePlayer.addEventListener('timeupdate', updateCueNeedle);
+    cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+
+    cueWave.addEventListener('mousedown', (e) => {
+        if (!cuePlayer.duration) return;
+        const rect = cueWave.getBoundingClientRect();
+        const x = e.clientX - rect.left + cueWave.scrollLeft;
+        const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
+        cuePlayer.currentTime = pct * cuePlayer.duration;
+        updateCueNeedle();
+    });
+
+    cueMarkers.addEventListener('mousedown', (e) => {
+        if (!e.target.dataset.cue) return;
+        cueDragField = e.target.dataset.cue;
+        cueDragNeedle = false;
+    });
+    cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
+    document.addEventListener('mouseup', () => { cueDragNeedle = false; cueDragField = null; });
+    document.addEventListener('mousemove', (e) => {
+        if ((!cueDragNeedle && !cueDragField) || !cuePlayer.duration) return;
+        const rect = cueWave.getBoundingClientRect();
+        const x = e.clientX - rect.left + cueWave.scrollLeft;
+        const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
+        const seconds = pct * cuePlayer.duration;
+        if (cueDragNeedle) {
+            cuePlayer.currentTime = seconds;
+        } else if (cueDragField) {
+            cueInputs[cueDragField].value = seconds.toFixed(2);
+        }
+        updateCueNeedle();
+        updateCueMarkers();
+    });
+
+    paintCueSwatches();
+    selectCueButton('cue_in');
+    updateVTInsertOptions();
 </script>
 </body>
 </html>
