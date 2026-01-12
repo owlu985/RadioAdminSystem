@@ -981,6 +981,24 @@ def music_search_page():
     return render_template("music_search.html", saved_searches=saved)
 
 
+@main_bp.route("/library/editor")
+@permission_required({"music:view"})
+def library_editor_page():
+    email = session.get("user_email") or None
+    saved = []
+    if email:
+        saved = (
+            db.session.query(SavedSearch)
+            .filter(
+                (SavedSearch.created_by == email) | (SavedSearch.created_by.is_(None))
+            )
+            .order_by(SavedSearch.created_at.desc())
+            .limit(25)
+            .all()
+        )
+    return render_template("library_editor.html", saved_searches=saved)
+
+
 def _safe_music_path(path: str) -> str:
     root = current_app.config.get("NAS_MUSIC_ROOT") or ""
     if not root:
@@ -1005,24 +1023,38 @@ def _is_alac(path: str) -> bool:
     return False
 
 
-def _send_audio(path: str):
+def _transcode_cache_dir() -> str:
+    cache_dir = os.path.join(current_app.instance_path, "transcodes")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+def _transcode_cache_path(path: str) -> str:
+    stat = os.stat(path)
+    key = f"{path}:{stat.st_mtime}:{stat.st_size}".encode("utf-8")
+    digest = hashlib.sha1(key).hexdigest()
+    return os.path.join(_transcode_cache_dir(), f"{digest}.mp3")
+
+
+def _ensure_transcoded_mp3(path: str) -> str | None:
     if not current_app.config.get("TRANSCODE_ALAC_TO_MP3", True):
-        return send_file(path, conditional=True)
-
+        return None
     if os.path.splitext(path)[1].lower() != ".m4a":
-        return send_file(path, conditional=True)
-
+        return None
     if not _is_alac(path):
-        return send_file(path, conditional=True)
-
+        return None
+    target = _transcode_cache_path(path)
+    if os.path.exists(target):
+        return target
     try:
-        process = subprocess.Popen(
+        subprocess.run(
             [
                 "ffmpeg",
                 "-nostdin",
                 "-hide_banner",
                 "-loglevel",
                 "error",
+                "-y",
                 "-i",
                 path,
                 "-vn",
@@ -1030,35 +1062,27 @@ def _send_audio(path: str):
                 "libmp3lame",
                 "-b:a",
                 "192k",
-                "-f",
-                "mp3",
-                "pipe:1",
+                target,
             ],
-            stdout=subprocess.PIPE,
+            check=True,
+            stdout=subprocess.DEVNULL,
             stderr=subprocess.DEVNULL,
         )
-    except OSError:
-        return send_file(path, conditional=True)
-
-    def _generate():
-        try:
-            if process.stdout is None:
-                return
-            while True:
-                chunk = process.stdout.read(8192)
-                if not chunk:
-                    break
-                yield chunk
-        finally:
-            if process.stdout:
-                process.stdout.close()
-            process.terminate()
+    except (OSError, subprocess.CalledProcessError):
+        if os.path.exists(target):
             try:
-                process.wait(timeout=1)
-            except subprocess.TimeoutExpired:
-                process.kill()
+                os.remove(target)
+            except OSError:
+                pass
+        return None
+    return target
 
-    return Response(stream_with_context(_generate()), mimetype="audio/mpeg")
+
+def _send_audio(path: str):
+    transcoded = _ensure_transcoded_mp3(path)
+    if transcoded:
+        return send_file(transcoded, mimetype="audio/mpeg", conditional=True)
+    return send_file(path, conditional=True)
 
 
 @main_bp.route("/music/stream")
@@ -1104,6 +1128,9 @@ def music_cover():
                 mime = pic.mime or mime
 
     if not image_data:
+        cover_path = os.path.splitext(safe_path)[0] + ".jpg"
+        if os.path.exists(cover_path):
+            return send_file(cover_path, mimetype="image/jpeg", conditional=True)
         abort(404)
     return send_file(BytesIO(image_data), mimetype=mime, conditional=True)
 
@@ -1167,6 +1194,12 @@ def music_cue_page():
     if not path:
         return render_template("music_edit.html", track=None, error="Missing path for cue editor")
     track = get_track(path)
+    try:
+        safe_path = _safe_music_path(path)
+    except Exception:
+        safe_path = None
+    if safe_path:
+        _ensure_transcoded_mp3(safe_path)
     cue_obj = load_cue(path)
     cue = {
         "cue_in": cue_obj.cue_in if cue_obj else None,
