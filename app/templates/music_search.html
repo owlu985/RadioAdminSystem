@@ -5,6 +5,28 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Music Search & Bulk Tools</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .browser-list {
+            max-height: 360px;
+            overflow-y: auto;
+        }
+        .browser-list .list-group-item {
+            cursor: pointer;
+        }
+        .browser-list .list-group-item.active {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .browser-meta-label {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .metadata-cover {
+            max-width: 100%;
+            border-radius: 0.5rem;
+        }
+    </style>
 </head>
 <body>
 {% include '_nav.html' %}
@@ -47,7 +69,69 @@
                 <option value="">All folders</option>
             </select>
         </div>
+        <div class="col-12 col-lg-3">
+            <label class="form-label">Genre</label>
+            <select id="genreFilter" class="form-select">
+                <option value="">All genres</option>
+            </select>
+        </div>
+        <div class="col-12 col-lg-3">
+            <label class="form-label">Year</label>
+            <select id="yearFilter" class="form-select">
+                <option value="">All years</option>
+            </select>
+        </div>
+        <div class="col-12 col-lg-3">
+            <label class="form-label">Mood</label>
+            <select id="moodFilter" class="form-select">
+                <option value="">All moods</option>
+            </select>
+        </div>
+        <div class="col-12 col-lg-3 d-flex align-items-end">
+            <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="explicitFilter">
+                <label class="form-check-label" for="explicitFilter">Explicit only</label>
+            </div>
+        </div>
     </form>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-9">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Library Browser</span>
+                    <small class="text-muted">Use ↑↓ to move, ←→ to switch columns, Enter to open track.</small>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-4">
+                            <div class="browser-meta-label text-muted mb-1">Artists</div>
+                            <div class="list-group browser-list" id="artistList" role="listbox" aria-label="Artists"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="browser-meta-label text-muted mb-1">Albums</div>
+                            <div class="list-group browser-list" id="albumList" role="listbox" aria-label="Albums"></div>
+                        </div>
+                        <div class="col-md-4">
+                            <div class="browser-meta-label text-muted mb-1">Tracks</div>
+                            <div class="list-group browser-list" id="trackList" role="listbox" aria-label="Tracks"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-3">
+            <div class="card h-100" id="metadataSidebar">
+                <div class="card-header">Selection Metadata</div>
+                <div class="card-body">
+                    <div id="metadataBody" class="text-muted small">Select an artist, album, or track to see details.</div>
+                </div>
+                <div class="card-footer">
+                    <button class="btn btn-sm btn-outline-primary w-100" id="openDetailBtn" disabled>Open track detail</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <div class="row">
         <div class="col-lg-8">
@@ -129,6 +213,9 @@
     const albumGrid = document.getElementById('albumGrid');
     let savedSearches = {{ saved_searches|default([])|tojson }};
     let resultsData = [];
+    let selectedArtist = null;
+    let selectedAlbum = null;
+    let selectedTrackPath = null;
     let sortState = { key: null, dir: 1 };
     let currentPage = 1;
     let lastQuery = '';
@@ -147,6 +234,195 @@
               <a class="dropdown-item flex-grow-1" href="#" data-query="${s.query}">${s.name}</a>
               <button class="btn btn-link text-danger px-2 py-1" data-delete="${s.id}">×</button>
             </li>`).join('');
+    }
+
+    function buildSelectOptions(select, values, defaultLabel) {
+        const current = select.value;
+        const opts = [`<option value="">${defaultLabel}</option>`];
+        values.forEach(val => {
+            const safe = val || '';
+            opts.push(`<option value="${safe}">${safe}</option>`);
+        });
+        if (current && !values.includes(current)) {
+            opts.push(`<option value="${current}">${current}</option>`);
+        }
+        select.innerHTML = opts.join('');
+        if (current) {
+            select.value = current;
+        }
+    }
+
+    function updateFilterOptions(payload) {
+        buildSelectOptions(genreFilter, payload.genres || [], 'All genres');
+        buildSelectOptions(yearFilter, payload.years || [], 'All years');
+        buildSelectOptions(moodFilter, payload.moods || [], 'All moods');
+    }
+
+    function getArtists(items) {
+        const map = new Map();
+        items.forEach(item => {
+            const value = item.artist || '';
+            const label = item.artist || 'Unknown Artist';
+            const entry = map.get(value) || { value, label, count: 0 };
+            entry.count += 1;
+            map.set(value, entry);
+        });
+        return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    function getAlbums(items, artistValue) {
+        const map = new Map();
+        items.filter(item => (item.artist || '') === artistValue).forEach(item => {
+            const value = item.album || '';
+            const label = item.album || 'Unknown Album';
+            const entry = map.get(value) || { value, label, count: 0 };
+            entry.count += 1;
+            map.set(value, entry);
+        });
+        return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
+    }
+
+    function getTracks(items, artistValue, albumValue) {
+        return items.filter(item => (item.artist || '') === artistValue && (item.album || '') === albumValue)
+            .sort((a, b) => {
+                const disc = (a.disc_num || 0) - (b.disc_num || 0);
+                if (disc !== 0) return disc;
+                const track = (a.track_num || 0) - (b.track_num || 0);
+                if (track !== 0) return track;
+                return (a.title || '').localeCompare(b.title || '');
+            });
+    }
+
+    function renderList(container, items, selectedValue, type) {
+        container.innerHTML = '';
+        if (!items.length) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted small';
+            empty.textContent = 'No results';
+            container.appendChild(empty);
+            return;
+        }
+        items.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
+            btn.dataset.type = type;
+            btn.dataset.value = item.value;
+            btn.textContent = item.label;
+            if (item.count) {
+                const badge = document.createElement('span');
+                badge.className = 'badge bg-secondary rounded-pill';
+                badge.textContent = item.count;
+                btn.appendChild(badge);
+            }
+            if (selectedValue === item.value) {
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+            } else {
+                btn.setAttribute('aria-selected', 'false');
+            }
+            container.appendChild(btn);
+        });
+    }
+
+    function renderTrackList(container, tracks, selectedPath) {
+        container.innerHTML = '';
+        if (!tracks.length) {
+            const empty = document.createElement('div');
+            empty.className = 'text-muted small';
+            empty.textContent = 'No tracks';
+            container.appendChild(empty);
+            return;
+        }
+        tracks.forEach(track => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.type = 'track';
+            btn.dataset.path = track.path;
+            const num = track.track_num ? `${track.track_num}. ` : '';
+            btn.textContent = `${num}${track.title || 'Untitled'}`;
+            if (selectedPath === track.path) {
+                btn.classList.add('active');
+                btn.setAttribute('aria-selected', 'true');
+            } else {
+                btn.setAttribute('aria-selected', 'false');
+            }
+            container.appendChild(btn);
+        });
+    }
+
+    function setSelectionDefaults() {
+        const artists = getArtists(resultsData);
+        if (!selectedArtist || !artists.find(a => a.value === selectedArtist)) {
+            selectedArtist = artists.length ? artists[0].value : null;
+        }
+        const albums = selectedArtist ? getAlbums(resultsData, selectedArtist) : [];
+        if (!selectedAlbum || !albums.find(a => a.value === selectedAlbum)) {
+            selectedAlbum = albums.length ? albums[0].value : null;
+        }
+        const tracks = (selectedArtist && selectedAlbum) ? getTracks(resultsData, selectedArtist, selectedAlbum) : [];
+        if (!selectedTrackPath || !tracks.find(t => t.path === selectedTrackPath)) {
+            selectedTrackPath = tracks.length ? tracks[0].path : null;
+        }
+    }
+
+    function updateMetadata() {
+        if (!metadataBody) return;
+        const artistLabel = selectedArtist || 'Unknown Artist';
+        const albumLabel = selectedAlbum || 'Unknown Album';
+        const track = resultsData.find(item => item.path === selectedTrackPath);
+        const artistTracks = selectedArtist ? resultsData.filter(item => (item.artist || '') === selectedArtist) : [];
+        const albumTracks = selectedArtist && selectedAlbum
+            ? resultsData.filter(item => (item.artist || '') === selectedArtist && (item.album || '') === selectedAlbum)
+            : [];
+
+        let html = `
+            <div class="browser-meta-label text-muted">Artist</div>
+            <div class="fw-semibold mb-2">${artistLabel}</div>
+            <div class="browser-meta-label text-muted">Album</div>
+            <div class="fw-semibold mb-3">${albumLabel}</div>
+            <div class="d-flex justify-content-between mb-2"><span>Albums</span><span>${new Set(artistTracks.map(t => t.album || 'Unknown Album')).size || 0}</span></div>
+            <div class="d-flex justify-content-between mb-3"><span>Tracks</span><span>${artistTracks.length}</span></div>
+        `;
+
+        if (track) {
+            const explicitLabel = track.explicit === true ? 'Yes' : track.explicit === false ? 'No' : 'Unknown';
+            html = `
+                <div class="text-center mb-3">
+                    <img class="metadata-cover mb-2" src="/music/cover?path=${encodeURIComponent(track.path)}" alt="cover">
+                </div>
+                <div class="browser-meta-label text-muted">Track</div>
+                <div class="fw-semibold mb-2">${track.title || 'Untitled'}</div>
+                <div class="small mb-1"><strong>Artist:</strong> ${track.artist || 'Unknown'}</div>
+                <div class="small mb-1"><strong>Album:</strong> ${track.album || 'Unknown'}</div>
+                <div class="small mb-1"><strong>Year:</strong> ${track.year || '—'}</div>
+                <div class="small mb-1"><strong>Genre:</strong> ${track.genre || '—'}</div>
+                <div class="small mb-1"><strong>Mood:</strong> ${track.mood || '—'}</div>
+                <div class="small mb-1"><strong>Explicit:</strong> ${explicitLabel}</div>
+                <div class="small mb-1"><strong>Length:</strong> ${track.duration_seconds ? track.duration_seconds.toFixed(1) + 's' : '—'}</div>
+                <div class="small"><strong>Folder:</strong> ${track.folder || '—'}</div>
+            `;
+        }
+        metadataBody.innerHTML = html;
+        if (openDetailBtn) {
+            openDetailBtn.disabled = !track;
+            openDetailBtn.dataset.path = track ? track.path : '';
+        }
+    }
+
+    function renderBrowser() {
+        setSelectionDefaults();
+        const artists = getArtists(resultsData);
+        const albums = selectedArtist ? getAlbums(resultsData, selectedArtist) : [];
+        const tracks = (selectedArtist && selectedAlbum) ? getTracks(resultsData, selectedArtist, selectedAlbum) : [];
+        renderList(artistList, artists, selectedArtist, 'artist');
+        renderList(albumList, albums, selectedAlbum, 'album');
+        renderTrackList(trackList, tracks, selectedTrackPath);
+        updateMetadata();
+        document.querySelectorAll('.result-row').forEach(row => {
+            row.classList.toggle('table-active', row.dataset.path === selectedTrackPath);
+        });
     }
 
     function renderResults(data) {
@@ -177,9 +453,105 @@
                     if (link) { link.click(); }
                 }
             });
+            row.addEventListener('click', (ev) => {
+                if (ev.target && ev.target.matches('input[type=checkbox]')) {
+                    return;
+                }
+                selectTrack(row.dataset.path);
+            });
         });
         renderArtistsAndAlbums(resultsData);
     }
+
+    function selectArtist(value) {
+        selectedArtist = value;
+        selectedAlbum = null;
+        selectedTrackPath = null;
+        renderBrowser();
+    }
+
+    function selectAlbum(value) {
+        selectedAlbum = value;
+        selectedTrackPath = null;
+        renderBrowser();
+    }
+
+    function selectTrack(path) {
+        selectedTrackPath = path;
+        renderBrowser();
+    }
+
+    function moveFocus(list, direction) {
+        const items = Array.from(list.querySelectorAll('button.list-group-item'));
+        if (!items.length) return;
+        const active = document.activeElement;
+        const currentIndex = items.indexOf(active);
+        let nextIndex = currentIndex + direction;
+        if (currentIndex === -1) {
+            nextIndex = 0;
+        }
+        nextIndex = Math.max(0, Math.min(items.length - 1, nextIndex));
+        items[nextIndex].focus();
+    }
+
+    function focusNeighborList(current, direction) {
+        const lists = [artistList, albumList, trackList];
+        const idx = lists.indexOf(current);
+        const nextIdx = idx + direction;
+        if (nextIdx >= 0 && nextIdx < lists.length) {
+            const nextList = lists[nextIdx];
+            const firstItem = nextList.querySelector('button.list-group-item');
+            if (firstItem) {
+                firstItem.focus();
+            }
+        }
+    }
+
+    function handleListClick(event) {
+        const btn = event.target.closest('button.list-group-item');
+        if (!btn) return;
+        if (btn.dataset.type === 'artist') {
+            selectArtist(btn.dataset.value);
+        } else if (btn.dataset.type === 'album') {
+            selectAlbum(btn.dataset.value);
+        } else if (btn.dataset.type === 'track') {
+            selectTrack(btn.dataset.path);
+        }
+    }
+
+    function handleListKeydown(event) {
+        const list = event.currentTarget;
+        if (event.key === 'ArrowDown') {
+            event.preventDefault();
+            moveFocus(list, 1);
+        }
+        if (event.key === 'ArrowUp') {
+            event.preventDefault();
+            moveFocus(list, -1);
+        }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            focusNeighborList(list, 1);
+        }
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            focusNeighborList(list, -1);
+        }
+        if (event.key === 'Enter' || event.key === ' ') {
+            const btn = document.activeElement;
+            if (btn && btn.classList.contains('list-group-item')) {
+                btn.click();
+                if (btn.dataset.type === 'track') {
+                    window.location.href = `/music/detail?path=${encodeURIComponent(btn.dataset.path)}`;
+                }
+            }
+        }
+    }
+
+    [artistList, albumList, trackList].forEach(list => {
+        list.addEventListener('click', handleListClick);
+        list.addEventListener('keydown', handleListKeydown);
+    });
 
     renderSaved();
 
@@ -324,15 +696,24 @@
     async function fetchPage() {
         if (!lastQuery) return;
         const folder = folderFilter.value || '';
+        const genre = genreFilter.value || '';
+        const year = yearFilter.value || '';
+        const mood = moodFilter.value || '';
+        const explicitOnly = explicitFilter.checked;
         const params = new URLSearchParams({
             q: lastQuery,
             page: currentPage,
             per_page: perPage,
         });
         if (folder) params.set('folder', folder);
+        if (genre) params.set('genre', genre);
+        if (year) params.set('year', year);
+        if (mood) params.set('mood', mood);
+        if (explicitOnly) params.set('explicit', '1');
         const res = await fetch(`/api/music/search?${params.toString()}`);
         const data = await res.json();
         renderResults(data.items || []);
+        updateFilterOptions(data);
         if (data.folders) {
             const opts = ['<option value="">All folders</option>'];
             data.folders.filter(Boolean).sort().forEach(f => {
@@ -364,11 +745,34 @@
         currentPage = 1;
         await fetchPage();
     });
+    genreFilter.addEventListener('change', async () => {
+        currentPage = 1;
+        await fetchPage();
+    });
+    yearFilter.addEventListener('change', async () => {
+        currentPage = 1;
+        await fetchPage();
+    });
+    moodFilter.addEventListener('change', async () => {
+        currentPage = 1;
+        await fetchPage();
+    });
+    explicitFilter.addEventListener('change', async () => {
+        currentPage = 1;
+        await fetchPage();
+    });
 
     selectAll.addEventListener('change', () => {
         document.querySelectorAll('#resultsTable tbody input[type=checkbox]').forEach(cb => {
             cb.checked = selectAll.checked;
         });
+    });
+
+    openDetailBtn.addEventListener('click', () => {
+        const path = openDetailBtn.dataset.path;
+        if (path) {
+            window.location.href = `/music/detail?path=${encodeURIComponent(path)}`;
+        }
     });
 
     document.getElementById('bulkApply').addEventListener('click', async () => {

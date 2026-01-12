@@ -139,6 +139,35 @@ class ShowRun(db.Model):
         )
 
 
+class PlaybackSession(db.Model):
+    __tablename__ = "playback_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+    show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ended_at = db.Column(db.DateTime, nullable=True)
+
+    show_run = db.relationship("ShowRun", backref="playback_sessions")
+
+
+class PlaybackQueueItem(db.Model):
+    __tablename__ = "playback_queue_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False)
+    position = db.Column(db.Integer, nullable=False, default=0)
+    media_type = db.Column(db.String(32), nullable=False)
+    path = db.Column(db.String(500), nullable=True)
+    title = db.Column(db.String(255), nullable=True)
+    artist = db.Column(db.String(255), nullable=True)
+    album = db.Column(db.String(255), nullable=True)
+    duration = db.Column(db.Float, nullable=True)
+    item_metadata = db.Column("metadata", Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    session = db.relationship("PlaybackSession", backref="queue_items")
+
+
 class LogEntry(db.Model):
     __tablename__ = "log_entry"
 
