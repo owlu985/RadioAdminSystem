@@ -362,8 +362,14 @@ def _psa_library_root():
     return root
 
 
+def _imaging_library_root():
+    root = current_app.config.get("IMAGING_LIBRARY_PATH") or os.path.join(current_app.instance_path, "imaging")
+    os.makedirs(root, exist_ok=True)
+    return root
+
+
 def _media_roots() -> list[tuple[str, str]]:
-    roots: list[tuple[str, str]] = [("PSA", _psa_library_root())]
+    roots: list[tuple[str, str]] = [("PSA", _psa_library_root()), ("Imaging", _imaging_library_root())]
     music_root = current_app.config.get("NAS_MUSIC_ROOT")
     if music_root:
         os.makedirs(music_root, exist_ok=True)
@@ -460,7 +466,8 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
 @main_bp.route("/psa/player")
 def psa_player():
     psa_root = _psa_library_root()
-    resp = make_response(render_template("psa_player.html", psa_root=psa_root))
+    imaging_root = _imaging_library_root()
+    resp = make_response(render_template("psa_player.html", psa_root=psa_root, imaging_root=imaging_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -2096,6 +2103,7 @@ def settings():
                 'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
                 'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
                 'PSA_LIBRARY_PATH': request.form.get('psa_library_path', current_app.config.get('PSA_LIBRARY_PATH', '')).strip(),
+                'IMAGING_LIBRARY_PATH': request.form.get('imaging_library_path', current_app.config.get('IMAGING_LIBRARY_PATH', '')).strip(),
                 'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
                 'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
                 'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
@@ -2190,6 +2198,7 @@ def settings():
         'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
         'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
         'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
+        'imaging_library_path': config.get('IMAGING_LIBRARY_PATH', ''),
         'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
         'social_send_enabled': config.get('SOCIAL_SEND_ENABLED', False),
         'social_dry_run': config.get('SOCIAL_DRY_RUN', True),
