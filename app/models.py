@@ -225,6 +225,55 @@ class DJHandoffNote(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
+class PlaybackSession(db.Model):
+    __tablename__ = "playback_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+    show_name = db.Column(db.String(128), nullable=True)
+    dj_name = db.Column(db.String(128), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class PlaybackQueueItem(db.Model):
+    __tablename__ = "playback_queue_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False, index=True)
+    position = db.Column(db.Integer, nullable=False, index=True)
+    item_type = db.Column(db.String(32), nullable=False)
+    title = db.Column(db.String(200), nullable=True)
+    artist = db.Column(db.String(200), nullable=True)
+    duration = db.Column(db.Integer, nullable=True)
+    metadata = db.Column(Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    session = db.relationship("PlaybackSession", backref="queue_items")
+
+
+class NowPlayingState(db.Model):
+    __tablename__ = "now_playing_state"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False, unique=True, index=True)
+    queue_item_id = db.Column(db.Integer, db.ForeignKey("playback_queue_item.id"), nullable=True)
+    item_type = db.Column(db.String(32), nullable=True)
+    title = db.Column(db.String(200), nullable=True)
+    artist = db.Column(db.String(200), nullable=True)
+    duration = db.Column(db.Integer, nullable=True)
+    metadata = db.Column(Text, nullable=True)
+    status = db.Column(db.String(32), nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    cue_in = db.Column(db.Float, nullable=True)
+    cue_out = db.Column(db.Float, nullable=True)
+    fade_out = db.Column(db.Float, nullable=True)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    session = db.relationship("PlaybackSession", backref=db.backref("now_playing", uselist=False))
+    queue_item = db.relationship("PlaybackQueueItem")
+
+
 class NewsType(db.Model):
     __tablename__ = "news_type"
 

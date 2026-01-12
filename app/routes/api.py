@@ -1,7 +1,7 @@
 from datetime import datetime
 import time
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template
+from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort
 import os
 import shutil
 import json
@@ -24,6 +24,9 @@ from app.models import (
     HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
+    PlaybackSession,
+    PlaybackQueueItem,
+    NowPlayingState,
     db,
 )
 from app.utils import (
@@ -70,6 +73,107 @@ from app.services.audit import start_audit_job, get_audit_status, list_audit_run
 import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
+QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack"}
+
+
+def _deserialize_metadata(raw: str | None) -> dict | None:
+    if not raw:
+        return None
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError:
+        return {"raw": raw}
+
+
+def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
+    return {
+        "id": item.id,
+        "session_id": item.session_id,
+        "position": item.position,
+        "type": item.item_type,
+        "title": item.title,
+        "artist": item.artist,
+        "duration": item.duration,
+        "metadata": _deserialize_metadata(item.metadata),
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+def _serialize_now_playing(state: NowPlayingState | None) -> dict | None:
+    if not state:
+        return None
+    return {
+        "session_id": state.session_id,
+        "queue_item_id": state.queue_item_id,
+        "type": state.item_type,
+        "title": state.title,
+        "artist": state.artist,
+        "duration": state.duration,
+        "metadata": _deserialize_metadata(state.metadata),
+        "status": state.status,
+        "started_at": state.started_at.isoformat() if state.started_at else None,
+        "cue_in": state.cue_in,
+        "cue_out": state.cue_out,
+        "fade_out": state.fade_out,
+        "updated_at": state.updated_at.isoformat(),
+    }
+
+
+def _get_playback_session() -> PlaybackSession:
+    requested = request.headers.get("X-Playback-Session") or request.args.get("session_id")
+    stored = session.get("playback_session_id")
+    session_id = requested or stored
+    playback = None
+    if session_id:
+        try:
+            playback = db.session.get(PlaybackSession, int(session_id))
+        except (TypeError, ValueError):
+            playback = None
+    if requested and not playback:
+        abort(404, description="playback_session_not_found")
+    if not playback:
+        playback = PlaybackSession()
+        db.session.add(playback)
+        db.session.commit()
+        session["playback_session_id"] = playback.id
+    return playback
+
+
+def _touch_playback_session(playback: PlaybackSession) -> None:
+    playback.updated_at = datetime.utcnow()
+    db.session.add(playback)
+
+
+def _queue_items(session_id: int) -> list[PlaybackQueueItem]:
+    return PlaybackQueueItem.query.filter_by(session_id=session_id).order_by(PlaybackQueueItem.position).all()
+
+
+def _resequence_queue(items: list[PlaybackQueueItem]) -> None:
+    for idx, item in enumerate(items):
+        item.position = idx
+        db.session.add(item)
+
+
+def _now_playing_for(session_id: int) -> NowPlayingState:
+    state = NowPlayingState.query.filter_by(session_id=session_id).first()
+    if not state:
+        state = NowPlayingState(session_id=session_id, status="idle", updated_at=datetime.utcnow())
+        db.session.add(state)
+        db.session.flush()
+    return state
+
+
+def _set_now_playing_from_item(state: NowPlayingState, item: PlaybackQueueItem | None, status: str) -> None:
+    state.queue_item_id = item.id if item else None
+    state.item_type = item.item_type if item else None
+    state.title = item.title if item else None
+    state.artist = item.artist if item else None
+    state.duration = item.duration if item else None
+    state.metadata = item.metadata if item else None
+    state.status = status
+    state.started_at = datetime.utcnow() if item else None
+    state.updated_at = datetime.utcnow()
+    db.session.add(state)
 
 
 def _serialize_show_run(run: ShowRun) -> dict:
@@ -1093,3 +1197,237 @@ def radiodj_autodj():
     except Exception as exc:  # noqa: BLE001
         return jsonify({"status": "error", "message": str(exc)}), 500
     return jsonify(result)
+
+
+@api_bp.route("/playback/session", methods=["GET", "POST"])
+def playback_session():
+    playback = _get_playback_session()
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        playback.show_name = payload.get("show_name", playback.show_name)
+        playback.dj_name = payload.get("dj_name", playback.dj_name)
+        playback.notes = payload.get("notes", playback.notes)
+        _touch_playback_session(playback)
+        db.session.commit()
+    return jsonify({
+        "id": playback.id,
+        "show_name": playback.show_name,
+        "dj_name": playback.dj_name,
+        "notes": playback.notes,
+        "created_at": playback.created_at.isoformat(),
+        "updated_at": playback.updated_at.isoformat(),
+    })
+
+
+@api_bp.route("/playback/session/attach", methods=["POST"])
+def playback_session_attach():
+    payload = request.get_json(silent=True) or {}
+    session_id = payload.get("session_id")
+    if not session_id:
+        return jsonify({"status": "error", "message": "session_id required"}), 400
+    playback = db.session.get(PlaybackSession, session_id)
+    if not playback:
+        return jsonify({"status": "error", "message": "playback_session_not_found"}), 404
+    session["playback_session_id"] = playback.id
+    return jsonify({
+        "status": "ok",
+        "session": {
+            "id": playback.id,
+            "show_name": playback.show_name,
+            "dj_name": playback.dj_name,
+            "notes": playback.notes,
+        },
+    })
+
+
+@api_bp.route("/playback/queue", methods=["GET"])
+def playback_queue_list():
+    playback = _get_playback_session()
+    items = _queue_items(playback.id)
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    return jsonify({
+        "session_id": playback.id,
+        "queue": [_serialize_queue_item(item) for item in items],
+        "now_playing": now_playing,
+    })
+
+
+@api_bp.route("/playback/queue/enqueue", methods=["POST"])
+def playback_queue_enqueue():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    item_type = (payload.get("type") or "").lower()
+    if item_type not in QUEUE_ITEM_TYPES:
+        return jsonify({"status": "error", "message": "invalid_type"}), 400
+    items = _queue_items(playback.id)
+    position = payload.get("position")
+    if position is None:
+        position = len(items)
+    else:
+        try:
+            position = int(position)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid_position"}), 400
+        position = max(0, min(position, len(items)))
+    metadata = payload.get("metadata")
+    item = PlaybackQueueItem(
+        session_id=playback.id,
+        position=position,
+        item_type=item_type,
+        title=payload.get("title"),
+        artist=payload.get("artist"),
+        duration=payload.get("duration"),
+        metadata=json.dumps(metadata) if metadata is not None else None,
+    )
+    items.insert(position, item)
+    db.session.add(item)
+    _resequence_queue(items)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "item": _serialize_queue_item(item)})
+
+
+@api_bp.route("/playback/queue/dequeue", methods=["POST"])
+def playback_queue_dequeue():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    item_id = payload.get("item_id")
+    if item_id is not None:
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid_item_id"}), 400
+    items = _queue_items(playback.id)
+    target = None
+    if item_id is not None:
+        target = next((item for item in items if item.id == item_id), None)
+    elif items:
+        target = items[0]
+    if not target:
+        return jsonify({"status": "error", "message": "item_not_found"}), 404
+    db.session.delete(target)
+    items = [item for item in items if item.id != target.id]
+    _resequence_queue(items)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "item": _serialize_queue_item(target)})
+
+
+@api_bp.route("/playback/queue/move", methods=["POST"])
+def playback_queue_move():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    item_id = payload.get("item_id")
+    new_position = payload.get("position")
+    if item_id is None or new_position is None:
+        return jsonify({"status": "error", "message": "item_id and position required"}), 400
+    try:
+        item_id = int(item_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_item_id"}), 400
+    items = _queue_items(playback.id)
+    target = next((item for item in items if item.id == item_id), None)
+    if not target:
+        return jsonify({"status": "error", "message": "item_not_found"}), 404
+    try:
+        new_position = int(new_position)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_position"}), 400
+    items = [item for item in items if item.id != target.id]
+    new_position = max(0, min(new_position, len(items)))
+    items.insert(new_position, target)
+    _resequence_queue(items)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "queue": [_serialize_queue_item(item) for item in items]})
+
+
+@api_bp.route("/playback/queue/skip", methods=["POST"])
+def playback_queue_skip():
+    playback = _get_playback_session()
+    items = _queue_items(playback.id)
+    now_playing = _now_playing_for(playback.id)
+    if now_playing.queue_item_id:
+        items = [item for item in items if item.id != now_playing.queue_item_id]
+        item = db.session.get(PlaybackQueueItem, now_playing.queue_item_id)
+        if item:
+            db.session.delete(item)
+    next_item = items[0] if items else None
+    if next_item:
+        items = items[1:]
+        db.session.delete(next_item)
+    _set_now_playing_from_item(now_playing, next_item, status="playing" if next_item else "idle")
+    _resequence_queue(items)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({
+        "status": "ok",
+        "now_playing": _serialize_now_playing(now_playing),
+        "queue": [_serialize_queue_item(item) for item in items],
+    })
+
+
+@api_bp.route("/playback/queue/cue", methods=["POST"])
+def playback_queue_cue():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    now_playing = _now_playing_for(playback.id)
+    if not now_playing.queue_item_id and not now_playing.title:
+        return jsonify({"status": "error", "message": "nothing_playing"}), 400
+    now_playing.cue_in = payload.get("cue_in", now_playing.cue_in)
+    now_playing.cue_out = payload.get("cue_out", now_playing.cue_out)
+    now_playing.updated_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    db.session.add(now_playing)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/playback/queue/fade", methods=["POST"])
+def playback_queue_fade():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    now_playing = _now_playing_for(playback.id)
+    if not now_playing.queue_item_id and not now_playing.title:
+        return jsonify({"status": "error", "message": "nothing_playing"}), 400
+    now_playing.fade_out = payload.get("fade_out", now_playing.fade_out)
+    now_playing.updated_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    db.session.add(now_playing)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/playback/now-playing", methods=["POST"])
+def playback_set_now_playing():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    now_playing = _now_playing_for(playback.id)
+    item_id = payload.get("item_id")
+    status = payload.get("status", "playing")
+    if item_id is not None:
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid_item_id"}), 400
+        item = PlaybackQueueItem.query.filter_by(session_id=playback.id, id=item_id).first()
+        if not item:
+            return jsonify({"status": "error", "message": "item_not_found"}), 404
+        db.session.delete(item)
+        _set_now_playing_from_item(now_playing, item, status=status)
+    else:
+        now_playing.queue_item_id = None
+        now_playing.item_type = payload.get("type", now_playing.item_type)
+        now_playing.title = payload.get("title", now_playing.title)
+        now_playing.artist = payload.get("artist", now_playing.artist)
+        now_playing.duration = payload.get("duration", now_playing.duration)
+        metadata = payload.get("metadata")
+        if metadata is not None:
+            now_playing.metadata = json.dumps(metadata)
+        now_playing.status = status
+        now_playing.started_at = datetime.utcnow()
+        now_playing.updated_at = datetime.utcnow()
+        db.session.add(now_playing)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
