@@ -1,0 +1,23 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Access Restricted</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+  {% include '_nav.html' %}
+  <div class="container py-5 text-center">
+    <h1 class="display-5 fw-bold text-warning mb-3">Access Required</h1>
+    <p class="lead mb-4">{{ error_description or 'You do not have permission to view this page.' }}</p>
+    <div class="d-flex justify-content-center gap-2">
+      <a class="btn btn-outline-primary" href="{{ url_for('main.login') }}">Login</a>
+      {% if session.get('authenticated') %}
+        <a class="btn btn-primary" href="{{ url_for('main.dashboard') }}">Go to dashboard</a>
+      {% endif %}
+    </div>
+  </div>
+  {% include '_footer.html' %}
+</body>
+</html>
