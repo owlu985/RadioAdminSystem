@@ -85,6 +85,9 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             tags.get("album_artist"),
             tags.get("album"),
             tags.get("composer"),
+            tags.get("genre"),
+            tags.get("mood"),
+            tags.get("year"),
         ])).lower()
         entry = {
             "path": full,
@@ -93,6 +96,10 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "album_artist": tags.get("album_artist"),
             "album": tags.get("album"),
             "composer": tags.get("composer"),
+            "genre": tags.get("genre"),
+            "mood": tags.get("mood"),
+            "explicit": tags.get("explicit"),
+            "year": tags.get("year"),
             "folder": folder,
             "mtime": stat.st_mtime,
             "size": stat.st_size,
@@ -138,6 +145,9 @@ def _read_tags(path: str) -> Dict:
         "album": None,
         "composer": None,
         "isrc": None,
+        "genre": None,
+        "mood": None,
+        "explicit": None,
         "year": None,
         "track": None,
         "disc": None,
@@ -250,6 +260,9 @@ def _read_tags(path: str) -> Dict:
                 ("isrc", "isrc"),
                 ("date", "year"),
                 ("year", "year"),
+                ("genre", "genre"),
+                ("mood", "mood"),
+                ("explicit", "explicit"),
                 ("tracknumber", "track"),
                 ("discnumber", "disc"),
                 ("copyright", "copyright"),
@@ -280,6 +293,8 @@ def _read_tags(path: str) -> Dict:
                     ("isrc", "isrc"),
                     ("date", "year"),
                     ("year", "year"),
+                    ("genre", "genre"),
+                    ("mood", "mood"),
                     ("tracknumber", "track"),
                     ("discnumber", "disc"),
                     ("copyright", "copyright"),
@@ -410,10 +425,18 @@ def _read_tags(path: str) -> Dict:
             except Exception:
                 pass
 
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
     except Exception:
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
@@ -708,6 +731,10 @@ def search_music(
     page: int = 1,
     per_page: int = 50,
     folder: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[str] = None,
+    mood: Optional[str] = None,
+    explicit: Optional[bool] = None,
 ) -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
@@ -719,6 +746,28 @@ def search_music(
 
     if query_lower and query_lower not in {"%", "*"}:
         entries = [e for e in entries if query_lower in (e.get("search") or "")]
+
+    def _norm(val: Optional[str]) -> str:
+        return (val or "").strip().lower()
+
+    base_entries = entries[:]
+    genre_map = {(_norm(e.get("genre"))): e.get("genre") for e in base_entries if e.get("genre")}
+    mood_map = {(_norm(e.get("mood"))): e.get("mood") for e in base_entries if e.get("mood")}
+    genres = sorted(genre_map.values(), key=lambda v: _norm(v))
+    moods = sorted(mood_map.values(), key=lambda v: _norm(v))
+    years = sorted({str(e.get("year")) for e in base_entries if e.get("year")})
+
+    if genre:
+        genre_norm = _norm(genre)
+        entries = [e for e in entries if _norm(e.get("genre")) == genre_norm]
+    if mood:
+        mood_norm = _norm(mood)
+        entries = [e for e in entries if _norm(e.get("mood")) == mood_norm]
+    if year:
+        year_str = str(year).strip()
+        entries = [e for e in entries if str(e.get("year") or "").strip() == year_str]
+    if explicit is not None:
+        entries = [e for e in entries if bool(e.get("explicit")) is explicit]
 
     entries.sort(
         key=lambda e: (
@@ -754,6 +803,12 @@ def search_music(
         payload.update({
             "duration_seconds": analysis.duration_seconds if analysis else None,
             "folder": entry.get("folder"),
+            "genre": entry.get("genre"),
+            "mood": entry.get("mood"),
+            "year": entry.get("year"),
+            "explicit": entry.get("explicit"),
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
         })
         items.append(payload)
 
@@ -764,6 +819,9 @@ def search_music(
         "page": page,
         "per_page": per_page,
         "folders": folders,
+        "genres": genres,
+        "moods": moods,
+        "years": years,
     }
 
 

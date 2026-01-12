@@ -345,6 +345,32 @@ class LiveReadCard(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
 
+class PsaAsset(db.Model):
+    __tablename__ = "psa_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(500), unique=True, nullable=False)
+    title = db.Column(db.String(200), nullable=True)
+    category = db.Column(db.String(200), nullable=True)
+    expires_on = db.Column(db.Date, nullable=True)
+    usage_rules = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
+class ImagingAsset(db.Model):
+    __tablename__ = "imaging_asset"
+
+    id = db.Column(db.Integer, primary_key=True)
+    path = db.Column(db.String(500), unique=True, nullable=False)
+    title = db.Column(db.String(200), nullable=True)
+    category = db.Column(db.String(200), nullable=True)
+    expires_on = db.Column(db.Date, nullable=True)
+    usage_rules = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
+
+
 class ArchivistEntry(db.Model):
     __tablename__ = "archivist_entry"
 
