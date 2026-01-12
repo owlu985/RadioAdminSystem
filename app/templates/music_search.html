@@ -143,6 +143,8 @@
                     <th role="button" data-sort="artist">Artist</th>
                     <th role="button" data-sort="album">Album</th>
                     <th role="button" data-sort="duration_seconds">Length</th>
+                    <th>Cues</th>
+                    <th>Actions</th>
                 </tr>
                 </thead>
                 <tbody></tbody>
@@ -173,6 +175,18 @@
                     <div class="text-muted small mt-2" id="bulkStatus"></div>
                 </div>
             </div>
+            <div class="card mb-3">
+                <div class="card-header">Artists</div>
+                <div class="card-body" id="artistList">
+                    <p class="text-muted mb-0">Run a search to load artists.</p>
+                </div>
+            </div>
+            <div class="card mb-3">
+                <div class="card-header">Albums</div>
+                <div class="card-body" id="albumGrid">
+                    <p class="text-muted mb-0">Run a search to load albums.</p>
+                </div>
+            </div>
             <div class="card">
                 <div class="card-header">Queues</div>
                 <div class="card-body" id="queues">
@@ -195,15 +209,8 @@
     const tbody = document.querySelector('#resultsTable tbody');
     const selectAll = document.getElementById('selectAll');
     const queuesBox = document.getElementById('queues');
-    const genreFilter = document.getElementById('genreFilter');
-    const yearFilter = document.getElementById('yearFilter');
-    const moodFilter = document.getElementById('moodFilter');
-    const explicitFilter = document.getElementById('explicitFilter');
     const artistList = document.getElementById('artistList');
-    const albumList = document.getElementById('albumList');
-    const trackList = document.getElementById('trackList');
-    const metadataBody = document.getElementById('metadataBody');
-    const openDetailBtn = document.getElementById('openDetailBtn');
+    const albumGrid = document.getElementById('albumGrid');
     let savedSearches = {{ saved_searches|default([])|tojson }};
     let resultsData = [];
     let selectedArtist = null;
@@ -427,6 +434,11 @@
                 <td>${item.artist || ''}</td>
                 <td>${item.album || ''}</td>
                 <td>${item.duration_seconds ? item.duration_seconds.toFixed(1)+'s' : ''}</td>
+                <td>${formatCues(item.cues)}</td>
+                <td class="d-flex gap-1 flex-wrap">
+                    <a class="btn btn-outline-secondary btn-sm" href="/music/edit?path=${encodeURIComponent(item.path)}">Edit</a>
+                    <a class="btn btn-outline-primary btn-sm" href="/music/cue?path=${encodeURIComponent(item.path)}">Cue Editor</a>
+                </td>
             </tr>
         `).join('');
         document.querySelectorAll('.result-row').forEach(row => {
@@ -448,7 +460,7 @@
                 selectTrack(row.dataset.path);
             });
         });
-        renderBrowser();
+        renderArtistsAndAlbums(resultsData);
     }
 
     function selectArtist(value) {
@@ -542,6 +554,62 @@
     });
 
     renderSaved();
+
+    function formatCues(cues) {
+        if (!cues) return '<span class="text-muted">None</span>';
+        const pairs = [];
+        if (cues.cue_in != null) pairs.push(`In ${cues.cue_in.toFixed(1)}s`);
+        if (cues.intro != null) pairs.push(`Intro ${cues.intro.toFixed(1)}s`);
+        if (cues.start_next != null) pairs.push(`Next ${cues.start_next.toFixed(1)}s`);
+        if (cues.outro != null) pairs.push(`Outro ${cues.outro.toFixed(1)}s`);
+        if (cues.cue_out != null) pairs.push(`Out ${cues.cue_out.toFixed(1)}s`);
+        return pairs.length ? pairs.join('<br>') : '<span class="text-muted">None</span>';
+    }
+
+    function renderArtistsAndAlbums(data) {
+        if (!artistList || !albumGrid) return;
+        if (!data.length) {
+            artistList.innerHTML = '<p class="text-muted mb-0">No artists loaded.</p>';
+            albumGrid.innerHTML = '<p class="text-muted mb-0">No albums loaded.</p>';
+            return;
+        }
+        const artists = new Map();
+        const albums = new Map();
+        data.forEach(item => {
+            const artist = item.artist || 'Unknown Artist';
+            const album = item.album || 'Unknown Album';
+            artists.set(artist, (artists.get(artist) || 0) + 1);
+            const albumKey = `${artist}||${album}`;
+            if (!albums.has(albumKey)) {
+                albums.set(albumKey, {
+                    artist,
+                    album,
+                    path: item.path,
+                });
+            }
+        });
+        const artistItems = Array.from(artists.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+        artistList.innerHTML = `<ul class="list-unstyled mb-0">${artistItems.map(([artist, count]) => `
+            <li class="mb-1"><strong>${artist}</strong> <span class="text-muted">(${count})</span></li>
+        `).join('')}</ul>`;
+        const albumItems = Array.from(albums.values()).sort((a, b) => {
+            const artistCmp = a.artist.localeCompare(b.artist);
+            if (artistCmp !== 0) return artistCmp;
+            return a.album.localeCompare(b.album);
+        });
+        albumGrid.innerHTML = `<div class="d-grid gap-2">${albumItems.map((item) => {
+            const coverUrl = `/music/cover?path=${encodeURIComponent(item.path)}`;
+            return `
+            <div class="d-flex gap-2 align-items-center">
+                <img src="${coverUrl}" alt="${item.album} cover" width="48" height="48" class="rounded border"
+                    onerror="this.style.display='none'">
+                <div>
+                    <div class="fw-semibold">${item.album}</div>
+                    <div class="text-muted small">${item.artist}</div>
+                </div>
+            </div>`;
+        }).join('')}</div>`;
+    }
 
     function applySort(key) {
         if (!key) return;

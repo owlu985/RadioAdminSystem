@@ -1132,6 +1132,9 @@ def music_cover():
                 mime = pic.mime or mime
 
     if not image_data:
+        cover_path = os.path.splitext(safe_path)[0] + ".jpg"
+        if os.path.exists(cover_path):
+            return send_file(cover_path, mimetype="image/jpeg", conditional=True)
         abort(404)
     return send_file(BytesIO(image_data), mimetype=mime, conditional=True)
 
