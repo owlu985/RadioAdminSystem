@@ -93,11 +93,18 @@
         </div>
         <div class="col-lg-6">
             <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Queue</span>
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span>Queue</span>
+                        <span class="badge text-bg-light border" id="controlModeLabel">RAMS</span>
+                        <button class="btn btn-outline-secondary btn-sm" id="radiodjOverride">RadioDJ Override</button>
+                    </div>
                     <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
                 </div>
                 <div class="card-body">
+                    <div class="alert alert-secondary py-2 px-3 mb-2" id="radiodjStatus">
+                        <strong>RadioDJ now playing:</strong> <span id="radiodjTrack">Loading…</span>
+                    </div>
                     <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                         <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
                         <div class="d-flex gap-2 align-items-center">
@@ -183,7 +190,9 @@
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
+                        <button class="btn btn-outline-warning btn-sm" id="pushQueue" disabled>Push Queue to RadioDJ</button>
                     </div>
+                    <div class="text-muted small mb-2" id="radiodjQueueStatus"></div>
                     <ol class="mb-0" id="queueList"></ol>
                     <hr>
                     <div class="mb-2 fw-semibold">Overlay Deck</div>
@@ -320,6 +329,15 @@
     const top40 = document.getElementById('top40');
     const loopBetween = document.getElementById('loopBetween');
     const togglePauseBtn = document.getElementById('togglePause');
+    const playNextBtn = document.getElementById('playNext');
+    const fadeOutBtn = document.getElementById('fadeOut');
+    const addStopBtn = document.getElementById('addStop');
+    const controlModeLabel = document.getElementById('controlModeLabel');
+    const radiodjOverrideBtn = document.getElementById('radiodjOverride');
+    const pushQueueBtn = document.getElementById('pushQueue');
+    const radiodjStatus = document.getElementById('radiodjStatus');
+    const radiodjTrack = document.getElementById('radiodjTrack');
+    const radiodjQueueStatus = document.getElementById('radiodjQueueStatus');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
     const talkOverlay = document.getElementById('talkOverlay');
@@ -346,31 +364,7 @@
     let libraryTotal = 0;
     const libraryPerPage = 50;
     let libraryQuery = '';
-    let talkUpMode = false;
-
-    const cuePlayer = document.getElementById('cuePlayer');
-    const cueWave = document.getElementById('cueWave');
-    const cueWaveInner = document.getElementById('cueWaveInner');
-    const cueWaveCanvas = document.getElementById('cueWaveCanvas');
-    const cueMarkers = document.getElementById('cueMarkers');
-    const cueNeedle = document.getElementById('cueNeedle');
-    const cueItemLabel = document.getElementById('cueItemLabel');
-    const cueFields = ['cue_in','intro','loop_in','loop_out','start_next','outro','cue_out'];
-    const cueColorMap = {
-        cue_in: '#0d6efd',
-        intro: '#20c997',
-        loop_in: '#198754',
-        loop_out: '#0dcaf0',
-        start_next: '#fd7e14',
-        outro: '#0dcaf0',
-        cue_out: '#dc3545',
-    };
-    const cueInputs = {};
-    let cueSelected = 'cue_in';
-    let cueDragField = null;
-    let cueDragNeedle = false;
-    let cueBaseWidth = 0;
-    let cueItem = null;
+    let controlMode = 'rams';
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
@@ -480,7 +474,9 @@
         if (!queue.length) {
             queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
             resetTimers();
-            updateVTInsertOptions();
+            if (pushQueueBtn) {
+                pushQueueBtn.disabled = true;
+            }
             return;
         }
         queue.forEach((item, idx) => {
@@ -501,13 +497,45 @@
             </div>`;
             li.dataset.index = idx;
             li.tabIndex = 0;
-            li.addEventListener('click', (ev) => { if (!ev.target.dataset.remove) startFrom(idx); });
-            li.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') startFrom(idx); });
-            li.querySelector('[data-cue]').addEventListener('click', (ev) => { ev.stopPropagation(); selectCueItem(item); });
+            li.addEventListener('click', (ev) => {
+                if (!ev.target.dataset.remove && controlMode === 'rams') {
+                    startFrom(idx);
+                }
+            });
+            li.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter' && controlMode === 'rams') {
+                    startFrom(idx);
+                }
+            });
             li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
             queueList.appendChild(li);
         });
-        updateVTInsertOptions();
+        if (pushQueueBtn) {
+            pushQueueBtn.disabled = controlMode !== 'radiodj' || !queue.length;
+        }
+    }
+
+    function updateControlModeUI() {
+        const isRadioDJ = controlMode === 'radiodj';
+        if (controlModeLabel) {
+            controlModeLabel.textContent = isRadioDJ ? 'RadioDJ' : 'RAMS';
+            controlModeLabel.className = `badge ${isRadioDJ ? 'text-bg-warning' : 'text-bg-light border'}`;
+        }
+        if (radiodjOverrideBtn) {
+            radiodjOverrideBtn.textContent = isRadioDJ ? 'Return to RAMS' : 'RadioDJ Override';
+        }
+        if (pushQueueBtn) {
+            pushQueueBtn.disabled = !isRadioDJ || !queue.length;
+        }
+        [togglePauseBtn, playNextBtn, fadeOutBtn, addStopBtn].forEach(btn => {
+            if (btn) btn.disabled = isRadioDJ;
+        });
+        if (isRadioDJ) {
+            stopFade();
+            stopAllAudio();
+            stopTimer();
+            togglePauseBtn.textContent = 'Pause';
+        }
     }
 
     function resetTimers() {
@@ -528,6 +556,66 @@
         loopBetween.checked = false;
         loopBetween.disabled = true;
         togglePauseBtn.textContent = 'Pause';
+    }
+
+    async function loadRadioDJNowPlaying() {
+        if (!radiodjStatus || !radiodjTrack) return;
+        try {
+            const res = await fetch('/api/radiodj/now-playing');
+            const data = await res.json();
+            if (res.ok && data.track) {
+                const track = data.track || {};
+                const artist = track.artist || '';
+                const title = track.title || '';
+                const album = track.album || '';
+                const label = [artist, title].filter(Boolean).join(' - ') || album || 'Now playing';
+                radiodjTrack.textContent = label;
+                radiodjStatus.classList.remove('text-danger');
+            } else if (data.status === 'disabled') {
+                radiodjTrack.textContent = 'RadioDJ integration disabled.';
+                radiodjStatus.classList.add('text-danger');
+            } else {
+                radiodjTrack.textContent = 'No now-playing data.';
+                radiodjStatus.classList.remove('text-danger');
+            }
+        } catch (err) {
+            radiodjTrack.textContent = 'Unable to reach RadioDJ.';
+            radiodjStatus.classList.add('text-danger');
+        }
+    }
+
+    async function pushQueueToRadioDJ() {
+        if (controlMode !== 'radiodj') return;
+        if (!radiodjQueueStatus) return;
+        const items = queue.filter(item => item.token).map(item => ({
+            token: item.token,
+            name: item.name,
+        }));
+        if (!items.length) {
+            radiodjQueueStatus.textContent = 'No queue items with file references to push.';
+            return;
+        }
+        radiodjQueueStatus.textContent = 'Pushing queue to RadioDJ...';
+        try {
+            const res = await fetch('/api/radiodj/queue', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({items})
+            });
+            const data = await res.json();
+            if (!res.ok || data.status !== 'ok') {
+                radiodjQueueStatus.textContent = data.message || 'Unable to push queue.';
+                return;
+            }
+            const results = data.results || [];
+            const okCount = results.filter(r => r.status === 'ok').length;
+            const errCount = results.filter(r => r.status !== 'ok').length;
+            radiodjQueueStatus.textContent = errCount
+                ? `Pushed ${okCount}/${results.length} items; ${errCount} failed.`
+                : `Pushed ${okCount} item${okCount === 1 ? '' : 's'} to RadioDJ.`;
+        } catch (err) {
+            radiodjQueueStatus.textContent = 'Unable to push queue.';
+        }
     }
 
     function previewCues(item) {
@@ -563,7 +651,7 @@
 
     function addToQueue(item) {
         queue.push(item);
-        if (queue.length === 1 && activePlayer().paused) {
+        if (controlMode === 'rams' && queue.length === 1 && activePlayer().paused) {
             startFrom(0);
         }
         renderQueue();
@@ -616,6 +704,9 @@
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
+        if (controlMode !== 'rams') {
+            return;
+        }
         const item = queue[idx];
         if (!item) return;
         if (item.stop) {
@@ -892,9 +983,10 @@
             togglePauseBtn.textContent = 'Play';
         }
     });
-    document.getElementById('playNext').addEventListener('click', playNext);
-    document.getElementById('addStop').addEventListener('click', addStopCue);
-    document.getElementById('fadeOut').addEventListener('click', fadeAndNext);
+    playNextBtn.addEventListener('click', playNext);
+    addStopBtn.addEventListener('click', addStopCue);
+    fadeOutBtn.addEventListener('click', fadeAndNext);
+    pushQueueBtn.addEventListener('click', pushQueueToRadioDJ);
     document.getElementById('overlayPlay').addEventListener('click', () => {
         const url = document.getElementById('overlayUrl').value.trim();
         if (!url) return;
@@ -906,6 +998,12 @@
         document.getElementById('toggleTalkup').classList.toggle('btn-dark', talkUpMode);
         document.getElementById('toggleTalkup').classList.toggle('btn-outline-dark', !talkUpMode);
         updateTalkOverlay(currentItem ? (currentItem.cues || {}) : null, activePlayer().currentTime || 0, activePlayer().duration || 0);
+    });
+
+    radiodjOverrideBtn.addEventListener('click', () => {
+        controlMode = controlMode === 'rams' ? 'radiodj' : 'rams';
+        updateControlModeUI();
+        renderQueue();
     });
 
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
@@ -960,6 +1058,9 @@
         }
     }
     loadPSAs();
+    updateControlModeUI();
+    loadRadioDJNowPlaying();
+    setInterval(loadRadioDJNowPlaying, 15000);
 
     libraryPrev.addEventListener('click', async () => {
         if (libraryPage <= 1) return;
