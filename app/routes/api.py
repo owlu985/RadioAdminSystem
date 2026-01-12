@@ -326,12 +326,37 @@ def music_search():
     page = request.args.get("page", type=int, default=1)
     per_page = request.args.get("per_page", type=int, default=50)
     folder = request.args.get("folder")
+    genre = request.args.get("genre")
+    mood = request.args.get("mood")
+    year = request.args.get("year")
+    explicit_raw = request.args.get("explicit")
+    explicit = None
+    if explicit_raw is not None and explicit_raw != "":
+        explicit = str(explicit_raw).lower() in {"1", "true", "yes", "y"}
     refresh = request.args.get("refresh", type=int, default=0)
     if refresh:
         get_music_index(refresh=True)
     if not q:
-        return jsonify({"items": [], "total": 0, "page": page, "per_page": per_page, "folders": []})
-    payload = search_music(q, page=page, per_page=per_page, folder=folder)
+        return jsonify({
+            "items": [],
+            "total": 0,
+            "page": page,
+            "per_page": per_page,
+            "folders": [],
+            "genres": [],
+            "moods": [],
+            "years": [],
+        })
+    payload = search_music(
+        q,
+        page=page,
+        per_page=per_page,
+        folder=folder,
+        genre=genre,
+        year=year,
+        mood=mood,
+        explicit=explicit,
+    )
     return jsonify(payload)
 
 
