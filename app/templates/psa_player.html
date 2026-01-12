@@ -22,6 +22,15 @@
             background: #000;
             color: #fff !important;
         }
+        dialog::backdrop {
+            background: rgba(0, 0, 0, 0.45);
+        }
+        dialog {
+            border: none;
+            border-radius: 10px;
+            padding: 0;
+            width: min(92vw, 520px);
+        }
     </style>
 </head>
 <body>
@@ -33,7 +42,7 @@
             <div class="text-muted">Queue and play music, PSAs, imaging, and show assets directly in the browser.</div>
             <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
         </div>
-        <div class="text-muted small">Source: {{ psa_root or 'psa' }}</div>
+        <div class="text-muted small">Source: {{ psa_root or 'psa' }}{% if imaging_root %} • {{ imaging_root }}{% endif %}</div>
     </div>
     <div class="row g-3">
         <div class="col-lg-6">
@@ -41,6 +50,7 @@
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Available Media</span>
                     <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="bulkMetadata">Metadata CSV</button>
                         <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
                         <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
                         <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
@@ -120,6 +130,64 @@
         </div>
     </div>
 </div>
+<dialog id="metadataDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Asset Metadata</strong>
+            <button type="button" class="btn-close" id="metadataClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-2">
+                <label for="metadataTitle" class="form-label">Title</label>
+                <input type="text" id="metadataTitle" class="form-control form-control-sm" placeholder="Optional display title">
+            </div>
+            <div class="mb-2">
+                <label for="metadataCategory" class="form-label">Category</label>
+                <input type="text" id="metadataCategory" class="form-control form-control-sm" placeholder="Leave blank to use folder category">
+            </div>
+            <div class="mb-2">
+                <label for="metadataExpiry" class="form-label">Expiry</label>
+                <input type="date" id="metadataExpiry" class="form-control form-control-sm">
+            </div>
+            <div class="mb-2">
+                <label for="metadataUsage" class="form-label">Usage rules</label>
+                <textarea id="metadataUsage" class="form-control form-control-sm" rows="3" placeholder="Rotation or usage notes"></textarea>
+            </div>
+            <div class="text-muted small" id="metadataPath"></div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="metadataCancel">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="metadataSave">Save</button>
+        </div>
+    </form>
+</dialog>
+<dialog id="bulkDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Bulk Metadata Import/Export</strong>
+            <button type="button" class="btn-close" id="bulkClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-3">
+                <label for="bulkKind" class="form-label">Scope</label>
+                <select id="bulkKind" class="form-select form-select-sm">
+                    <option value="all">All PSA + Imaging</option>
+                    <option value="psa">PSA only</option>
+                    <option value="imaging">Imaging only</option>
+                </select>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="bulkDownload">Download CSV</button>
+                <input type="file" id="bulkUpload" class="form-control form-control-sm" accept=".csv,text/csv">
+                <button type="button" class="btn btn-outline-success btn-sm" id="bulkUploadBtn">Upload CSV</button>
+            </div>
+            <div class="text-muted small" id="bulkStatus">Export to fill in titles/categories, then re-upload to apply changes.</div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="bulkCancel">Done</button>
+        </div>
+    </form>
+</dialog>
 {% include '_footer.html' %}
 <script>
     let library = [];
@@ -131,6 +199,7 @@
     const libraryPrev = document.getElementById('libraryPrev');
     const libraryNext = document.getElementById('libraryNext');
     const psaSearch = document.getElementById('psaSearch');
+    const metadataKinds = new Set(['psa', 'imaging']);
     const top40 = document.getElementById('top40');
     const loopBetween = document.getElementById('loopBetween');
     const togglePauseBtn = document.getElementById('togglePause');
@@ -156,9 +225,62 @@
     let libraryTotal = 0;
     const libraryPerPage = 50;
     let libraryQuery = '';
+    let editingItem = null;
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
+
+    const metadataDialog = document.getElementById('metadataDialog');
+    const metadataTitle = document.getElementById('metadataTitle');
+    const metadataCategory = document.getElementById('metadataCategory');
+    const metadataExpiry = document.getElementById('metadataExpiry');
+    const metadataUsage = document.getElementById('metadataUsage');
+    const metadataPath = document.getElementById('metadataPath');
+    const bulkDialog = document.getElementById('bulkDialog');
+    const bulkKind = document.getElementById('bulkKind');
+    const bulkStatus = document.getElementById('bulkStatus');
+
+    function openDialog(dialog) {
+        if (!dialog) return;
+        if (dialog.showModal) {
+            dialog.showModal();
+        } else {
+            dialog.setAttribute('open', 'open');
+        }
+    }
+
+    function closeDialog(dialog) {
+        if (!dialog) return;
+        if (dialog.close) {
+            dialog.close();
+        } else {
+            dialog.removeAttribute('open');
+        }
+    }
+
+    async function openMetadataEditor(item) {
+        editingItem = item;
+        metadataTitle.value = item.title || '';
+        metadataCategory.value = item.category || '';
+        metadataExpiry.value = item.expires_on || '';
+        metadataUsage.value = item.usage_rules || '';
+        metadataPath.textContent = item.name ? `File: ${item.name}` : '';
+        if (item.token) {
+            try {
+                const res = await fetch(`/api/psa/metadata?token=${encodeURIComponent(item.token)}`);
+                const data = await res.json();
+                if (data.status === 'ok' && data.metadata) {
+                    metadataTitle.value = data.metadata.title || '';
+                    metadataCategory.value = data.metadata.category || item.category || '';
+                    metadataExpiry.value = data.metadata.expires_on || '';
+                    metadataUsage.value = data.metadata.usage_rules || '';
+                }
+            } catch (err) {
+                // ignore
+            }
+        }
+        openDialog(metadataDialog);
+    }
 
     function renderCategories(cats) {
         const options = cats || [];
@@ -169,24 +291,36 @@
         psaList.innerHTML = '';
         const term = filter.toLowerCase();
         const cat = categoryFilter.value;
-        library.filter(item => item.name.toLowerCase().includes(term) && (!cat || item.category === cat)).forEach(item => {
+        library.filter(item => {
+            const title = (item.title || item.name || '').toLowerCase();
+            return title.includes(term) && (!cat || item.category === cat);
+        }).forEach(item => {
             const li = document.createElement('li');
             li.className = 'list-group-item';
             const meta = [];
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.loop) meta.push('loop');
             if (item.category) meta.push(item.category);
+            if (item.expires_on) meta.push(`expires ${item.expires_on}`);
+            const displayName = item.title || item.name;
+            const subtitle = item.title ? `<small class="text-muted">${item.name}</small><br>` : '';
+            const usage = item.usage_rules ? `<small class="text-muted">Usage: ${item.usage_rules}</small><br>` : '';
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
                 <div>
-                    <strong>${item.name}</strong><br>
+                    <strong>${displayName}</strong><br>
+                    ${subtitle}
+                    ${usage}
                     ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
                 </div>
-                <div class="d-flex gap-2">
+                <div class="d-flex gap-2 align-items-center">
                     <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
+                    ${metadataKinds.has(item.kind) ? '<button class="btn btn-sm btn-outline-secondary" data-edit>Metadata</button>' : ''}
                     ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
                 </div>
             </div>`;
             li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
+            const editBtn = li.querySelector('[data-edit]');
+            if (editBtn) editBtn.addEventListener('click', () => openMetadataEditor(item));
             psaList.appendChild(li);
         });
         if (!psaList.children.length) {
@@ -210,8 +344,9 @@
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
             const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
+            const displayName = item.title || item.name;
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-                <div>${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+                <div>${displayName}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
                 <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
             </div>`;
             li.dataset.index = idx;
@@ -601,6 +736,60 @@
         if (!url) return;
         overlayPlayer.src = url;
         overlayPlayer.play();
+    });
+    document.getElementById('bulkMetadata').addEventListener('click', () => openDialog(bulkDialog));
+    document.getElementById('metadataClose').addEventListener('click', () => closeDialog(metadataDialog));
+    document.getElementById('metadataCancel').addEventListener('click', () => closeDialog(metadataDialog));
+    document.getElementById('bulkClose').addEventListener('click', () => closeDialog(bulkDialog));
+    document.getElementById('bulkCancel').addEventListener('click', () => closeDialog(bulkDialog));
+    document.getElementById('metadataSave').addEventListener('click', async () => {
+        if (!editingItem || !editingItem.token) return;
+        const payload = {
+            title: metadataTitle.value.trim(),
+            category: metadataCategory.value.trim(),
+            expires_on: metadataExpiry.value,
+            usage_rules: metadataUsage.value.trim(),
+        };
+        try {
+            const res = await fetch(`/api/psa/metadata?token=${encodeURIComponent(editingItem.token)}`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.status === 'ok' && data.metadata) {
+                editingItem.title = data.metadata.title || '';
+                editingItem.category = data.metadata.category || editingItem.category;
+                editingItem.expires_on = data.metadata.expires_on || '';
+                editingItem.usage_rules = data.metadata.usage_rules || '';
+                renderLibrary(psaSearch.value || '');
+            }
+            closeDialog(metadataDialog);
+        } catch (err) {
+            closeDialog(metadataDialog);
+        }
+    });
+    document.getElementById('bulkDownload').addEventListener('click', () => {
+        const kind = bulkKind.value || 'all';
+        window.location.href = `/api/psa/metadata/export?kind=${encodeURIComponent(kind)}`;
+    });
+    document.getElementById('bulkUploadBtn').addEventListener('click', async () => {
+        const fileInput = document.getElementById('bulkUpload');
+        if (!fileInput.files.length) {
+            bulkStatus.textContent = 'Choose a CSV file before uploading.';
+            return;
+        }
+        const formData = new FormData();
+        formData.append('file', fileInput.files[0]);
+        bulkStatus.textContent = 'Uploading...';
+        try {
+            const res = await fetch('/api/psa/metadata/import', { method: 'POST', body: formData });
+            const data = await res.json();
+            bulkStatus.textContent = `Updated ${data.updated || 0} entries (skipped ${data.skipped || 0}).`;
+            await loadPSAs();
+        } catch (err) {
+            bulkStatus.textContent = 'Upload failed.';
+        }
     });
 
     document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));

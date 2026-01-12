@@ -238,12 +238,16 @@ def _read_tags(path: str) -> Dict:
         "album": None,
         "composer": None,
         "isrc": None,
+        "genre": None,
+        "mood": None,
+        "explicit": None,
         "year": None,
         "genre": None,
         "track": None,
         "disc": None,
         "copyright": None,
         "bitrate": None,
+        "explicit": None,
         "cover_embedded": False,
     }
     if not mutagen:
@@ -299,6 +303,41 @@ def _read_tags(path: str) -> Dict:
             return coerced[0] if coerced else None
         return coerced
 
+    def _parse_explicit(val):
+        if val is None:
+            return None
+        coerced = _coerce(val)
+        if isinstance(coerced, list) and coerced:
+            coerced = coerced[0]
+        if isinstance(coerced, (int, float)):
+            if int(coerced) == 2:
+                return True
+            if int(coerced) == 1:
+                return False
+        if isinstance(coerced, tuple) and len(coerced) == 2 and all(isinstance(x, (int, float)) for x in coerced):
+            if int(coerced[0]) == 2:
+                return True
+            if int(coerced[0]) == 1:
+                return False
+        if isinstance(coerced, bytes):
+            try:
+                coerced = coerced.decode("utf-8", errors="ignore")
+            except Exception:
+                return None
+        if isinstance(coerced, str):
+            lowered = coerced.strip().lower()
+            if lowered.isdigit():
+                val_num = int(lowered)
+                if val_num == 2:
+                    return True
+                if val_num == 1:
+                    return False
+            if "explicit" in lowered:
+                return True
+            if "clean" in lowered or "not explicit" in lowered:
+                return False
+        return None
+
     try:
         audio_easy = mutagen.File(path, easy=True)
         if audio_easy:
@@ -323,6 +362,12 @@ def _read_tags(path: str) -> Dict:
                 val = audio_easy.tags.get(key) if audio_easy.tags else None
                 if val:
                     data[target] = _first_text(val)
+            if audio_easy.tags and data.get("explicit") is None:
+                for key in ["itunesadvisory", "explicit", "contentadvisory"]:
+                    if key in audio_easy.tags:
+                        data["explicit"] = _parse_explicit(audio_easy.tags.get(key))
+                        if data["explicit"] is not None:
+                            break
 
         if path.lower().endswith((".m4a", ".mp4")):
             try:
@@ -364,6 +409,13 @@ def _read_tags(path: str) -> Dict:
                 mp4_tags = mp4.tags or {}
                 if "covr" in mp4_tags:
                     data["cover_embedded"] = True
+                if data.get("explicit") is None:
+                    for atom in ["rtng", "----:com.apple.iTunes:ITUNESADVISORY", "----:com.apple.iTunes:Explicit"]:
+                        val = mp4_tags.get(atom)
+                        if val is not None:
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
 
                 atom_map = {
                     "title": ["©nam", "----:com.apple.iTunes:TITLE"],
@@ -418,6 +470,15 @@ def _read_tags(path: str) -> Dict:
                             if not data.get("album") and "album" in lower_val:
                                 data["album"] = coerced
 
+                if data.get("explicit") is None:
+                    for key, val in mp4_tags.items():
+                        if not isinstance(key, str):
+                            continue
+                        if "advisory" in key.lower() or "explicit" in key.lower():
+                            data["explicit"] = _parse_explicit(val)
+                            if data["explicit"] is not None:
+                                break
+
                 if hasattr(mp4, "info") and getattr(mp4.info, "bitrate", None) and not data.get("bitrate"):
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
@@ -456,10 +517,18 @@ def _read_tags(path: str) -> Dict:
             except Exception:
                 pass
 
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
     except Exception:
+        if data.get("year"):
+            data["year"] = _parse_year(data.get("year"))
+        if data.get("explicit") is not None:
+            data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
             data["title"] = base_title
         return data
@@ -754,6 +823,10 @@ def search_music(
     page: int = 1,
     per_page: int = 50,
     folder: Optional[str] = None,
+    genre: Optional[str] = None,
+    year: Optional[str] = None,
+    mood: Optional[str] = None,
+    explicit: Optional[bool] = None,
 ) -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
@@ -765,6 +838,28 @@ def search_music(
 
     if query_lower and query_lower not in {"%", "*"}:
         entries = [e for e in entries if query_lower in (e.get("search") or "")]
+
+    def _norm(val: Optional[str]) -> str:
+        return (val or "").strip().lower()
+
+    base_entries = entries[:]
+    genre_map = {(_norm(e.get("genre"))): e.get("genre") for e in base_entries if e.get("genre")}
+    mood_map = {(_norm(e.get("mood"))): e.get("mood") for e in base_entries if e.get("mood")}
+    genres = sorted(genre_map.values(), key=lambda v: _norm(v))
+    moods = sorted(mood_map.values(), key=lambda v: _norm(v))
+    years = sorted({str(e.get("year")) for e in base_entries if e.get("year")})
+
+    if genre:
+        genre_norm = _norm(genre)
+        entries = [e for e in entries if _norm(e.get("genre")) == genre_norm]
+    if mood:
+        mood_norm = _norm(mood)
+        entries = [e for e in entries if _norm(e.get("mood")) == mood_norm]
+    if year:
+        year_str = str(year).strip()
+        entries = [e for e in entries if str(e.get("year") or "").strip() == year_str]
+    if explicit is not None:
+        entries = [e for e in entries if bool(e.get("explicit")) is explicit]
 
     entries.sort(
         key=lambda e: (
@@ -800,6 +895,12 @@ def search_music(
         payload.update({
             "duration_seconds": analysis.duration_seconds if analysis else None,
             "folder": entry.get("folder"),
+            "genre": entry.get("genre"),
+            "mood": entry.get("mood"),
+            "year": entry.get("year"),
+            "explicit": entry.get("explicit"),
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
         })
         items.append(payload)
 
@@ -810,6 +911,9 @@ def search_music(
         "page": page,
         "per_page": per_page,
         "folders": folders,
+        "genres": genres,
+        "moods": moods,
+        "years": years,
     }
 
 
