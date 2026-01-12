@@ -1,0 +1,488 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Library Editor</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .list-group-item-action.active {
+            background-color: #0d6efd;
+            border-color: #0d6efd;
+        }
+        .library-pane {
+            max-height: 68vh;
+            overflow: auto;
+        }
+        .grid-card {
+            border: 1px solid rgba(0,0,0,0.1);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            height: 100%;
+        }
+        .grid-card.active {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 2px rgba(13,110,253,0.2);
+        }
+        .sort-header {
+            cursor: pointer;
+        }
+        .sort-header .sort-indicator {
+            font-size: 0.7rem;
+            margin-left: 0.25rem;
+        }
+    </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container-fluid px-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">Library Editor</h2>
+            <div class="text-muted small">Browse artists, albums, songs, PSAs, and imaging with inline metadata edits.</div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <span class="badge bg-secondary">Index snapshot loaded</span>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <ul class="nav nav-pills card-header-pills" id="libraryTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-mode="music" type="button">Music</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-mode="psa" type="button">PSA / Imaging</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body library-pane">
+                    <div id="musicBrowser">
+                        <div class="mb-3">
+                            <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                            <div class="list-group list-group-flush" id="artistList"></div>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small text-uppercase text-muted">Albums</div>
+                            <div class="list-group list-group-flush" id="albumList"></div>
+                        </div>
+                    </div>
+                    <div id="psaBrowser" class="d-none">
+                        <div class="mb-3">
+                            <div class="fw-semibold small text-uppercase text-muted">Collections</div>
+                            <div class="list-group list-group-flush" id="psaCategoryList"></div>
+                        </div>
+                        <div>
+                            <div class="fw-semibold small text-uppercase text-muted">Items</div>
+                            <div class="list-group list-group-flush" id="psaItemList"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Library Items</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-outline-secondary active" id="listToggle" type="button">List</button>
+                        <button class="btn btn-outline-secondary" id="gridToggle" type="button">Grid</button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small" id="selectionSummary">Select an artist, album, or PSA collection.</div>
+                        <div class="text-muted small">Sort by: <span id="sortLabel">Artist</span></div>
+                    </div>
+                    <div class="table-responsive" id="listView">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th class="sort-header" data-sort="artist">Artist<span class="sort-indicator" id="sort-artist"></span></th>
+                                    <th class="sort-header" data-sort="album">Album<span class="sort-indicator" id="sort-album"></span></th>
+                                    <th>Title</th>
+                                    <th class="sort-header" data-sort="year">Year<span class="sort-indicator" id="sort-year"></span></th>
+                                    <th class="sort-header" data-sort="genre">Genre<span class="sort-indicator" id="sort-genre"></span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="trackTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="row g-2 d-none" id="gridView"></div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-header">Metadata Editor</div>
+                <div class="card-body">
+                    <form id="metadataForm">
+                        <div class="mb-3">
+                            <label class="form-label">Artist</label>
+                            <input type="text" class="form-control" id="metaArtist" placeholder="Artist name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Album</label>
+                            <input type="text" class="form-control" id="metaAlbum" placeholder="Album name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Title</label>
+                            <input type="text" class="form-control" id="metaTitle" placeholder="Song or spot title">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label class="form-label">Year</label>
+                                <input type="text" class="form-control" id="metaYear" placeholder="YYYY">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">Genre</label>
+                                <input type="text" class="form-control" id="metaGenre" placeholder="Genre">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="metaExplicit">
+                            <label class="form-check-label" for="metaExplicit">Explicit</label>
+                        </div>
+                        <hr>
+                        <div class="mb-2 fw-semibold">Cues</div>
+                        <div class="row g-2">
+                            <div class="col-sm-4">
+                                <label class="form-label small">Cue In</label>
+                                <input type="text" class="form-control form-control-sm" id="metaCueIn" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Intro</label>
+                                <input type="text" class="form-control form-control-sm" id="metaIntro" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Start Next</label>
+                                <input type="text" class="form-control form-control-sm" id="metaStartNext" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Outro</label>
+                                <input type="text" class="form-control form-control-sm" id="metaOutro" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Cue Out</label>
+                                <input type="text" class="form-control form-control-sm" id="metaCueOut" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Loop In</label>
+                                <input type="text" class="form-control form-control-sm" id="metaLoopIn" placeholder="0.0">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label small">Loop Out</label>
+                                <input type="text" class="form-control form-control-sm" id="metaLoopOut" placeholder="0.0">
+                            </div>
+                        </div>
+                        <div class="mt-3">
+                            <label class="form-label small text-muted">File Path</label>
+                            <input type="text" class="form-control form-control-sm" id="metaPath" readonly>
+                        </div>
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button class="btn btn-outline-secondary btn-sm" type="button" id="resetMetadata">Reset</button>
+                            <button class="btn btn-primary btn-sm" type="button" id="saveMetadata" disabled>Save</button>
+                        </div>
+                    </form>
+                    <div class="text-muted small mt-2">Edits are staged here and will connect to PSA/Imaging metadata work.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+    const libraryData = {{ library_index | tojson }};
+    const state = {
+        mode: 'music',
+        artists: libraryData.music || [],
+        psa: libraryData.psa_imaging || [],
+        selectedArtist: null,
+        selectedAlbum: null,
+        selectedCategory: null,
+        selectedItem: null,
+        tracks: [],
+        view: 'list',
+        sortKey: 'artist',
+        sortDir: 'asc'
+    };
+
+    const artistList = document.getElementById('artistList');
+    const albumList = document.getElementById('albumList');
+    const psaCategoryList = document.getElementById('psaCategoryList');
+    const psaItemList = document.getElementById('psaItemList');
+    const trackTableBody = document.getElementById('trackTableBody');
+    const gridView = document.getElementById('gridView');
+    const listView = document.getElementById('listView');
+    const selectionSummary = document.getElementById('selectionSummary');
+    const sortLabel = document.getElementById('sortLabel');
+
+    const formFields = {
+        artist: document.getElementById('metaArtist'),
+        album: document.getElementById('metaAlbum'),
+        title: document.getElementById('metaTitle'),
+        year: document.getElementById('metaYear'),
+        genre: document.getElementById('metaGenre'),
+        explicit: document.getElementById('metaExplicit'),
+        cue_in: document.getElementById('metaCueIn'),
+        intro: document.getElementById('metaIntro'),
+        start_next: document.getElementById('metaStartNext'),
+        outro: document.getElementById('metaOutro'),
+        cue_out: document.getElementById('metaCueOut'),
+        loop_in: document.getElementById('metaLoopIn'),
+        loop_out: document.getElementById('metaLoopOut'),
+        path: document.getElementById('metaPath')
+    };
+
+    const setActiveListItem = (container, activeValue) => {
+        container.querySelectorAll('.list-group-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.value === activeValue);
+        });
+    };
+
+    const updateMetadataForm = (item) => {
+        formFields.artist.value = item?.artist || '';
+        formFields.album.value = item?.album || '';
+        formFields.title.value = item?.title || '';
+        formFields.year.value = item?.year || '';
+        formFields.genre.value = item?.genre || '';
+        formFields.explicit.checked = Boolean(item?.explicit);
+        formFields.cue_in.value = item?.cues?.cue_in ?? '';
+        formFields.intro.value = item?.cues?.intro ?? '';
+        formFields.start_next.value = item?.cues?.start_next ?? '';
+        formFields.outro.value = item?.cues?.outro ?? '';
+        formFields.cue_out.value = item?.cues?.cue_out ?? '';
+        formFields.loop_in.value = item?.cues?.loop_in ?? '';
+        formFields.loop_out.value = item?.cues?.loop_out ?? '';
+        formFields.path.value = item?.path || '';
+    };
+
+    const sortTracks = () => {
+        const key = state.sortKey;
+        const dir = state.sortDir === 'asc' ? 1 : -1;
+        state.tracks.sort((a, b) => {
+            const aVal = (a[key] ?? '').toString().toLowerCase();
+            const bVal = (b[key] ?? '').toString().toLowerCase();
+            if (key === 'year') {
+                return dir * ((parseInt(aVal || '0', 10)) - (parseInt(bVal || '0', 10)));
+            }
+            if (aVal < bVal) return -1 * dir;
+            if (aVal > bVal) return 1 * dir;
+            return 0;
+        });
+    };
+
+    const renderTracks = () => {
+        sortTracks();
+        trackTableBody.innerHTML = '';
+        gridView.innerHTML = '';
+        if (!state.tracks.length) {
+            trackTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No items selected.</td></tr>';
+            selectionSummary.textContent = 'Select an artist, album, or PSA collection.';
+            return;
+        }
+        selectionSummary.textContent = `${state.tracks.length} items shown`;
+        state.tracks.forEach((track, idx) => {
+            const row = document.createElement('tr');
+            row.className = track.path === state.selectedItem?.path ? 'table-primary' : '';
+            row.innerHTML = `
+                <td>${track.artist || '-'}</td>
+                <td>${track.album || '-'}</td>
+                <td>${track.title || '-'}</td>
+                <td>${track.year || '-'}</td>
+                <td>${track.genre || '-'}</td>
+            `;
+            row.addEventListener('click', () => {
+                state.selectedItem = track;
+                updateMetadataForm(track);
+                renderTracks();
+            });
+            trackTableBody.appendChild(row);
+
+            const col = document.createElement('div');
+            col.className = 'col-12';
+            if (state.view === 'grid') {
+                col.className = 'col-md-6';
+            }
+            const card = document.createElement('div');
+            card.className = `grid-card ${track.path === state.selectedItem?.path ? 'active' : ''}`;
+            card.innerHTML = `
+                <div class="fw-semibold">${track.title || '-'}</div>
+                <div class="text-muted small">${track.artist || 'Unknown Artist'} · ${track.album || 'Unknown Album'}</div>
+                <div class="small mt-1">Year: ${track.year || '—'} · Genre: ${track.genre || '—'}</div>
+            `;
+            card.addEventListener('click', () => {
+                state.selectedItem = track;
+                updateMetadataForm(track);
+                renderTracks();
+            });
+            col.appendChild(card);
+            gridView.appendChild(col);
+        });
+    };
+
+    const renderArtists = () => {
+        artistList.innerHTML = '';
+        state.artists.forEach(artist => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = artist.name;
+            btn.textContent = artist.name;
+            btn.addEventListener('click', () => {
+                state.selectedArtist = artist.name;
+                state.selectedAlbum = null;
+                setActiveListItem(artistList, artist.name);
+                renderAlbums();
+                state.tracks = artist.albums.flatMap(album => album.tracks);
+                renderTracks();
+            });
+            artistList.appendChild(btn);
+        });
+    };
+
+    const renderAlbums = () => {
+        albumList.innerHTML = '';
+        const artist = state.artists.find(a => a.name === state.selectedArtist);
+        if (!artist) {
+            albumList.innerHTML = '<div class="text-muted small">Select an artist to view albums.</div>';
+            return;
+        }
+        artist.albums.forEach(album => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = album.name;
+            btn.innerHTML = `<div class="fw-semibold">${album.name}</div><div class="small text-muted">${album.year || 'Year n/a'} · ${album.genre || 'Genre n/a'}</div>`;
+            btn.addEventListener('click', () => {
+                state.selectedAlbum = album.name;
+                setActiveListItem(albumList, album.name);
+                state.tracks = album.tracks;
+                renderTracks();
+            });
+            albumList.appendChild(btn);
+        });
+    };
+
+    const renderPsaCategories = () => {
+        psaCategoryList.innerHTML = '';
+        state.psa.forEach(category => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = category.category;
+            btn.textContent = category.category;
+            btn.addEventListener('click', () => {
+                state.selectedCategory = category.category;
+                setActiveListItem(psaCategoryList, category.category);
+                renderPsaItems();
+            });
+            psaCategoryList.appendChild(btn);
+        });
+    };
+
+    const renderPsaItems = () => {
+        psaItemList.innerHTML = '';
+        const category = state.psa.find(c => c.category === state.selectedCategory);
+        if (!category) {
+            psaItemList.innerHTML = '<div class="text-muted small">Select a collection to see items.</div>';
+            state.tracks = [];
+            renderTracks();
+            return;
+        }
+        category.items.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = item.path;
+            btn.textContent = item.title;
+            btn.addEventListener('click', () => {
+                state.selectedItem = item;
+                updateMetadataForm(item);
+                setActiveListItem(psaItemList, item.path);
+            });
+            psaItemList.appendChild(btn);
+        });
+        state.tracks = category.items.map(item => ({
+            ...item,
+            artist: item.artist || category.category,
+            album: item.album || item.folder || category.category
+        }));
+        renderTracks();
+    };
+
+    const setMode = (mode) => {
+        state.mode = mode;
+        document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
+        document.getElementById('psaBrowser').classList.toggle('d-none', mode !== 'psa');
+        if (mode === 'music') {
+            state.selectedCategory = null;
+            state.tracks = [];
+            renderArtists();
+            renderAlbums();
+            renderTracks();
+        } else {
+            state.selectedArtist = null;
+            state.selectedAlbum = null;
+            state.tracks = [];
+            renderPsaCategories();
+            renderPsaItems();
+        }
+    };
+
+    document.querySelectorAll('#libraryTabs .nav-link').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#libraryTabs .nav-link').forEach(btn => btn.classList.remove('active'));
+            tab.classList.add('active');
+            setMode(tab.dataset.mode);
+        });
+    });
+
+    document.getElementById('listToggle').addEventListener('click', () => {
+        state.view = 'list';
+        listView.classList.remove('d-none');
+        gridView.classList.add('d-none');
+        document.getElementById('listToggle').classList.add('active');
+        document.getElementById('gridToggle').classList.remove('active');
+    });
+
+    document.getElementById('gridToggle').addEventListener('click', () => {
+        state.view = 'grid';
+        listView.classList.add('d-none');
+        gridView.classList.remove('d-none');
+        document.getElementById('gridToggle').classList.add('active');
+        document.getElementById('listToggle').classList.remove('active');
+        renderTracks();
+    });
+
+    document.querySelectorAll('.sort-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const key = header.dataset.sort;
+            if (!key) return;
+            if (state.sortKey === key) {
+                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortKey = key;
+                state.sortDir = 'asc';
+            }
+            sortLabel.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+            document.querySelectorAll('.sort-indicator').forEach(indicator => indicator.textContent = '');
+            const indicator = document.getElementById(`sort-${key}`);
+            indicator.textContent = state.sortDir === 'asc' ? '▲' : '▼';
+            renderTracks();
+        });
+    });
+
+    document.getElementById('resetMetadata').addEventListener('click', () => {
+        updateMetadataForm(state.selectedItem);
+    });
+
+    renderArtists();
+    renderAlbums();
+    renderTracks();
+</script>
+</body>
+</html>
