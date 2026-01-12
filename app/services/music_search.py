@@ -85,6 +85,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             tags.get("album_artist"),
             tags.get("album"),
             tags.get("composer"),
+            tags.get("genre"),
+            tags.get("year"),
         ])).lower()
         entry = {
             "path": full,
@@ -93,6 +95,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "album_artist": tags.get("album_artist"),
             "album": tags.get("album"),
             "composer": tags.get("composer"),
+            "genre": tags.get("genre"),
+            "year": tags.get("year"),
             "folder": folder,
             "mtime": stat.st_mtime,
             "size": stat.st_size,
@@ -128,6 +132,102 @@ def get_music_index(refresh: bool = False) -> Dict:
     return payload
 
 
+def _library_media_roots() -> List[Tuple[str, str]]:
+    roots: List[Tuple[str, str]] = []
+    psa_root = current_app.config.get("PSA_LIBRARY_PATH") or os.path.join(current_app.instance_path, "psa")
+    if psa_root:
+        roots.append(("PSA", psa_root))
+    imaging_root = current_app.config.get("MEDIA_ASSETS_ROOT")
+    if imaging_root:
+        roots.append(("Imaging", imaging_root))
+    voice_root = current_app.config.get("VOICE_TRACKS_ROOT") or os.path.join(current_app.instance_path, "voice_tracks")
+    if voice_root:
+        roots.append(("Voice Tracks", voice_root))
+    return roots
+
+
+def build_library_editor_index() -> Dict:
+    index = get_music_index()
+    entries = list(index.get("files", {}).values())
+    artists_map: Dict[str, Dict[str, Dict]] = {}
+    for entry in entries:
+        path = entry.get("path") or ""
+        title = entry.get("title") or os.path.splitext(os.path.basename(path))[0]
+        artist = entry.get("artist") or "Unknown Artist"
+        album = entry.get("album") or "Unknown Album"
+        year = entry.get("year")
+        genre = entry.get("genre")
+        artist_bucket = artists_map.setdefault(artist, {})
+        album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
+        if not album_bucket.get("year") and year:
+            album_bucket["year"] = year
+        if not album_bucket.get("genre") and genre:
+            album_bucket["genre"] = genre
+        album_bucket["tracks"].append({
+            "title": title,
+            "path": path,
+            "artist": artist,
+            "album": album,
+            "year": year,
+            "genre": genre,
+            "track_num": entry.get("track_num"),
+            "disc_num": entry.get("disc_num"),
+        })
+
+    music_artists = []
+    for artist_name in sorted(artists_map.keys(), key=lambda name: name.lower()):
+        albums_map = artists_map[artist_name]
+        albums_payload = []
+        for album_name in sorted(albums_map.keys(), key=lambda name: name.lower()):
+            album_payload = albums_map[album_name]
+            tracks = album_payload.get("tracks", [])
+            tracks.sort(
+                key=lambda track: (
+                    track.get("disc_num") or 0,
+                    track.get("track_num") or 0,
+                    (track.get("title") or "").lower(),
+                )
+            )
+            albums_payload.append({
+                "name": album_name,
+                "year": album_payload.get("year"),
+                "genre": album_payload.get("genre"),
+                "tracks": tracks,
+            })
+        music_artists.append({"name": artist_name, "albums": albums_payload})
+
+    psa_imaging = []
+    for label, root in _library_media_roots():
+        if not root:
+            continue
+        os.makedirs(root, exist_ok=True)
+        items = []
+        for base, _, files in os.walk(root):
+            for fname in files:
+                if not fname.lower().endswith(AUDIO_EXTS):
+                    continue
+                full = os.path.normpath(os.path.join(base, fname))
+                tags = _read_tags(full)
+                title = tags.get("title") or os.path.splitext(fname)[0]
+                items.append({
+                    "title": title,
+                    "path": full,
+                    "artist": tags.get("artist"),
+                    "album": tags.get("album"),
+                    "year": tags.get("year"),
+                    "genre": tags.get("genre"),
+                    "folder": os.path.relpath(base, root).replace(os.sep, "/"),
+                })
+        items.sort(key=lambda item: (item.get("title") or "").lower())
+        psa_imaging.append({"category": label, "items": items})
+
+    return {
+        "music": music_artists,
+        "psa_imaging": psa_imaging,
+        "generated_at": time.time(),
+    }
+
+
 def _read_tags(path: str) -> Dict:
     base_title = os.path.splitext(os.path.basename(path))[0]
     data = {
@@ -139,6 +239,7 @@ def _read_tags(path: str) -> Dict:
         "composer": None,
         "isrc": None,
         "year": None,
+        "genre": None,
         "track": None,
         "disc": None,
         "copyright": None,
@@ -214,6 +315,7 @@ def _read_tags(path: str) -> Dict:
                 ("isrc", "isrc"),
                 ("date", "year"),
                 ("year", "year"),
+                ("genre", "genre"),
                 ("tracknumber", "track"),
                 ("discnumber", "disc"),
                 ("copyright", "copyright"),
@@ -238,6 +340,7 @@ def _read_tags(path: str) -> Dict:
                     ("isrc", "isrc"),
                     ("date", "year"),
                     ("year", "year"),
+                    ("genre", "genre"),
                     ("tracknumber", "track"),
                     ("discnumber", "disc"),
                     ("copyright", "copyright"),
@@ -270,6 +373,7 @@ def _read_tags(path: str) -> Dict:
                     "composer": ["©wrt", "----:com.apple.iTunes:COMPOSER"],
                     "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
                     "year": ["©day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "genre": ["©gen", "gnre", "----:com.apple.iTunes:GENRE"],
                     "track": ["trkn"],
                     "disc": ["disk"],
                     "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
@@ -347,6 +451,8 @@ def _read_tags(path: str) -> Dict:
                             data["copyright"] = text_val
                         if not data.get("year") and any(hint in lkey for hint in ["day", "year", "date"]):
                             data["year"] = text_val
+                        if not data.get("genre") and "genre" in lkey:
+                            data["genre"] = text_val
             except Exception:
                 pass
 
@@ -808,6 +914,7 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
                 "composer": "©wrt",
                 "isrc": "----:com.apple.iTunes:ISRC",
                 "year": "©day",
+                "genre": "©gen",
                 "copyright": "cprt",
             }
 
@@ -852,7 +959,7 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
                 "track": "tracknumber",
                 "disc": "discnumber",
             }
-            for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]:
+            for field in ["title", "artist", "album", "composer", "isrc", "year", "genre", "track", "disc", "copyright"]:
                 tag_key = key_map.get(field, field)
                 if updates.get(field) is None:
                     continue

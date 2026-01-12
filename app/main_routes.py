@@ -70,6 +70,7 @@ from app.services.music_search import (
     load_cue,
     save_cue,
     update_metadata,
+    build_library_editor_index,
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
@@ -979,6 +980,13 @@ def music_search_page():
             .all()
         )
     return render_template("music_search.html", saved_searches=saved)
+
+
+@main_bp.route("/music/library/editor")
+@permission_required({"music:view"})
+def library_editor_page():
+    library_index = build_library_editor_index()
+    return render_template("library_editor.html", library_index=library_index)
 
 
 def _safe_music_path(path: str) -> str:
