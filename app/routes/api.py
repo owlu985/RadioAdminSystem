@@ -287,9 +287,10 @@ def _push_icecast_metadata(track: dict) -> None:
         return
     artist = _strip_p_tag(track.get("artist") or track.get("Artist"))
     title = _strip_p_tag(track.get("title") or track.get("Title"))
+    song_override = _strip_p_tag(track.get("song") or track.get("Song"))
     if not title and not artist:
         return
-    song = " - ".join([part for part in [artist, title] if part])
+    song = song_override or " - ".join([part for part in [artist, title] if part])
     params = {
         "mount": mount,
         "mode": "updinfo",
@@ -318,7 +319,7 @@ def _strip_p_tag(value: Optional[str]) -> Optional[str]:
     return text
 
 
-def _get_cached_radiodj_nowplaying() -> Optional[dict]:
+def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dict]:
     now_ts = time.time()
     last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
     if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
@@ -334,7 +335,27 @@ def _get_cached_radiodj_nowplaying() -> Optional[dict]:
             cached_track = _RADIODJ_NOWPLAYING_CACHE.get("payload")
             if cached_track != track:
                 _RADIODJ_NOWPLAYING_CACHE["payload"] = track
-                _push_icecast_metadata(track)
+                if push_icecast:
+                    _push_icecast_metadata(track)
+                show = get_current_show()
+                show_run = None
+                if show:
+                    dj_first, dj_last = show_primary_host(show)
+                    show_run = get_or_create_active_run(
+                        show_name=show_display_title(show),
+                        dj_first_name=dj_first,
+                        dj_last_name=dj_last,
+                    )
+                db.session.add(LogEntry(
+                    show_run_id=show_run.id if show_run else None,
+                    timestamp=datetime.utcnow(),
+                    message="Now playing",
+                    entry_type="music",
+                    title=track.get("title"),
+                    artist=track.get("artist"),
+                    description=track.get("album"),
+                ))
+                db.session.commit()
     return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
 
 

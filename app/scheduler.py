@@ -468,9 +468,19 @@ def run_settings_backup_job():
 def run_radiodj_now_playing_job():
     if flask_app is None:
         return
-    from app.routes.api import _get_cached_radiodj_nowplaying
+    from app.routes.api import _get_cached_radiodj_nowplaying, _push_icecast_metadata
+    from app.utils import get_current_show, show_display_title, show_host_names
     with flask_app.app_context():
         try:
-            _get_cached_radiodj_nowplaying()
+            show = get_current_show()
+            if show:
+                show_name = show_display_title(show)
+                host_label = show_host_names(show)
+                _push_icecast_metadata({
+                    "artist": host_label,
+                    "title": show_name,
+                    "song": f"{show_name} with {host_label}",
+                })
+            _get_cached_radiodj_nowplaying(push_icecast=not show)
         except Exception as exc:  # noqa: BLE001
             logger.warning("RadioDJ now-playing update failed: %s", exc)
