@@ -323,9 +323,6 @@ def _get_cached_radiodj_nowplaying() -> Optional[dict]:
         if track:
             _RADIODJ_NOWPLAYING_CACHE["payload"] = track
             _push_icecast_metadata(track)
-        else:
-            if _RADIODJ_NOWPLAYING_CACHE.get("payload") is None:
-                _RADIODJ_NOWPLAYING_CACHE["payload"] = None
     return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
 
 
