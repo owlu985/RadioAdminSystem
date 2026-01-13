@@ -114,7 +114,6 @@ class Config:
     RADIODJ_API_BASE_URL = os.getenv("RADIODJ_API_BASE_URL")
     RADIODJ_API_PASSWORD = os.getenv("RADIODJ_API_PASSWORD")
     RADIODJ_API_KEY = None
-    RADIODJ_HOOK_ENABLED = False
     NOW_PLAYING_OVERRIDE_ENABLED = False
 
     # Audits

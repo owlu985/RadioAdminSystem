@@ -119,36 +119,22 @@ class RadioDJClient:
     def now_playing(self) -> Optional[dict]:
         """
         Fetch the current on-air metadata from RadioDJ (if enabled).
-        Expected payload shape (best-effort):
-        {
-            "artist": str,
-            "title": str,
-            "album": str,
-            "duration": float,
-            "elapsed": float,
-        }
+        Expected payload shape: XML fields from the /np endpoint (lower-cased keys).
         """
         if not self.enabled:
             return None
         try:
-            resp = requests.get(self._endpoint("npjson"), params={"auth": self.api_password}, timeout=6)
-            if resp.ok:
-                return resp.json() or {}
             resp = requests.get(self._endpoint("np"), params={"auth": self.api_password}, timeout=6)
             resp.raise_for_status()
             payload = self._xml_to_dict(resp.text)
             if not payload:
                 return None
-            return {
-                "artist": _strip_p_tag(payload.get("artist")),
-                "title": _strip_p_tag(payload.get("title")),
-                "album": payload.get("album"),
-                "duration": _coerce_float(payload.get("duration")),
-                "elapsed": _coerce_float(payload.get("elapsed")),
-                "year": payload.get("year"),
-                "path": payload.get("path"),
-                "raw": payload,
-            }
+            payload["artist"] = _strip_p_tag(payload.get("artist"))
+            payload["title"] = _strip_p_tag(payload.get("title"))
+            payload["album"] = _strip_p_tag(payload.get("album"))
+            payload["duration"] = _coerce_float(payload.get("duration"))
+            payload["elapsed"] = _coerce_float(payload.get("elapsed"))
+            return payload
         except Exception as exc:  # noqa: BLE001
             logger.error("RadioDJ now playing fetch failed: %s", exc)
             return None
