@@ -290,7 +290,13 @@ def _push_icecast_metadata(track: dict) -> None:
     if not title and not artist:
         return
     song = " - ".join([part for part in [artist, title] if part])
-    params = {"mount": mount, "mode": "updinfo", "song": song}
+    params = {
+        "mount": mount,
+        "mode": "updinfo",
+        "song": song,
+        "artist": artist or "",
+        "title": title or "",
+    }
     username = current_app.config.get("ICECAST_USERNAME") or "admin"
     password = current_app.config.get("ICECAST_PASSWORD")
     try:
@@ -325,8 +331,10 @@ def _get_cached_radiodj_nowplaying() -> Optional[dict]:
     if payload:
         track = _extract_radiodj_track(payload)
         if track:
-            _RADIODJ_NOWPLAYING_CACHE["payload"] = track
-            _push_icecast_metadata(track)
+            cached_track = _RADIODJ_NOWPLAYING_CACHE.get("payload")
+            if cached_track != track:
+                _RADIODJ_NOWPLAYING_CACHE["payload"] = track
+                _push_icecast_metadata(track)
     return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
 
 
