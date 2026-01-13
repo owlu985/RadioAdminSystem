@@ -1,11 +1,18 @@
 import os
 
+BASE_DIR = os.path.abspath(os.path.dirname(__file__))
+INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
+DEFAULT_DATA_ROOT = os.path.join(INSTANCE_DIR, "data")
+
+
 class Config:
     SECRET_KEY = "a_not_so_secure_fallback_key"
-    SQLALCHEMY_DATABASE_URI = f'sqlite:///{os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "app.db")}'
+    SQLALCHEMY_DATABASE_URI = f'sqlite:///{os.path.join(INSTANCE_DIR, "app.db")}'
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     STREAM_URL = "https://wlmc.landmark.edu:8880/stream"
-    OUTPUT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "recordings")
+    DATA_ROOT = os.getenv("RAMS_DATA_ROOT") or DEFAULT_DATA_ROOT
+    LOGS_DIR = os.path.join(DATA_ROOT, "logs")
+    OUTPUT_FOLDER = os.path.join(DATA_ROOT, "recordings")
     ADMIN_USERNAME = "admin"
     ADMIN_PASSWORD = "admin"
     DEFAULT_START_DATE = "2024-01-01"
@@ -88,12 +95,12 @@ class Config:
     DATA_BACKUP_RETENTION_DAYS = 60
 
     # NAS / RadioDJ integration
-    NAS_ROOT = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "nas_test")
+    NAS_ROOT = os.getenv("RAMS_NAS_ROOT") or os.path.join(DATA_ROOT, "nas")
     NAS_NEWS_FILE = os.path.join(NAS_ROOT, "wlmc_news.mp3")
     NAS_COMMUNITY_CALENDAR_FILE = os.path.join(NAS_ROOT, "wlmc_comm_calendar.mp3")
     TEST_SAMPLE_AUDIO = os.path.join(NAS_ROOT, "sample_probe.mp3")
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
-    NAS_MUSIC_ROOT = os.path.join(NAS_ROOT, "music")
+    NAS_MUSIC_ROOT = os.getenv("RAMS_MUSIC_LIBRARY") or os.path.join(NAS_ROOT, "music")
     MUSIC_INDEX_TTL = 60
     MEDIA_INDEX_TTL = 60
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
@@ -101,10 +108,11 @@ class Config:
     MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")
     TRANSCODE_ALAC_TO_MP3 = True
-    AUDIO_HOST_UPLOAD_DIR = os.path.join(NAS_ROOT, "hosted_audio")
-    AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(NAS_ROOT, "hosted_audio_default.jpg")
-    RADIODJ_IMPORT_FOLDER = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "radiodj_imports")
-    RADIODJ_API_BASE_URL = None
+    AUDIO_HOST_UPLOAD_DIR = os.path.join(DATA_ROOT, "hosted_audio")
+    AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(DATA_ROOT, "hosted_audio_default.jpg")
+    RADIODJ_IMPORT_FOLDER = os.path.join(DATA_ROOT, "radiodj_imports")
+    RADIODJ_API_BASE_URL = os.getenv("RADIODJ_API_BASE_URL")
+    RADIODJ_API_PASSWORD = os.getenv("RADIODJ_API_PASSWORD")
     RADIODJ_API_KEY = None
     RADIODJ_HOOK_ENABLED = False
     NOW_PLAYING_OVERRIDE_ENABLED = False
@@ -121,11 +129,11 @@ class Config:
     SCHEDULE_TIMEZONE = "America/New_York"
     THEME_DEFAULT = "system"
     INLINE_HELP_ENABLED = True
-    DJ_PHOTO_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "dj_photos")
+    DJ_PHOTO_UPLOAD_DIR = os.path.join(DATA_ROOT, "dj_photos")
 
     # Production / archivist
-    ARCHIVIST_DB_PATH = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "archivist_db.json")
-    ARCHIVIST_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "archivist_uploads")
+    ARCHIVIST_DB_PATH = os.path.join(DATA_ROOT, "archivist_db.json")
+    ARCHIVIST_UPLOAD_DIR = os.path.join(DATA_ROOT, "archivist_uploads")
 
     # Social posting
     SOCIAL_SEND_ENABLED = False
@@ -141,7 +149,7 @@ class Config:
     SOCIAL_TWITTER_CLIENT_SECRET = None
     SOCIAL_BLUESKY_HANDLE = None
     SOCIAL_BLUESKY_PASSWORD = None
-    SOCIAL_UPLOAD_DIR = os.path.join(os.path.abspath(os.path.dirname(__file__)), "instance", "social_uploads")
+    SOCIAL_UPLOAD_DIR = os.path.join(DATA_ROOT, "social_uploads")
 
     # Metadata enrichment
     MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
