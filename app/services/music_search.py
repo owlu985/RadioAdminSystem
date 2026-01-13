@@ -2,6 +2,7 @@ import os
 import json
 import hashlib
 import time
+import re
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from flask import current_app
@@ -336,6 +337,46 @@ def _read_tags(path: str) -> Dict:
                 return True
             if "clean" in lowered or "not explicit" in lowered:
                 return False
+        return None
+
+    def _parse_year(val):
+        if val is None:
+            return None
+        coerced = _coerce(val)
+        if isinstance(coerced, list):
+            for item in coerced:
+                parsed = _parse_year(item)
+                if parsed:
+                    return parsed
+            return None
+        if isinstance(coerced, tuple):
+            for item in coerced:
+                parsed = _parse_year(item)
+                if parsed:
+                    return parsed
+            return None
+        if isinstance(coerced, bytes):
+            try:
+                coerced = coerced.decode("utf-8", errors="ignore")
+            except Exception:
+                return None
+        if isinstance(coerced, (int, float)):
+            year_val = int(coerced)
+            if 1000 <= year_val <= 2999:
+                return str(year_val)
+            return _parse_year(str(year_val))
+        if isinstance(coerced, str):
+            stripped = coerced.strip()
+            if not stripped:
+                return None
+            if stripped.isdigit():
+                year_val = int(stripped)
+                if 1000 <= year_val <= 2999:
+                    return str(year_val)
+            for match in re.findall(r"\d{4}", stripped):
+                year_val = int(match)
+                if 1000 <= year_val <= 2999:
+                    return match
         return None
 
     try:

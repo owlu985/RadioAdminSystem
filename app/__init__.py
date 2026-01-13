@@ -19,14 +19,17 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     
     user_config_path = os.path.join(app.instance_path, 'user_config.json')
-    logs_dir = os.path.join(app.instance_path, 'logs')
+    logs_dir = app.config.get("LOGS_DIR") or os.path.join(app.instance_path, 'logs')
     log_file_path = os.path.join(logs_dir, 'ShowRecorder.log')
     audio_host_dir = app.config.get("AUDIO_HOST_UPLOAD_DIR", Config.AUDIO_HOST_UPLOAD_DIR)
+    data_root = app.config.get("DATA_ROOT")
 
     if not os.path.exists(app.instance_path):
         os.mkdir(app.instance_path)
+    if data_root and not os.path.exists(data_root):
+        os.makedirs(data_root, exist_ok=True)
     if not os.path.exists(logs_dir):
-        os.mkdir(logs_dir)
+        os.makedirs(logs_dir, exist_ok=True)
     if audio_host_dir and not os.path.exists(audio_host_dir):
         os.makedirs(audio_host_dir, exist_ok=True)
 
@@ -88,6 +91,10 @@ def create_app(config_class=Config):
                     "SOCIAL_BLUESKY_PASSWORD",
                     "ARCHIVIST_DB_PATH",
                     "ARCHIVIST_UPLOAD_DIR",
+                    "DATA_ROOT",
+                    "NAS_MUSIC_ROOT",
+                    "RADIODJ_API_BASE_URL",
+                    "RADIODJ_API_PASSWORD",
                 }
 
                 for key in optional_keys:
