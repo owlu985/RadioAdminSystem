@@ -533,12 +533,28 @@
                                     <input type="text" name="musicbrainz_user_agent" id="musicbrainz_user_agent" class="form-control" value="{{ musicbrainz_user_agent }}" placeholder="AppName/1.0 (you@example.com)">
                                 </div>
                                 <div class="col-md-6">
+                                    <label for="data_root" class="form-label">RAMS Data Root</label>
+                                    <input type="text" name="data_root" id="data_root" class="form-control" value="{{ data_root }}" placeholder="Path for RAMS data (uploads, hosted audio, logs)">
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label for="music_library_path" class="form-label">Music Library Path</label>
+                                    <input type="text" name="music_library_path" id="music_library_path" class="form-control" value="{{ music_library_path }}" placeholder="Path to main music library">
+                                </div>
+                                <div class="col-md-6">
                                     <label for="psa_library_path" class="form-label">PSA Library Path</label>
                                     <input type="text" name="psa_library_path" id="psa_library_path" class="form-control" value="{{ psa_library_path }}" placeholder="/path/to/psa/files">
                                 </div>
                                 <div class="col-md-6">
                                     <label for="imaging_library_path" class="form-label">Imaging Library Path</label>
                                     <input type="text" name="imaging_library_path" id="imaging_library_path" class="form-control" value="{{ imaging_library_path }}" placeholder="/path/to/imaging/files">
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
+                                <div class="col-md-6">
+                                    <label for="radiodj_api_base_url" class="form-label">RadioDJ API Base URL</label>
+                                    <input type="text" name="radiodj_api_base_url" id="radiodj_api_base_url" class="form-control" value="{{ radiodj_api_base_url }}" placeholder="http://127.0.0.1:8080/api">
                                 </div>
                             </div>
                             <div class="row g-3 mb-3">
