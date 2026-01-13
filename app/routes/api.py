@@ -376,8 +376,6 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
             is_music = int(track_type) == 0
         elif track_type:
             is_music = track_type == "music"
-    if not is_music:
-        return None
     artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
     title = _strip_p_tag(track_payload.get("Title") or track_payload.get("title"))
     album = _strip_p_tag(track_payload.get("Album") or track_payload.get("album"))
