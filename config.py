@@ -112,6 +112,7 @@ class Config:
     AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(DATA_ROOT, "hosted_audio_default.jpg")
     RADIODJ_IMPORT_FOLDER = os.path.join(DATA_ROOT, "radiodj_imports")
     RADIODJ_API_BASE_URL = os.getenv("RADIODJ_API_BASE_URL")
+    RADIODJ_API_PASSWORD = os.getenv("RADIODJ_API_PASSWORD")
     RADIODJ_API_KEY = None
     RADIODJ_HOOK_ENABLED = False
     NOW_PLAYING_OVERRIDE_ENABLED = False

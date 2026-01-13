@@ -94,6 +94,7 @@ def create_app(config_class=Config):
                     "DATA_ROOT",
                     "NAS_MUSIC_ROOT",
                     "RADIODJ_API_BASE_URL",
+                    "RADIODJ_API_PASSWORD",
                 }
 
                 for key in optional_keys:

@@ -2035,7 +2035,7 @@ ALLOWED_SETTINGS_KEYS = [
     'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_TWITTER_CLIENT_ID', 'SOCIAL_TWITTER_CLIENT_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
     'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
     'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH', 'IMAGING_LIBRARY_PATH',
-    'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL'
+    'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
 ]
 
 
@@ -2135,6 +2135,7 @@ def settings():
                 'DATA_ROOT': _clean_optional(request.form.get('data_root', '').strip()),
                 'NAS_MUSIC_ROOT': _clean_optional(request.form.get('music_library_path', '').strip()),
                 'RADIODJ_API_BASE_URL': _clean_optional(request.form.get('radiodj_api_base_url', '').strip()),
+                'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
                 'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
                 'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
                 'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
@@ -2207,6 +2208,7 @@ def settings():
         'data_root': _clean_optional(config.get('DATA_ROOT', '')) or '',
         'music_library_path': _clean_optional(config.get('NAS_MUSIC_ROOT', '')) or '',
         'radiodj_api_base_url': _clean_optional(config.get('RADIODJ_API_BASE_URL', '')) or '',
+        'radiodj_api_password': _clean_optional(config.get('RADIODJ_API_PASSWORD', '')) or '',
         'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
         'musicbrainz_user_agent': _clean_optional(config.get('MUSICBRAINZ_USER_AGENT', '')) or '',
         'rate_limit_enabled': config.get('RATE_LIMIT_ENABLED', True),
@@ -2318,7 +2320,7 @@ def import_settings():
         'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
         'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
         'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT',
-        'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL'
+        'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
     } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
     if not filtered:
