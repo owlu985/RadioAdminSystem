@@ -21,6 +21,15 @@ def _coerce_float(val: Optional[str]) -> Optional[float]:
         return None
 
 
+def _strip_p_tag(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return value
+    text = str(value).strip()
+    if text.endswith(" (P)"):
+        return text[:-4].rstrip()
+    return text
+
+
 class RadioDJClient:
     """
     Minimal helper for interacting with RadioDJ's REST API (if available)
@@ -131,8 +140,8 @@ class RadioDJClient:
             if not payload:
                 return None
             return {
-                "artist": payload.get("artist"),
-                "title": payload.get("title"),
+                "artist": _strip_p_tag(payload.get("artist")),
+                "title": _strip_p_tag(payload.get("title")),
                 "album": payload.get("album"),
                 "duration": _coerce_float(payload.get("duration")),
                 "elapsed": _coerce_float(payload.get("elapsed")),

@@ -482,7 +482,12 @@ def autodj_menu():
 
 @main_bp.route("/dj/tools")
 def dj_tools():
-    resp = make_response(render_template("dj_tools.html"))
+    notes = DJHandoffNote.query.order_by(DJHandoffNote.created_at.desc()).limit(10).all()
+    shows = [
+        {"id": show.id, "display": show_display_title(show)}
+        for show in Show.query.order_by(Show.show_name, Show.host_last_name).all()
+    ]
+    resp = make_response(render_template("dj_tools.html", notes=notes, shows=shows))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -511,6 +516,9 @@ def dj_handoff_notes():
         show_id = request.form.get("show_id", type=int)
         if not notes:
             flash("Please add a handoff note before saving.", "warning")
+            redirect_to = request.form.get("redirect_to")
+            if redirect_to and redirect_to.startswith("/") and "//" not in redirect_to:
+                return redirect(redirect_to)
             return redirect(url_for("main.dj_handoff_notes"))
         show_name = None
         if show_id:
@@ -525,6 +533,9 @@ def dj_handoff_notes():
         db.session.add(note)
         db.session.commit()
         flash("Handoff note saved.", "success")
+        redirect_to = request.form.get("redirect_to")
+        if redirect_to and redirect_to.startswith("/") and "//" not in redirect_to:
+            return redirect(redirect_to)
         return redirect(url_for("main.dj_handoff_notes"))
 
     notes = DJHandoffNote.query.order_by(DJHandoffNote.created_at.desc()).limit(50).all()
