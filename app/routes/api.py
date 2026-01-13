@@ -3,12 +3,14 @@ from __future__ import annotations
 from datetime import datetime
 import time
 from datetime import datetime, timedelta
-from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort
+from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort, send_file
 import os
 import shutil
 import json
 import base64
+import io
 from typing import Optional, TypedDict
+from urllib.parse import urlparse, quote
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -74,6 +76,10 @@ import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
 QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack"}
+_RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
+    "fetched_at": None,
+    "payload": None,
+}
 
 
 def _deserialize_metadata(raw: str | None) -> dict | None:
@@ -249,6 +255,104 @@ def _decode_media_token(token: str) -> Optional[str]:
     return full
 
 
+def _safe_music_path(path: str) -> Optional[str]:
+    if not path:
+        return None
+    full = os.path.normcase(os.path.abspath(os.path.normpath(path)))
+    music_root = current_app.config.get("NAS_MUSIC_ROOT")
+    if not music_root:
+        return None
+    root_abs = os.path.normcase(os.path.abspath(os.path.normpath(music_root)))
+    if not full.startswith(root_abs):
+        return None
+    return full if os.path.exists(full) else None
+
+
+def _icecast_update_url() -> Optional[str]:
+    status_url = current_app.config.get("ICECAST_STATUS_URL")
+    list_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
+    candidate = status_url or list_url
+    if not candidate:
+        return None
+    parsed = urlparse(candidate)
+    if not parsed.scheme or not parsed.netloc:
+        return None
+    return parsed._replace(path="/admin/metadata", query="", fragment="").geturl()
+
+
+def _push_icecast_metadata(track: dict) -> None:
+    update_url = _icecast_update_url()
+    mount = current_app.config.get("ICECAST_MOUNT")
+    if not update_url or not mount:
+        return
+    artist = _strip_p_tag(track.get("artist") or track.get("Artist"))
+    title = _strip_p_tag(track.get("title") or track.get("Title"))
+    if not title and not artist:
+        return
+    song = " - ".join([part for part in [artist, title] if part])
+    params = {"mount": mount, "mode": "updinfo", "song": song}
+    username = current_app.config.get("ICECAST_USERNAME") or "admin"
+    password = current_app.config.get("ICECAST_PASSWORD")
+    try:
+        requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Icecast metadata update failed: %s", exc)
+
+
+def _strip_p_tag(value: Optional[str]) -> Optional[str]:
+    if not value:
+        return value
+    text = str(value).strip()
+    if text.endswith(" (P)"):
+        return text[:-4].rstrip()
+    return text
+
+
+def _get_cached_radiodj_nowplaying() -> Optional[dict]:
+    now_ts = time.time()
+    last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
+    if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
+        return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
+    payload: Optional[dict] = None
+    rdj = RadioDJClient()
+    if rdj.enabled:
+        payload = rdj.now_playing()
+    _RADIODJ_NOWPLAYING_CACHE["fetched_at"] = now_ts
+    if payload:
+        track = _extract_radiodj_track(payload)
+        if track:
+            _RADIODJ_NOWPLAYING_CACHE["payload"] = track
+            _push_icecast_metadata(track)
+        else:
+            if _RADIODJ_NOWPLAYING_CACHE.get("payload") is None:
+                _RADIODJ_NOWPLAYING_CACHE["payload"] = None
+    return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
+
+
+def _extract_radiodj_track(payload: dict) -> Optional[dict]:
+    if not payload:
+        return None
+    track_payload = payload.get("CurrentTrack") if isinstance(payload.get("CurrentTrack"), dict) else payload
+    raw_track_type = track_payload.get("TrackType") or track_payload.get("tracktype") or ""
+    if isinstance(raw_track_type, (int, float)):
+        is_music = int(raw_track_type) == 0
+    else:
+        track_type = str(raw_track_type).strip().lower()
+        is_music = track_type == "music"
+    if not is_music:
+        return None
+    artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
+    title = _strip_p_tag(track_payload.get("Title") or track_payload.get("title"))
+    album = _strip_p_tag(track_payload.get("Album") or track_payload.get("album"))
+    started_at = track_payload.get("DatePlayed") or track_payload.get("dateplayed")
+    return {
+        "artist": artist,
+        "album": album,
+        "title": title,
+        "started_at": started_at,
+    }
+
+
 def _get_now_playing_state() -> NowPlayingState:
     state = NowPlayingState.query.first()
     if not state:
@@ -320,8 +424,9 @@ def now_playing():
         if override_enabled and current_app.config.get("RADIODJ_HOOK_ENABLED"):
             rdj = RadioDJClient()
             rdj_payload = rdj.now_playing()
-            if rdj_payload:
-                base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+            track = _extract_radiodj_track(rdj_payload or {})
+            if track:
+                base.update({"status": "automation", "source": "radiodj", "track": track})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -391,14 +496,57 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
+    nowplaying_payload = _get_cached_radiodj_nowplaying()
+    if nowplaying_payload:
+        base = base or {}
+        base.update({"status": "automation", "source": "radiodj_cached", "track": nowplaying_payload})
+        return jsonify(base)
     if base and base.get("override_enabled") and current_app.config.get("RADIODJ_HOOK_ENABLED"):
         rdj = RadioDJClient()
         rdj_payload = rdj.now_playing()
-        if rdj_payload:
+        track = _extract_radiodj_track(rdj_payload or {})
+        if track:
             base = base or {}
-            base.update({"status": "automation", "source": "radiodj", "track": rdj_payload})
+            base.update({"status": "automation", "source": "radiodj", "track": track})
             return jsonify(base)
     return jsonify(base or {"status": "off_air"})
+
+
+@api_bp.route("/now/recent-tracks")
+def recent_tracks():
+    entries = (
+        LogEntry.query.filter_by(entry_type="music")
+        .order_by(LogEntry.timestamp.desc())
+        .limit(10)
+        .all()
+    )
+    index = get_music_index()
+    index_entries = list(index.get("files", {}).values())
+    lookup: dict[tuple[str, str], dict] = {}
+    for entry in index_entries:
+        title = (entry.get("title") or "").strip().lower()
+        artist = (entry.get("artist") or "").strip().lower()
+        if title and artist and (title, artist) not in lookup:
+            lookup[(title, artist)] = entry
+    payload = []
+    for entry in entries:
+        title = entry.title or ""
+        artist = entry.artist or ""
+        key = (title.strip().lower(), artist.strip().lower())
+        match = lookup.get(key)
+        album = match.get("album") if match else None
+        path = match.get("path") if match else None
+        cover_url = None
+        if path:
+            cover_url = f"/api/music/cover-image?path={quote(path)}"
+        payload.append({
+            "title": title or None,
+            "artist": artist or None,
+            "album": album,
+            "cover_url": cover_url,
+            "played_at": entry.timestamp.isoformat(),
+        })
+    return jsonify({"status": "ok", "tracks": payload})
 
 
 @api_bp.route("/now/override", methods=["GET", "POST"])
@@ -671,6 +819,51 @@ def music_detail():
     if not track:
         return jsonify({"status": "error", "message": "not found"}), 404
     return jsonify(track)
+
+
+@api_bp.route("/music/cover-image")
+def music_cover_image():
+    path = request.args.get("path")
+    if not path:
+        abort(404)
+    safe_path = _safe_music_path(path)
+    if not safe_path:
+        abort(404)
+    cover_path = os.path.splitext(safe_path)[0] + ".jpg"
+    if os.path.exists(cover_path):
+        return send_file(cover_path, conditional=True)
+    try:
+        import mutagen  # type: ignore
+        from mutagen.id3 import ID3  # type: ignore
+        from mutagen.mp4 import MP4  # type: ignore
+    except Exception:
+        abort(404)
+    audio = mutagen.File(safe_path, easy=False)
+    if not audio:
+        abort(404)
+    image_data = None
+    mime = "image/jpeg"
+    if isinstance(audio, MP4):
+        covr = audio.tags.get("covr") if audio.tags else None
+        if covr:
+            image_data = bytes(covr[0])
+    else:
+        try:
+            id3 = ID3(safe_path)
+            apic = id3.get("APIC:") or id3.get("APIC")
+            if apic:
+                image_data = apic.data
+                mime = apic.mime or mime
+        except Exception:
+            image_data = None
+    if not image_data:
+        abort(404)
+    return send_file(
+        io.BytesIO(image_data),
+        mimetype=mime,
+        conditional=True,
+        download_name=os.path.basename(cover_path),
+    )
 
 
 @api_bp.route("/music/cover-art", methods=["POST"])

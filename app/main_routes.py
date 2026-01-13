@@ -482,7 +482,12 @@ def autodj_menu():
 
 @main_bp.route("/dj/tools")
 def dj_tools():
-    resp = make_response(render_template("dj_tools.html"))
+    notes = DJHandoffNote.query.order_by(DJHandoffNote.created_at.desc()).limit(10).all()
+    shows = [
+        {"id": show.id, "display": show_display_title(show)}
+        for show in Show.query.order_by(Show.show_name, Show.host_last_name).all()
+    ]
+    resp = make_response(render_template("dj_tools.html", notes=notes, shows=shows))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -511,6 +516,9 @@ def dj_handoff_notes():
         show_id = request.form.get("show_id", type=int)
         if not notes:
             flash("Please add a handoff note before saving.", "warning")
+            redirect_to = request.form.get("redirect_to")
+            if redirect_to and redirect_to.startswith("/") and "//" not in redirect_to:
+                return redirect(redirect_to)
             return redirect(url_for("main.dj_handoff_notes"))
         show_name = None
         if show_id:
@@ -525,6 +533,9 @@ def dj_handoff_notes():
         db.session.add(note)
         db.session.commit()
         flash("Handoff note saved.", "success")
+        redirect_to = request.form.get("redirect_to")
+        if redirect_to and redirect_to.startswith("/") and "//" not in redirect_to:
+            return redirect(redirect_to)
         return redirect(url_for("main.dj_handoff_notes"))
 
     notes = DJHandoffNote.query.order_by(DJHandoffNote.created_at.desc()).limit(50).all()
@@ -2034,7 +2045,8 @@ ALLOWED_SETTINGS_KEYS = [
     'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_TWITTER_CONSUMER_KEY', 'SOCIAL_TWITTER_CONSUMER_SECRET',
     'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_TWITTER_CLIENT_ID', 'SOCIAL_TWITTER_CLIENT_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
     'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
-    'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH'
+    'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH', 'IMAGING_LIBRARY_PATH',
+    'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
 ]
 
 
@@ -2131,6 +2143,10 @@ def settings():
                 'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
                 'PSA_LIBRARY_PATH': request.form.get('psa_library_path', current_app.config.get('PSA_LIBRARY_PATH', '')).strip(),
                 'IMAGING_LIBRARY_PATH': request.form.get('imaging_library_path', current_app.config.get('IMAGING_LIBRARY_PATH', '')).strip(),
+                'DATA_ROOT': _clean_optional(request.form.get('data_root', '').strip()),
+                'NAS_MUSIC_ROOT': _clean_optional(request.form.get('music_library_path', '').strip()),
+                'RADIODJ_API_BASE_URL': _clean_optional(request.form.get('radiodj_api_base_url', '').strip()),
+                'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
                 'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
                 'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
                 'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
@@ -2200,6 +2216,10 @@ def settings():
         'icecast_mount': _clean_optional(config.get('ICECAST_MOUNT', '')) or '',
         'icecast_analytics_interval_minutes': config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5),
         'icecast_ignored_ips': ", ".join(config.get('ICECAST_IGNORED_IPS', [])),
+        'data_root': _clean_optional(config.get('DATA_ROOT', '')) or '',
+        'music_library_path': _clean_optional(config.get('NAS_MUSIC_ROOT', '')) or '',
+        'radiodj_api_base_url': _clean_optional(config.get('RADIODJ_API_BASE_URL', '')) or '',
+        'radiodj_api_password': _clean_optional(config.get('RADIODJ_API_PASSWORD', '')) or '',
         'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
         'musicbrainz_user_agent': _clean_optional(config.get('MUSICBRAINZ_USER_AGENT', '')) or '',
         'rate_limit_enabled': config.get('RATE_LIMIT_ENABLED', True),
@@ -2252,8 +2272,8 @@ def settings():
 @main_bp.route('/settings/logs')
 @admin_required
 def view_system_log():
-    repo_root = os.path.abspath(os.path.join(current_app.root_path, os.pardir))
-    log_path = os.path.join(repo_root, 'ShowRecorder.log')
+    logs_dir = current_app.config.get("LOGS_DIR") or os.path.join(current_app.instance_path, "logs")
+    log_path = os.path.join(logs_dir, "ShowRecorder.log")
     entries = []
     error = None
     try:
@@ -2310,7 +2330,8 @@ def import_settings():
         'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
         'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
         'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
-        'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT'
+        'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT',
+        'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
     } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
     if not filtered:
