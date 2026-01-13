@@ -294,7 +294,11 @@ def _push_icecast_metadata(track: dict) -> None:
     username = current_app.config.get("ICECAST_USERNAME") or "admin"
     password = current_app.config.get("ICECAST_PASSWORD")
     try:
-        requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+        resp = requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+        if resp.ok:
+            logger.info("Icecast metadata update ok: %s", song)
+        else:
+            logger.warning("Icecast metadata update failed: %s (status %s)", song, resp.status_code)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Icecast metadata update failed: %s", exc)
 
@@ -331,16 +335,18 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         return None
     track_payload = payload.get("CurrentTrack") if isinstance(payload.get("CurrentTrack"), dict) else payload
     raw_track_type = track_payload.get("TrackType") or track_payload.get("tracktype") or ""
+    track_type_label = None
+    is_music = True
     if isinstance(raw_track_type, (int, float)):
+        track_type_label = "music" if int(raw_track_type) == 0 else str(raw_track_type)
         is_music = int(raw_track_type) == 0
     else:
         track_type = str(raw_track_type).strip().lower()
+        track_type_label = track_type or None
         if track_type.isdigit():
             is_music = int(track_type) == 0
-        else:
+        elif track_type:
             is_music = track_type == "music"
-    if not is_music:
-        return None
     artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
     title = _strip_p_tag(track_payload.get("Title") or track_payload.get("title"))
     album = _strip_p_tag(track_payload.get("Album") or track_payload.get("album"))
@@ -350,6 +356,8 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         "album": album,
         "title": title,
         "started_at": started_at,
+        "track_type": track_type_label,
+        "is_music": is_music,
     }
 
 
@@ -408,7 +416,7 @@ def _find_next_show(now: datetime) -> tuple[Show | None, tuple[datetime, datetim
     return show_obj, (start_dt, end_dt), absence
 
 
-@api_bp.route("/now")
+@api_bp.route("/now", strict_slashes=False)
 def now_playing():
     now = datetime.utcnow()
     show = get_current_show()
@@ -421,12 +429,10 @@ def now_playing():
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
             "override_enabled": override_enabled,
         }
-        if override_enabled and current_app.config.get("RADIODJ_HOOK_ENABLED"):
-            rdj = RadioDJClient()
-            rdj_payload = rdj.now_playing()
-            track = _extract_radiodj_track(rdj_payload or {})
+        if override_enabled:
+            track = _get_cached_radiodj_nowplaying()
             if track:
-                base.update({"status": "automation", "source": "radiodj", "track": track})
+                base.update({"status": "automation", "source": "radiodj_cached", "track": track})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -487,7 +493,7 @@ def now_playing():
     return jsonify(payload)
 
 
-@api_bp.route("/now/widget")
+@api_bp.route("/now/widget", strict_slashes=False)
 def now_widget():
     """
     Widget-friendly now-playing: if a scheduled show is active, show it; otherwise
@@ -501,14 +507,6 @@ def now_widget():
         base = base or {}
         base.update({"status": "automation", "source": "radiodj_cached", "track": nowplaying_payload})
         return jsonify(base)
-    if base and base.get("override_enabled") and current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        rdj = RadioDJClient()
-        rdj_payload = rdj.now_playing()
-        track = _extract_radiodj_track(rdj_payload or {})
-        if track:
-            base = base or {}
-            base.update({"status": "automation", "source": "radiodj", "track": track})
-            return jsonify(base)
     return jsonify(base or {"status": "off_air"})
 
 
@@ -1469,8 +1467,6 @@ def list_psas():
 
 @api_bp.route("/radiodj/now-playing")
 def radiodj_now_playing():
-    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        return jsonify({"status": "disabled", "track": None}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "disabled", "track": None}), 503
@@ -1482,8 +1478,6 @@ def radiodj_now_playing():
 
 @api_bp.route("/radiodj/queue", methods=["POST"])
 def radiodj_queue():
-    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
