@@ -21,8 +21,9 @@
     <ul>
         <li><strong>Now Playing (widget-friendly):</strong>
             <pre><code>GET /api/now
-GET /api/now/widget</code></pre>
-            Returns current scheduled show or automation/off-air with run metadata. The widget variant is compact for website embeds.</li>
+GET /api/now/widget
+GET /api/now/recent-tracks</code></pre>
+            Returns current scheduled show or automation/off-air with run metadata. The widget variant returns a compact automation payload when off-schedule. <code>/api/now/recent-tracks</code> returns the last 10 music log entries with cover image links.</li>
         <li><strong>Station Status (stream + probe):</strong>
             <pre><code>GET /api/stream/status</code></pre>
             Stream reachability, listener counts (Icecast), latest probe classification (live/auto/dead air), and dB ratios.</li>
@@ -86,6 +87,7 @@ GET  /api/audit/status/&lt;job_id&gt;</code></pre>
     <h4 class="mt-4">Music Library</h4>
     <pre><code>GET    /api/music/search?q=&lt;query&gt;&amp;page=1&amp;per_page=50&amp;folder=&lt;rel&gt;  (use q=% to list all)
 GET    /api/music/detail?path=&lt;abs_path&gt;
+GET    /api/music/cover-image?path=&lt;abs_path&gt;
 POST   /api/music/cover-art                   (harvest/embed cover art)
 GET    /api/music/musicbrainz?title=&lt;t&gt;&amp;artist=&lt;a&gt;&amp;limit=5
 POST   /api/music/bulk-update                 (batch tag edits)
@@ -98,7 +100,8 @@ POST   /api/music/musicbrainz                 (same as GET; lookup helper)</code
     <p>Detail responses include title/artist/album/composer/ISRC/year/track/disc/copyright/path, loudness/peaks, and cue data where available.</p>
 
     <h4 class="mt-4">RadioDJ Integration</h4>
-    <pre><code>GET    /api/now/widget            (uses RadioDJ now-playing when off-schedule)
+    <pre><code>GET    /api/now/widget            (uses cached RadioDJ now-playing when off-schedule)
+GET    /api/now/recent-tracks
 GET    /api/radiodj/psas
 POST   /api/radiodj/psas/&lt;psa_id&gt;/enable
 POST   /api/radiodj/psas/&lt;psa_id&gt;/disable
@@ -106,7 +109,7 @@ DELETE /api/radiodj/psas/&lt;psa_id&gt;
 PATCH  /api/radiodj/psas/&lt;psa_id&gt;/metadata   (JSON body)
 POST   /api/radiodj/import/news
 POST   /api/radiodj/import/community_calendar</code></pre>
-    <p>Requires <code>RADIODJ_API_BASE_URL</code> and <code>RADIODJ_API_KEY</code> plus the RadioDJ REST plugin configured.</p>
+    <p>Requires <code>RADIODJ_API_BASE_URL</code> and <code>RADIODJ_API_PASSWORD</code> plus the RadioDJ plugin configured.</p>
 
     <h4 class="mt-4">Schedule & Marathon Recording</h4>
     <pre><code>GET  /api/schedule                (JSON grid)
@@ -156,10 +159,10 @@ GET      /logout</code></pre>
     <h4 class="mt-4">Full Endpoint Index</h4>
     <p class="text-muted">Quick list of all published endpoints (public first, then authenticated/admin). For details, see the sections above.</p>
     <ul>
-        <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>, <code>/psa/player</code>.</li>
+        <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/now/recent-tracks</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>, <code>/psa/player</code>.</li>
         <li>Logging & reports: <code>/logs/view</code>, <code>/logs/download/csv</code>, <code>/logs/download/docx</code>, <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code>.</li>
         <li>Probes, runs, audits: <code>/api/probe</code>, <code>/api/probes/latest</code>, <code>/api/runs/&lt;id&gt;</code>, <code>/api/runs/&lt;id&gt;/logs</code>, <code>/api/audit/start</code>, <code>/api/audit/status/&lt;job_id&gt;</code>.</li>
-        <li>Music library: <code>/api/music/search</code>, <code>/api/music/detail</code>, <code>/api/music/cover-art</code>, <code>/api/music/musicbrainz</code>, <code>/api/music/bulk-update</code>, <code>/api/music/scan/library</code>, <code>/api/music/cue</code>, <code>/api/music/saved-searches</code>, <code>/api/archivist/album-rip</code>, <code>/api/archivist/album-info</code>, archivist CSV import UI, <code>/music/</code> pages for search/detail/edit/cue.</li>
+        <li>Music library: <code>/api/music/search</code>, <code>/api/music/detail</code>, <code>/api/music/cover-image</code>, <code>/api/music/cover-art</code>, <code>/api/music/musicbrainz</code>, <code>/api/music/bulk-update</code>, <code>/api/music/scan/library</code>, <code>/api/music/cue</code>, <code>/api/music/saved-searches</code>, <code>/api/archivist/album-rip</code>, <code>/api/archivist/album-info</code>, archivist CSV import UI, <code>/music/</code> pages for search/detail/edit/cue.</li>
         <li>RadioDJ & stream: <code>/api/radiodj/psas</code>, <code>/api/radiodj/psas/&lt;id&gt;/enable</code>, <code>/api/radiodj/psas/&lt;id&gt;/disable</code>, <code>/api/radiodj/psas/&lt;id&gt;</code> (DELETE), <code>/api/radiodj/psas/&lt;id&gt;/metadata</code>, <code>/api/radiodj/import/news</code>, <code>/api/radiodj/import/community_calendar</code>, <code>/api/icecast/analytics</code>.</li>
         <li>Absences & DJs: <code>/dj/absence</code> (public form), <code>/absences</code> (manage/filter), <code>/djs</code> (list), <code>/djs/&lt;id&gt;</code> (profile), <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code>, <code>/djs/discipline</code>.</li>
         <li>Plugins & content: <code>/plugins</code> (admin list), <code>/plugins/website</code> (content/podcasts), <code>/plugins/automation-bridge</code>, <code>/plugins/remote-link</code>, <code>/api/plugins/website/content</code>.</li>

@@ -335,7 +335,10 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         is_music = int(raw_track_type) == 0
     else:
         track_type = str(raw_track_type).strip().lower()
-        is_music = track_type == "music"
+        if track_type.isdigit():
+            is_music = int(track_type) == 0
+        else:
+            is_music = track_type == "music"
     if not is_music:
         return None
     artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
