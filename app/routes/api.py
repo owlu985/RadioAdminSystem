@@ -27,8 +27,6 @@ from app.models import (
     WebsiteBanner,
     PodcastEpisode,
     DJAbsence,
-    PlaybackQueueItem,
-    PlaybackSession,
     HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
@@ -226,36 +224,6 @@ def _touch_playback_session(playback: PlaybackSession) -> None:
     db.session.add(playback)
 
 
-def _playback_log_entries(session_id: int) -> list[dict]:
-    items = PlaybackQueueItem.query.filter_by(session_id=session_id).order_by(PlaybackQueueItem.created_at.asc()).all()
-    entries: list[dict] = []
-    for item in items:
-        if item.item_type == "stop":
-            continue
-        entry_time = item.created_at.time() if item.created_at else None
-        entries.append({
-            "entry_type": item.item_type,
-            "title": item.title,
-            "artist": item.artist,
-            "timestamp": item.created_at.isoformat() if item.created_at else None,
-            "entry_time": entry_time.strftime("%H:%M") if entry_time else None,
-        })
-    now_playing = _now_playing_for(session_id)
-    now_title = getattr(now_playing, "title", None)
-    if now_title:
-        started_at = getattr(now_playing, "started_at", None) or datetime.utcnow()
-        entry_time = started_at.time()
-        entries.append({
-            "entry_type": getattr(now_playing, "item_type", None),
-            "title": now_title,
-            "artist": getattr(now_playing, "artist", None),
-            "timestamp": started_at.isoformat(),
-            "entry_time": entry_time.strftime("%H:%M"),
-        })
-    entries.sort(key=lambda entry: entry.get("timestamp") or "")
-    return entries
-
-
 def _queue_items(session_id: int) -> list[PlaybackQueueItem]:
     return PlaybackQueueItem.query.filter_by(session_id=session_id).order_by(PlaybackQueueItem.position).all()
 
@@ -286,15 +254,6 @@ def _set_now_playing_from_item(state: NowPlayingState, item: PlaybackQueueItem |
     state.started_at = datetime.utcnow() if item else None
     state.updated_at = datetime.utcnow()
     db.session.add(state)
-
-
-def _consume_stop_items(items: list[PlaybackQueueItem]) -> tuple[bool, list[PlaybackQueueItem]]:
-    removed = False
-    while items and items[0].item_type == "stop":
-        removed = True
-        db.session.delete(items[0])
-        items = items[1:]
-    return removed, items
 
 
 class PlaybackQueueItemPayload(TypedDict, total=False):
@@ -1912,28 +1871,34 @@ def playback_session():
     })
 
 
-@api_bp.route("/show-automator/logs/generate", methods=["GET"])
-def show_automator_generate_logs():
+@api_bp.route("/playback/session/state", methods=["GET", "POST"])
+def playback_session_state():
     playback = _get_playback_session()
-    show = get_current_show()
-    show_name = None
-    dj_name = None
-    if show:
-        show_name = show_display_title(show)
-        dj_first, dj_last = show_primary_host(show)
-        dj_name = f"{dj_first} {dj_last}".strip()
-    if not show_name:
-        show_name = getattr(playback, "show_name", None) or "Unscheduled Show"
-    if not dj_name:
-        dj_name = getattr(playback, "dj_name", None) or "DJ"
-    show_date = (getattr(playback, "started_at", None) or datetime.utcnow()).date().isoformat()
-    entries = _playback_log_entries(playback.id)
+    now_playing = _now_playing_for(playback.id)
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        timers = payload.get("timers")
+        if not isinstance(timers, dict):
+            timers = {}
+        metadata = _deserialize_metadata(now_playing.metadata)
+        if not isinstance(metadata, dict):
+            metadata = {} if metadata is None else {"raw": metadata}
+        if timers:
+            metadata["timers"] = timers
+        deck = payload.get("deck")
+        if deck:
+            metadata["deck"] = deck
+        if metadata:
+            now_playing.metadata = json.dumps(metadata)
+        now_playing.updated_at = datetime.utcnow()
+        _touch_playback_session(playback)
+        db.session.add(now_playing)
+        db.session.commit()
+        return jsonify({"status": "ok", "timers": timers})
     return jsonify({
-        "status": "ok",
-        "show_name": show_name,
-        "dj_name": dj_name,
-        "show_date": show_date,
-        "entries": entries,
+        "session_id": playback.id,
+        "now_playing": _serialize_now_playing(now_playing),
+        "timers": _playback_timer_snapshot(now_playing),
     })
 
 

@@ -2,7 +2,7 @@ from datetime import datetime, date, time
 import csv
 import io
 import zipfile
-from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app, jsonify
+from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import db, LogEntry, LogSheet, DJ, Show
 from app.utils import get_current_show, show_display_title, show_primary_host
 from app.services.show_run_service import get_or_create_active_run, start_show_run
@@ -18,15 +18,6 @@ def _parse_time(value: str) -> time | None:
         return datetime.strptime(value.strip(), "%H:%M").time()
     except Exception:
         return None
-
-
-def _split_dj_name(full_name: str) -> tuple[str | None, str | None]:
-    parts = [part for part in full_name.split() if part]
-    if not parts:
-        return None, None
-    if len(parts) == 1:
-        return parts[0], None
-    return parts[0], " ".join(parts[1:])
 
 
 @logs_bp.route("/submit", methods=["GET", "POST"])
@@ -136,130 +127,6 @@ def submit_log():
         djs=dj_payload,
         shows=show_payload,
     )
-
-
-@logs_bp.route("/submit/automator", methods=["POST"])
-def submit_automator_log():
-    payload = request.get_json(silent=True) or {}
-    show_name = (payload.get("show_name") or "").strip()
-    dj_first = (payload.get("dj_first_name") or "").strip()
-    dj_last = (payload.get("dj_last_name") or "").strip()
-    dj_name = (payload.get("dj_name") or "").strip()
-    if not (dj_first and dj_last) and dj_name:
-        dj_first, dj_last = _split_dj_name(dj_name)
-
-    current_show = get_current_show()
-    if current_show:
-        if not show_name:
-            show_name = show_display_title(current_show)
-        if not (dj_first and dj_last):
-            dj_first, dj_last = show_primary_host(current_show)
-
-    if not all([dj_first, dj_last, show_name]):
-        return jsonify({"status": "error", "message": "DJ and show selection are required."}), 400
-
-    show_date_raw = payload.get("show_date") or date.today().isoformat()
-    try:
-        show_date = datetime.strptime(show_date_raw, "%Y-%m-%d").date()
-    except ValueError:
-        return jsonify({"status": "error", "message": "Invalid show date."}), 400
-
-    sheet = LogSheet(
-        dj_first_name=dj_first,
-        dj_last_name=dj_last,
-        show_name=show_name,
-        show_date=show_date,
-    )
-    db.session.add(sheet)
-
-    show_run = None
-    if current_show:
-        show_run = get_or_create_active_run(
-            show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
-            dj_first_name=current_show.host_first_name,
-            dj_last_name=current_show.host_last_name,
-        )
-    else:
-        show_run = start_show_run(
-            dj_first_name=dj_first,
-            dj_last_name=dj_last,
-            show_name=show_name or "Unscheduled Show",
-        )
-
-    entries_payload = payload.get("entries") or []
-    entries_added = 0
-    for entry_payload in entries_payload:
-        entry_type = (entry_payload.get("entry_type") or entry_payload.get("type") or "").strip() or None
-        title = (entry_payload.get("title") or "").strip() or None
-        artist = (entry_payload.get("artist") or "").strip() or None
-        message = (entry_payload.get("message") or "").strip()
-        entry_time = _parse_time((entry_payload.get("entry_time") or entry_payload.get("time") or "").strip())
-
-        timestamp = None
-        timestamp_raw = entry_payload.get("timestamp")
-        if timestamp_raw:
-            try:
-                timestamp = datetime.fromisoformat(timestamp_raw)
-            except ValueError:
-                timestamp = None
-        if not entry_time and timestamp:
-            entry_time = timestamp.time()
-        if not timestamp:
-            timestamp = datetime.combine(show_date, entry_time or datetime.now().time())
-
-        if not message:
-            if entry_type == "event":
-                message = title or "Event"
-            else:
-                message = f"{entry_type} - {title or ''}".strip(" -") if entry_type else (title or "Log entry")
-
-        entry = LogEntry(
-            log_sheet=sheet,
-            show_run_id=show_run.id if show_run else None,
-            timestamp=timestamp,
-            entry_time=entry_time,
-            entry_type=entry_type,
-            title=title,
-            artist=artist if entry_type == "music" else None,
-            message=message,
-        )
-        db.session.add(entry)
-        entries_added += 1
-
-    notes = (payload.get("notes") or "").strip()
-    if notes:
-        now_ts = datetime.combine(show_date, datetime.now().time())
-        db.session.add(LogEntry(
-            log_sheet=sheet,
-            show_run_id=show_run.id if show_run else None,
-            timestamp=now_ts,
-            entry_time=now_ts.time(),
-            entry_type="event",
-            title="DJ Notes",
-            message=notes,
-        ))
-        entries_added += 1
-
-    events = payload.get("events") or []
-    for event in events:
-        event_text = (event or "").strip()
-        if not event_text:
-            continue
-        now_ts = datetime.combine(show_date, datetime.now().time())
-        db.session.add(LogEntry(
-            log_sheet=sheet,
-            show_run_id=show_run.id if show_run else None,
-            timestamp=now_ts,
-            entry_time=now_ts.time(),
-            entry_type="event",
-            title="Event",
-            message=event_text,
-        ))
-        entries_added += 1
-
-    db.session.commit()
-    logger.info("Automator log sheet %s saved with %s entries", sheet.id, entries_added)
-    return jsonify({"status": "ok", "sheet_id": sheet.id, "entries": entries_added})
 
 
 @logs_bp.route("/manage")
