@@ -146,6 +146,7 @@ class PlaybackSession(db.Model):
     show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     ended_at = db.Column(db.DateTime, nullable=True)
+    automation_mode = db.Column(db.String(32), default="manual", nullable=False)
 
     show_run = db.relationship("ShowRun", backref="playback_sessions")
 
