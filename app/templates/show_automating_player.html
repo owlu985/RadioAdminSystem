@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Show Automating Player</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .countdown-badge {
+            font-size: 1.05rem;
+            min-width: 120px;
+            text-align: center;
+        }
+        .countdown-flash {
+            animation: flash 0.25s steps(1) infinite;
+        }
+        @keyframes flash {
+            50% { opacity: 0.35; }
+        }
+        .cue-btn.active {
+            background: #000;
+            color: #fff !important;
+        }
+        .wave-container {height:220px; background:linear-gradient(180deg,#f8f9fa,#ffffff); border-radius:10px; padding:12px; position:relative; overflow-x:auto; overflow-y:hidden; border:1px solid rgba(0,0,0,0.08);}
+        .wave-inner {position:relative; height:100%; min-width:100%;}
+        .marker {position:absolute; top:0; bottom:0; width:3px; cursor:ew-resize; opacity:0.9;}
+        #cueMarkers {position:absolute; inset:0; pointer-events:none;}
+        #cueMarkers .handle {pointer-events:all; position:absolute; top:0; bottom:0; width:10px; transform:translateX(-50%);}
+        .cue-btn.active .text-muted {color:#fff !important;}
+        .talk-overlay {
+            position:absolute;
+            inset:0;
+            display:flex;
+            justify-content:center;
+            align-items:center;
+            background:rgba(0,0,0,0.45);
+            color:#fff;
+            border-radius:8px;
+            text-align:center;
+            z-index:5;
+        }
+        .talk-overlay-panel {
+            padding:18px 24px;
+            border:2px solid rgba(255,255,255,0.4);
+            border-radius:12px;
+            background:rgba(0,0,0,0.6);
+            min-width:220px;
+        }
+        .talk-overlay-row {
+            display:flex;
+            justify-content:space-between;
+            gap:16px;
+            font-size:1.2rem;
+        }
+        .talk-overlay-row strong {font-size:1.6rem;}
+    </style>
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+        <div>
+            <h2 class="mb-0">Show Automating Player</h2>
+            <div class="text-muted">Automation overview plus live queue control, cues, and voicetrack tools in one place.</div>
+            <div class="help-hint text-info">This page is noindex/nofollow. Share the URL directly with DJs.</div>
+        </div>
+        <div class="d-flex flex-column align-items-end gap-1">
+            <span class="badge bg-success">Manual Control Active</span>
+            <div class="text-muted small">Source: {{ psa_root or 'psa' }}{% if imaging_root %} • {{ imaging_root }}{% endif %}</div>
+        </div>
+    </div>
+
+    <div class="row g-3 mb-4">
+        <div class="col-lg-7">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Now Playing</span>
+                    <span class="text-muted small">Deck A</span>
+                </div>
+                <div class="card-body">
+                    <div class="row g-3 align-items-center">
+                        <div class="col-md-4 text-center">
+                            <img src="https://via.placeholder.com/240x240.png?text=Album+Art" alt="Album art" class="img-fluid rounded shadow-sm">
+                            <div class="mt-2 small text-muted">Live audio bed available</div>
+                        </div>
+                        <div class="col-md-8">
+                            <h4 class="mb-1">Midnight Drive</h4>
+                            <div class="text-muted">Artist: The Night Shift</div>
+                            <div class="text-muted">Album: City Lights &middot; 2023</div>
+                            <div class="mt-3">
+                                <div class="d-flex justify-content-between">
+                                    <span class="small text-muted">Playback Position</span>
+                                    <span class="small">01:42 / 04:10</span>
+                                </div>
+                                <input type="range" class="form-range" value="42">
+                            </div>
+                        </div>
+                    </div>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <h5 class="mb-0">Live Queue</h5>
+                        <span class="text-muted small">Drag & drop planned</span>
+                    </div>
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-semibold">Station ID &mdash; Summer</div>
+                                <div class="small text-muted">Imaging &middot; :10</div>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
+                                <button class="btn btn-outline-secondary" type="button">↑</button>
+                                <button class="btn btn-outline-secondary" type="button">↓</button>
+                                <button class="btn btn-outline-danger" type="button">Remove</button>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-semibold">Community PSA: Food Drive</div>
+                                <div class="small text-muted">PSA &middot; :30</div>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
+                                <button class="btn btn-outline-secondary" type="button">↑</button>
+                                <button class="btn btn-outline-secondary" type="button">↓</button>
+                                <button class="btn btn-outline-danger" type="button">Remove</button>
+                            </div>
+                        </li>
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                            <div>
+                                <div class="fw-semibold">Next Track: Golden Hour</div>
+                                <div class="small text-muted">Music &middot; 03:22</div>
+                            </div>
+                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
+                                <button class="btn btn-outline-secondary" type="button">↑</button>
+                                <button class="btn btn-outline-secondary" type="button">↓</button>
+                                <button class="btn btn-outline-danger" type="button">Remove</button>
+                            </div>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-5">
+            <div class="card h-100">
+                <div class="card-header">Queue Builder</div>
+                <div class="card-body">
+                    <p class="text-muted small">Upcoming items staged for the next 30 minutes.</p>
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Item</th>
+                                    <th>Type</th>
+                                    <th>Length</th>
+                                    <th>Notes</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Weather Update</td>
+                                    <td>Voice</td>
+                                    <td>00:45</td>
+                                    <td>Host live read</td>
+                                </tr>
+                                <tr>
+                                    <td>Community PSA: Food Drive</td>
+                                    <td>PSA</td>
+                                    <td>00:30</td>
+                                    <td>Auto insert ready</td>
+                                </tr>
+                                <tr>
+                                    <td>Station ID - Summer</td>
+                                    <td>Imaging</td>
+                                    <td>00:10</td>
+                                    <td>Scheduled sweep</td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                    <button class="btn btn-outline-secondary" type="button">Add Empty Slot</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Library Navigation</div>
+        <div class="card-body">
+            <ul class="nav nav-tabs" id="libraryTabs" role="tablist">
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link active" id="music-tab" data-bs-toggle="tab" data-bs-target="#music" type="button" role="tab" aria-controls="music" aria-selected="true">Music</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="psa-tab" data-bs-toggle="tab" data-bs-target="#psa" type="button" role="tab" aria-controls="psa" aria-selected="false">PSAs</button>
+                </li>
+                <li class="nav-item" role="presentation">
+                    <button class="nav-link" id="imaging-tab" data-bs-toggle="tab" data-bs-target="#imaging" type="button" role="tab" aria-controls="imaging" aria-selected="false">Imaging</button>
+                </li>
+            </ul>
+            <div class="tab-content pt-3" id="libraryTabsContent">
+                <div class="tab-pane fade show active" id="music" role="tabpanel" aria-labelledby="music-tab">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Track</th>
+                                    <th>Artist</th>
+                                    <th>Album</th>
+                                    <th>Length</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Golden Hour</td>
+                                    <td>Solstice</td>
+                                    <td>Sunset Sessions</td>
+                                    <td>03:22</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Morning Tide</td>
+                                    <td>Harbor Lights</td>
+                                    <td>Coastal Dreams</td>
+                                    <td>04:05</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="psa" role="tabpanel" aria-labelledby="psa-tab">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>PSA</th>
+                                    <th>Category</th>
+                                    <th>Length</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Food Drive</td>
+                                    <td>Community</td>
+                                    <td>:30</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Blood Donation</td>
+                                    <td>Health</td>
+                                    <td>:20</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+                <div class="tab-pane fade" id="imaging" role="tabpanel" aria-labelledby="imaging-tab">
+                    <div class="table-responsive">
+                        <table class="table table-sm align-middle">
+                            <thead>
+                                <tr>
+                                    <th>Imaging</th>
+                                    <th>Type</th>
+                                    <th>Length</th>
+                                    <th></th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr>
+                                    <td>Station ID - Summer</td>
+                                    <td>Branding</td>
+                                    <td>:10</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Show Intro - Night Mix</td>
+                                    <td>Show</td>
+                                    <td>:15</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Available Media</span>
+                    <div class="d-flex gap-2 align-items-center">
+                        <button class="btn btn-outline-secondary btn-sm" id="bulkMetadata">Metadata CSV</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
+                        <select id="categoryFilter" class="form-select form-select-sm" style="max-width:180px;"></select>
+                        <input type="search" id="psaSearch" class="form-control form-control-sm" placeholder="Filter..." style="max-width:200px;">
+                    </div>
+                </div>
+                <div class="card-body" style="max-height:60vh; overflow:auto;">
+                    <ul class="list-group" id="psaList"></ul>
+                </div>
+                <div class="card-footer d-flex justify-content-between align-items-center">
+                    <div class="text-muted small" id="libraryMeta">Loading...</div>
+                    <div class="btn-group btn-group-sm">
+                        <button class="btn btn-outline-secondary" id="libraryPrev">Prev</button>
+                        <button class="btn btn-outline-secondary" id="libraryNext">Next</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="col-lg-6">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+                    <div class="d-flex align-items-center gap-2 flex-wrap">
+                        <span>Queue</span>
+                        <span class="badge text-bg-light border" id="controlModeLabel">RAMS</span>
+                        <button class="btn btn-outline-secondary btn-sm" id="radiodjOverride">RadioDJ Override</button>
+                    </div>
+                    <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
+                </div>
+                <div class="card-body">
+                    <div class="alert alert-secondary py-2 px-3 mb-2" id="radiodjStatus">
+                        <strong>RadioDJ now playing:</strong> <span id="radiodjTrack">Loading…</span>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
+                        <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="d-flex gap-2 align-items-center">
+                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
+                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
+                        </div>
+                    </div>
+                    <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
+                    <div class="position-relative">
+                        <audio id="psaAudioB" class="w-100 mb-2 d-none"></audio>
+                        <audio id="psaAudioOverlay" class="w-100 mb-2"></audio>
+                        <div id="talkOverlay" class="talk-overlay d-none">
+                            <div class="talk-overlay-panel">
+                                <div class="text-uppercase text-muted small mb-2">Talk-Up Mode</div>
+                                <div class="talk-overlay-row">
+                                    <span>Intro</span>
+                                    <strong id="talkOverlayIntro">0.0s</strong>
+                                </div>
+                                <div class="talk-overlay-row mt-2">
+                                    <span>Outro</span>
+                                    <strong id="talkOverlayOutro">0.0s</strong>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex align-items-center justify-content-between mb-2">
+                        <div class="d-flex flex-column gap-1">
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="top40">
+                                <label class="form-check-label" for="top40">Top-40 boost (+0.5 semitone on music)</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="loopBetween" disabled>
+                                <label class="form-check-label" for="loopBetween">Loop between loop-in / loop-out cues</label>
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2">
+                            <button class="btn btn-outline-dark btn-sm" id="toggleTalkup">Talk-Up Mode</button>
+                            <button class="btn btn-outline-dark btn-sm" id="startRecord">Record VT</button>
+                            <button class="btn btn-outline-secondary btn-sm" id="stopRecord" disabled>Stop</button>
+                        </div>
+                    </div>
+                    <div class="border rounded p-2 mb-2 bg-light">
+                        <div class="fw-semibold mb-2">Voice Track Tools</div>
+                        <div class="row g-2 mb-2">
+                            <div class="col-sm-6">
+                                <label class="form-label small mb-1" for="vtTitle">Title</label>
+                                <input class="form-control form-control-sm" id="vtTitle" placeholder="Voice track title">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label small mb-1" for="vtHost">Show/Host</label>
+                                <input class="form-control form-control-sm" id="vtHost" placeholder="DJ or show name">
+                            </div>
+                            <div class="col-12">
+                                <label class="form-label small mb-1" for="vtNotes">Notes</label>
+                                <input class="form-control form-control-sm" id="vtNotes" placeholder="Talk-up notes or script">
+                            </div>
+                        </div>
+                        <div class="d-flex gap-2 flex-wrap mb-2">
+                            <button class="btn btn-outline-dark btn-sm" id="vtImport">Import VT</button>
+                            <input type="file" id="vtFile" accept="audio/*" class="d-none">
+                            <div class="text-muted small" id="vtMeta">No voicetrack loaded.</div>
+                        </div>
+                        <div class="wave-container mb-2" id="vtWave">
+                            <div class="wave-inner" id="vtWaveInner">
+                                <canvas id="vtWaveCanvas" height="170" style="width:100%; height:170px;"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="vtPending" class="alert alert-info d-none py-2 px-3 mb-2">
+                        <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+                            <div>Pending voice track ready. Add to queue?</div>
+                            <div class="d-flex gap-2">
+                                <select class="form-select form-select-sm" id="vtInsertPosition" style="max-width:180px;"></select>
+                                <button class="btn btn-sm btn-outline-success" id="vtConfirm">Insert</button>
+                                <button class="btn btn-sm btn-outline-danger" id="vtDelete">Delete</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="d-flex gap-2 flex-wrap mb-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
+                        <button class="btn btn-outline-primary btn-sm" id="togglePause">Pause</button>
+                        <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                        <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
+                        <button class="btn btn-outline-warning btn-sm" id="pushQueue" disabled>Push Queue to RadioDJ</button>
+                    </div>
+                    <div class="text-muted small mb-2" id="radiodjQueueStatus"></div>
+                    <ol class="mb-0" id="queueList"></ol>
+                    <hr>
+                    <div class="mb-2 fw-semibold">Overlay Deck</div>
+                    <div class="input-group mb-2">
+                        <input type="url" class="form-control form-control-sm" id="overlayUrl" placeholder="Paste media URL">
+                        <button class="btn btn-outline-primary btn-sm" id="overlayPlay">Play Overlay</button>
+                    </div>
+                    <div class="text-muted small">Use the overlay deck for ad-hoc beds or carts; it does not affect the queue.</div>
+                    <hr>
+                    <div class="mb-2 fw-semibold">Cue Editor</div>
+                    <div class="text-muted small mb-2">Select a library or queue item to set cue points.</div>
+                    <div class="text-muted small mb-2" id="cueItemLabel">No item selected.</div>
+                    <audio id="cuePlayer" controls preload="metadata" class="w-100 mb-2" disabled></audio>
+                    <div class="wave-container mb-2" id="cueWave">
+                        <div class="wave-inner" id="cueWaveInner">
+                            <canvas id="cueWaveCanvas" height="170" style="width:100%; height:170px;"></canvas>
+                            <div id="cueNeedle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
+                            <div id="cueMarkers"></div>
+                        </div>
+                    </div>
+                    <div class="mb-2 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-cue_in" data-cue="cue_in">
+                            <span class="fw-semibold cue-swatch" data-cue="cue_in">■</span>
+                            Start <span class="text-muted" id="time-cue_in"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-intro" data-cue="intro">
+                            <span class="fw-semibold cue-swatch" data-cue="intro">■</span>
+                            Intro <span class="text-muted" id="time-intro"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-loop_in" data-cue="loop_in">
+                            <span class="fw-semibold cue-swatch" data-cue="loop_in">■</span>
+                            Loop In <span class="text-muted" id="time-loop_in"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-loop_out" data-cue="loop_out">
+                            <span class="fw-semibold cue-swatch" data-cue="loop_out">■</span>
+                            Loop Out <span class="text-muted" id="time-loop_out"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-start_next" data-cue="start_next">
+                            <span class="fw-semibold cue-swatch" data-cue="start_next">■</span>
+                            Next <span class="text-muted" id="time-start_next"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-outro" data-cue="outro">
+                            <span class="fw-semibold cue-swatch" data-cue="outro">■</span>
+                            Outro <span class="text-muted" id="time-outro"></span>
+                        </button>
+                        <button type="button" class="btn cue-btn btn-outline-dark" id="btn-cue_out" data-cue="cue_out">
+                            <span class="fw-semibold cue-swatch" data-cue="cue_out">■</span>
+                            End <span class="text-muted" id="time-cue_out"></span>
+                        </button>
+                    </div>
+                    <div class="mb-2 d-flex flex-wrap gap-2">
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueStepBack">« Step</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueToggle">Play/Pause</button>
+                        <button type="button" class="btn btn-outline-secondary btn-sm" id="cueStepForward">Step »</button>
+                        <button type="button" class="btn btn-outline-primary btn-sm" id="cueSet">Set</button>
+                        <button type="button" class="btn btn-outline-danger btn-sm" id="cueRemove">Remove</button>
+                        <button type="button" class="btn btn-outline-success btn-sm" id="cueSave">Save Cues</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<dialog id="metadataDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Asset Metadata</strong>
+            <button type="button" class="btn-close" id="metadataClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-2">
+                <label for="metadataTitle" class="form-label">Title</label>
+                <input type="text" id="metadataTitle" class="form-control form-control-sm" placeholder="Optional display title">
+            </div>
+            <div class="mb-2">
+                <label for="metadataCategory" class="form-label">Category</label>
+                <input type="text" id="metadataCategory" class="form-control form-control-sm" placeholder="Leave blank to use folder category">
+            </div>
+            <div class="mb-2">
+                <label for="metadataExpiry" class="form-label">Expiry</label>
+                <input type="date" id="metadataExpiry" class="form-control form-control-sm">
+            </div>
+            <div class="mb-2">
+                <label for="metadataUsage" class="form-label">Usage rules</label>
+                <textarea id="metadataUsage" class="form-control form-control-sm" rows="3" placeholder="Rotation or usage notes"></textarea>
+            </div>
+            <div class="text-muted small" id="metadataPath"></div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end gap-2">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="metadataCancel">Cancel</button>
+            <button type="button" class="btn btn-primary btn-sm" id="metadataSave">Save</button>
+        </div>
+    </form>
+</dialog>
+<dialog id="bulkDialog">
+    <form method="dialog" class="m-0">
+        <div class="p-3 border-bottom d-flex justify-content-between align-items-center">
+            <strong>Bulk Metadata Import/Export</strong>
+            <button type="button" class="btn-close" id="bulkClose" aria-label="Close"></button>
+        </div>
+        <div class="p-3">
+            <div class="mb-3">
+                <label for="bulkKind" class="form-label">Scope</label>
+                <select id="bulkKind" class="form-select form-select-sm">
+                    <option value="all">All PSA + Imaging</option>
+                    <option value="psa">PSA only</option>
+                    <option value="imaging">Imaging only</option>
+                </select>
+            </div>
+            <div class="d-flex flex-wrap gap-2 mb-3">
+                <button type="button" class="btn btn-outline-primary btn-sm" id="bulkDownload">Download CSV</button>
+                <input type="file" id="bulkUpload" class="form-control form-control-sm" accept=".csv,text/csv">
+                <button type="button" class="btn btn-outline-success btn-sm" id="bulkUploadBtn">Upload CSV</button>
+            </div>
+            <div class="text-muted small" id="bulkStatus">Export to fill in titles/categories, then re-upload to apply changes.</div>
+        </div>
+        <div class="p-3 border-top d-flex justify-content-end">
+            <button type="button" class="btn btn-outline-secondary btn-sm" id="bulkCancel">Done</button>
+        </div>
+    </form>
+</dialog>
+{% include '_footer.html' %}
+<script src="{{ url_for('static', filename='js/show_automating_player.js') }}" type="module"></script>
+</body>
+</html>
