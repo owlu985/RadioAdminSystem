@@ -317,8 +317,263 @@
             </div>
         </div>
     </div>
+
+    <div class="card mt-4" id="log-generator">
+        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div>
+                <div class="fw-semibold">Generate Log</div>
+                <div class="small text-muted">Build a log from your playback history and add DJ notes before submission.</div>
+            </div>
+            <button class="btn btn-outline-primary btn-sm" type="button" id="generateLogBtn">Generate Log</button>
+        </div>
+        <div class="card-body">
+            <div class="alert d-none" role="alert" id="logFeedback"></div>
+            <div class="row g-3 mb-3">
+                <div class="col-md-5">
+                    <label class="form-label">Show Name</label>
+                    <input class="form-control" type="text" id="logShowName" placeholder="Show Name">
+                </div>
+                <div class="col-md-4">
+                    <label class="form-label">DJ Name</label>
+                    <input class="form-control" type="text" id="logDjName" placeholder="DJ Name">
+                </div>
+                <div class="col-md-3">
+                    <label class="form-label">Show Date</label>
+                    <input class="form-control" type="date" id="logShowDate">
+                </div>
+            </div>
+            <div class="table-responsive">
+                <table class="table table-sm align-middle" id="logEntriesTable">
+                    <thead>
+                        <tr>
+                            <th style="width: 110px;">Time</th>
+                            <th style="width: 130px;">Type</th>
+                            <th>Title</th>
+                            <th>Artist</th>
+                            <th>Notes</th>
+                            <th></th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr class="text-muted" id="logEntriesPlaceholder">
+                            <td colspan="6">Generate a log to review your entries.</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="addEventRowBtn">Add Event</button>
+                <button class="btn btn-primary btn-sm" type="button" id="submitLogBtn">Submit Log</button>
+            </div>
+            <div class="mt-3">
+                <label class="form-label">DJ Notes (optional)</label>
+                <textarea class="form-control" id="logNotes" rows="3" placeholder="Add any handoffs, events, or compliance notes."></textarea>
+            </div>
+        </div>
+    </div>
 </div>
 {% include '_footer.html' %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const logFeedback = document.getElementById("logFeedback");
+    const logShowName = document.getElementById("logShowName");
+    const logDjName = document.getElementById("logDjName");
+    const logShowDate = document.getElementById("logShowDate");
+    const logNotes = document.getElementById("logNotes");
+    const logEntriesTableBody = document.querySelector("#logEntriesTable tbody");
+    const generateLogBtn = document.getElementById("generateLogBtn");
+    const submitLogBtn = document.getElementById("submitLogBtn");
+    const addEventRowBtn = document.getElementById("addEventRowBtn");
+
+    const logTypes = [
+        { value: "music", label: "Music" },
+        { value: "psa", label: "PSA" },
+        { value: "imaging", label: "Imaging" },
+        { value: "voicetrack", label: "Voicetrack" },
+        { value: "event", label: "Event" },
+    ];
+
+    const setFeedback = (message, type) => {
+        logFeedback.textContent = message;
+        logFeedback.className = `alert alert-${type}`;
+        logFeedback.classList.remove("d-none");
+    };
+
+    const clearFeedback = () => {
+        logFeedback.classList.add("d-none");
+        logFeedback.textContent = "";
+    };
+
+    const formatTime = (timestamp) => {
+        if (!timestamp) {
+            return "";
+        }
+        const date = new Date(timestamp);
+        if (Number.isNaN(date.getTime())) {
+            return "";
+        }
+        const hours = String(date.getHours()).padStart(2, "0");
+        const minutes = String(date.getMinutes()).padStart(2, "0");
+        return `${hours}:${minutes}`;
+    };
+
+    const createSelect = (value = "music") => {
+        const select = document.createElement("select");
+        select.className = "form-select form-select-sm";
+        logTypes.forEach((type) => {
+            const option = document.createElement("option");
+            option.value = type.value;
+            option.textContent = type.label;
+            select.appendChild(option);
+        });
+        select.value = value || "music";
+        return select;
+    };
+
+    const addLogRow = (entry = {}) => {
+        const placeholder = document.getElementById("logEntriesPlaceholder");
+        if (placeholder) {
+            placeholder.remove();
+        }
+        const row = document.createElement("tr");
+
+        const timeCell = document.createElement("td");
+        const timeInput = document.createElement("input");
+        timeInput.type = "time";
+        timeInput.className = "form-control form-control-sm";
+        timeInput.value = entry.entry_time || formatTime(entry.timestamp);
+        timeCell.appendChild(timeInput);
+
+        const typeCell = document.createElement("td");
+        const typeSelect = createSelect(entry.entry_type || entry.type);
+        typeCell.appendChild(typeSelect);
+
+        const titleCell = document.createElement("td");
+        const titleInput = document.createElement("input");
+        titleInput.type = "text";
+        titleInput.className = "form-control form-control-sm";
+        titleInput.value = entry.title || "";
+        titleCell.appendChild(titleInput);
+
+        const artistCell = document.createElement("td");
+        const artistInput = document.createElement("input");
+        artistInput.type = "text";
+        artistInput.className = "form-control form-control-sm";
+        artistInput.value = entry.artist || "";
+        artistCell.appendChild(artistInput);
+
+        const messageCell = document.createElement("td");
+        const messageInput = document.createElement("input");
+        messageInput.type = "text";
+        messageInput.className = "form-control form-control-sm";
+        messageInput.value = entry.message || "";
+        messageCell.appendChild(messageInput);
+
+        const actionCell = document.createElement("td");
+        const removeBtn = document.createElement("button");
+        removeBtn.type = "button";
+        removeBtn.className = "btn btn-outline-danger btn-sm";
+        removeBtn.textContent = "Remove";
+        removeBtn.addEventListener("click", () => row.remove());
+        actionCell.appendChild(removeBtn);
+
+        row.appendChild(timeCell);
+        row.appendChild(typeCell);
+        row.appendChild(titleCell);
+        row.appendChild(artistCell);
+        row.appendChild(messageCell);
+        row.appendChild(actionCell);
+        logEntriesTableBody.appendChild(row);
+    };
+
+    const collectEntries = () => {
+        const entries = [];
+        logEntriesTableBody.querySelectorAll("tr").forEach((row) => {
+            const inputs = row.querySelectorAll("input, select");
+            if (!inputs.length) {
+                return;
+            }
+            const [timeInput, typeSelect, titleInput, artistInput, messageInput] = inputs;
+            const entry = {
+                entry_time: timeInput.value,
+                entry_type: typeSelect.value,
+                title: titleInput.value.trim(),
+                artist: artistInput.value.trim(),
+                message: messageInput.value.trim(),
+            };
+            const hasData = entry.entry_time || entry.title || entry.artist || entry.message;
+            if (hasData) {
+                entries.push(entry);
+            }
+        });
+        return entries;
+    };
+
+    generateLogBtn.addEventListener("click", async () => {
+        clearFeedback();
+        generateLogBtn.disabled = true;
+        generateLogBtn.textContent = "Generating...";
+        try {
+            const response = await fetch("/api/show-automator/logs/generate");
+            const payload = await response.json();
+            if (!response.ok || payload.status !== "ok") {
+                throw new Error(payload.message || "Unable to generate log.");
+            }
+            logShowName.value = payload.show_name || "";
+            logDjName.value = payload.dj_name || "";
+            logShowDate.value = payload.show_date || "";
+            logEntriesTableBody.innerHTML = "";
+            if (!payload.entries || !payload.entries.length) {
+                const placeholder = document.createElement("tr");
+                placeholder.className = "text-muted";
+                placeholder.id = "logEntriesPlaceholder";
+                placeholder.innerHTML = "<td colspan='6'>No playback entries found. Add events manually below.</td>";
+                logEntriesTableBody.appendChild(placeholder);
+            } else {
+                payload.entries.forEach((entry) => addLogRow(entry));
+            }
+            setFeedback("Log generated. Review entries before submitting.", "info");
+        } catch (error) {
+            setFeedback(error.message || "Unable to generate log.", "danger");
+        } finally {
+            generateLogBtn.disabled = false;
+            generateLogBtn.textContent = "Generate Log";
+        }
+    });
+
+    addEventRowBtn.addEventListener("click", () => {
+        addLogRow({ entry_type: "event" });
+    });
+
+    submitLogBtn.addEventListener("click", async () => {
+        clearFeedback();
+        submitLogBtn.disabled = true;
+        submitLogBtn.textContent = "Submitting...";
+        try {
+            const payload = {
+                show_name: logShowName.value.trim(),
+                dj_name: logDjName.value.trim(),
+                show_date: logShowDate.value,
+                notes: logNotes.value.trim(),
+                entries: collectEntries(),
+            };
+            const response = await fetch("/logs/submit/automator", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            const data = await response.json();
+            if (!response.ok || data.status !== "ok") {
+                throw new Error(data.message || "Submission failed.");
+            }
+            setFeedback("Log submitted successfully. Thank you!", "success");
+        } catch (error) {
+            setFeedback(error.message || "Submission failed.", "danger");
+        } finally {
+            submitLogBtn.disabled = false;
+            submitLogBtn.textContent = "Submit Log";
+        }
+    });
+</script>
 </body>
 </html>

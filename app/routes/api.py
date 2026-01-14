@@ -25,6 +25,8 @@ from app.models import (
     WebsiteBanner,
     PodcastEpisode,
     DJAbsence,
+    PlaybackQueueItem,
+    PlaybackSession,
     HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
@@ -162,6 +164,36 @@ def _touch_playback_session(playback: PlaybackSession) -> None:
     db.session.add(playback)
 
 
+def _playback_log_entries(session_id: int) -> list[dict]:
+    items = PlaybackQueueItem.query.filter_by(session_id=session_id).order_by(PlaybackQueueItem.created_at.asc()).all()
+    entries: list[dict] = []
+    for item in items:
+        if item.item_type == "stop":
+            continue
+        entry_time = item.created_at.time() if item.created_at else None
+        entries.append({
+            "entry_type": item.item_type,
+            "title": item.title,
+            "artist": item.artist,
+            "timestamp": item.created_at.isoformat() if item.created_at else None,
+            "entry_time": entry_time.strftime("%H:%M") if entry_time else None,
+        })
+    now_playing = _now_playing_for(session_id)
+    now_title = getattr(now_playing, "title", None)
+    if now_title:
+        started_at = getattr(now_playing, "started_at", None) or datetime.utcnow()
+        entry_time = started_at.time()
+        entries.append({
+            "entry_type": getattr(now_playing, "item_type", None),
+            "title": now_title,
+            "artist": getattr(now_playing, "artist", None),
+            "timestamp": started_at.isoformat(),
+            "entry_time": entry_time.strftime("%H:%M"),
+        })
+    entries.sort(key=lambda entry: entry.get("timestamp") or "")
+    return entries
+
+
 def _queue_items(session_id: int) -> list[PlaybackQueueItem]:
     return PlaybackQueueItem.query.filter_by(session_id=session_id).order_by(PlaybackQueueItem.position).all()
 
@@ -203,15 +235,7 @@ def _consume_stop_items(items: list[PlaybackQueueItem]) -> tuple[bool, list[Play
     return removed, items
 
 
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
-
-
-class PlaybackQueueItem(TypedDict, total=False):
+class PlaybackQueueItemPayload(TypedDict, total=False):
     name: str
     artist: str
     album: str
@@ -1647,6 +1671,31 @@ def playback_session():
         "created_at": playback.created_at.isoformat(),
         "updated_at": playback.updated_at.isoformat(),
         "automation_paused": automation_paused,
+    })
+
+
+@api_bp.route("/show-automator/logs/generate", methods=["GET"])
+def show_automator_generate_logs():
+    playback = _get_playback_session()
+    show = get_current_show()
+    show_name = None
+    dj_name = None
+    if show:
+        show_name = show_display_title(show)
+        dj_first, dj_last = show_primary_host(show)
+        dj_name = f"{dj_first} {dj_last}".strip()
+    if not show_name:
+        show_name = getattr(playback, "show_name", None) or "Unscheduled Show"
+    if not dj_name:
+        dj_name = getattr(playback, "dj_name", None) or "DJ"
+    show_date = (getattr(playback, "started_at", None) or datetime.utcnow()).date().isoformat()
+    entries = _playback_log_entries(playback.id)
+    return jsonify({
+        "status": "ok",
+        "show_name": show_name,
+        "dj_name": dj_name,
+        "show_date": show_date,
+        "entries": entries,
     })
 
 
