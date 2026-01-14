@@ -156,7 +156,7 @@ class PlaybackQueueItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
-    media_type = db.Column(db.String(32), nullable=False)
+    item_type = db.Column("media_type", db.String(32), nullable=False)
     path = db.Column(db.String(500), nullable=True)
     title = db.Column(db.String(255), nullable=True)
     artist = db.Column(db.String(255), nullable=True)
