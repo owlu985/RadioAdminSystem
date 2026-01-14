@@ -173,6 +173,61 @@ class PlaybackQueueItem(db.Model):
     session = db.relationship("PlaybackSession", backref="queue_items")
 
 
+class ShowAutomatorSession(db.Model):
+    __tablename__ = "show_automator_session"
+
+    id = db.Column(db.Integer, primary_key=True)
+    show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
+    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    ended_at = db.Column(db.DateTime, nullable=True)
+    deck_assignment = db.Column(db.String(16), nullable=True)
+    playback_status = db.Column(db.String(32), nullable=True)
+    loop_state = db.Column(db.String(32), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    show_run = db.relationship("ShowRun", backref="show_automator_sessions")
+
+
+class ShowAutomatorQueueItem(db.Model):
+    __tablename__ = "show_automator_queue_item"
+
+    id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(
+        db.Integer,
+        db.ForeignKey("show_automator_session.id"),
+        nullable=False
+    )
+    position = db.Column(db.Integer, nullable=False, default=0)
+    item_type = db.Column(db.String(32), nullable=False)
+    path = db.Column(db.String(500), nullable=True)
+    title = db.Column(db.String(255), nullable=True)
+    artist = db.Column(db.String(255), nullable=True)
+    album = db.Column(db.String(255), nullable=True)
+    duration = db.Column(db.Float, nullable=True)
+    cue_in = db.Column(db.Float, nullable=True)
+    cue_out = db.Column(db.Float, nullable=True)
+    intro = db.Column(db.Float, nullable=True)
+    outro = db.Column(db.Float, nullable=True)
+    next = db.Column(db.Float, nullable=True)
+    loop_in = db.Column(db.Float, nullable=True)
+    loop_out = db.Column(db.Float, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(
+        db.DateTime,
+        default=datetime.utcnow,
+        onupdate=datetime.utcnow,
+        nullable=False,
+    )
+
+    session = db.relationship("ShowAutomatorSession", backref="queue_items")
+
+
 class LogEntry(db.Model):
     __tablename__ = "log_entry"
 
