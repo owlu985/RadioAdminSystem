@@ -468,7 +468,7 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
 def psa_player():
     psa_root = _psa_library_root()
     imaging_root = _imaging_library_root()
-    resp = make_response(render_template("psa_player.html", psa_root=psa_root, imaging_root=imaging_root))
+    resp = make_response(render_template("show_automating_player.html", psa_root=psa_root, imaging_root=imaging_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
@@ -494,7 +494,9 @@ def dj_tools():
 
 @main_bp.route("/dj/show-automator")
 def show_automator():
-    resp = make_response(render_template("show_automator.html"))
+    psa_root = _psa_library_root()
+    imaging_root = _imaging_library_root()
+    resp = make_response(render_template("show_automating_player.html", psa_root=psa_root, imaging_root=imaging_root))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
 
