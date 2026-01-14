@@ -346,6 +346,13 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dic
                         dj_first_name=dj_first,
                         dj_last_name=dj_last,
                     )
+                log_q = LogEntry.query.filter_by(entry_type="music")
+                total = log_q.count()
+                if total >= 10:
+                    excess = total - 9
+                    oldest = log_q.order_by(LogEntry.timestamp.asc()).limit(excess).all()
+                    for entry in oldest:
+                        db.session.delete(entry)
                 db.session.add(LogEntry(
                     show_run_id=show_run.id if show_run else None,
                     timestamp=datetime.utcnow(),
@@ -364,18 +371,11 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         return None
     track_payload = payload.get("CurrentTrack") if isinstance(payload.get("CurrentTrack"), dict) else payload
     raw_track_type = track_payload.get("TrackType") or track_payload.get("tracktype") or ""
-    track_type_label = None
-    is_music = True
-    if isinstance(raw_track_type, (int, float)):
-        track_type_label = "music" if int(raw_track_type) == 0 else str(raw_track_type)
-        is_music = int(raw_track_type) == 0
-    else:
-        track_type = str(raw_track_type).strip().lower()
-        track_type_label = track_type or None
-        if track_type.isdigit():
-            is_music = int(track_type) == 0
-        elif track_type:
-            is_music = track_type == "music"
+    track_type = str(raw_track_type).strip().lower()
+    track_type_label = track_type or None
+    is_music = not track_type or track_type == "music"
+    if not is_music:
+        return None
     artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
     title = _strip_p_tag(track_payload.get("Title") or track_payload.get("title"))
     album = _strip_p_tag(track_payload.get("Album") or track_payload.get("album"))
