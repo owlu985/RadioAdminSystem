@@ -407,47 +407,6 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
-                if "show_automator_session" not in insp.get_table_names():
-                    conn.execute(text(
-                        """
-                        CREATE TABLE IF NOT EXISTS show_automator_session (
-                            id INTEGER PRIMARY KEY,
-                            show_run_id INTEGER,
-                            started_at DATETIME NOT NULL,
-                            ended_at DATETIME,
-                            deck_assignment VARCHAR(16),
-                            playback_status VARCHAR(32),
-                            loop_state VARCHAR(32),
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL
-                        )
-                        """
-                    ))
-                if "show_automator_queue_item" not in insp.get_table_names():
-                    conn.execute(text(
-                        """
-                        CREATE TABLE IF NOT EXISTS show_automator_queue_item (
-                            id INTEGER PRIMARY KEY,
-                            session_id INTEGER NOT NULL,
-                            position INTEGER NOT NULL DEFAULT 0,
-                            item_type VARCHAR(32) NOT NULL,
-                            path VARCHAR(500),
-                            title VARCHAR(255),
-                            artist VARCHAR(255),
-                            album VARCHAR(255),
-                            duration FLOAT,
-                            cue_in FLOAT,
-                            cue_out FLOAT,
-                            intro FLOAT,
-                            outro FLOAT,
-                            next FLOAT,
-                            loop_in FLOAT,
-                            loop_out FLOAT,
-                            created_at DATETIME NOT NULL,
-                            updated_at DATETIME NOT NULL
-                        )
-                        """
-                    ))
             if "dj_disciplinary" not in insp.get_table_names():
                 conn.execute(text(
                     """

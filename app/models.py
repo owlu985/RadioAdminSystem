@@ -143,14 +143,9 @@ class PlaybackSession(db.Model):
     __tablename__ = "playback_session"
 
     id = db.Column(db.Integer, primary_key=True)
-    show_name = db.Column(db.String(255), nullable=True)
-    dj_name = db.Column(db.String(255), nullable=True)
-    notes = db.Column(db.Text, nullable=True)
     show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     ended_at = db.Column(db.DateTime, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(db.DateTime, default=datetime.utcnow, onupdate=datetime.utcnow, nullable=False)
 
     show_run = db.relationship("ShowRun", backref="playback_sessions")
 
@@ -161,7 +156,7 @@ class PlaybackQueueItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
-    item_type = db.Column("media_type", db.String(32), nullable=False)
+    media_type = db.Column(db.String(32), nullable=False)
     path = db.Column(db.String(500), nullable=True)
     title = db.Column(db.String(255), nullable=True)
     artist = db.Column(db.String(255), nullable=True)
@@ -171,61 +166,6 @@ class PlaybackQueueItem(db.Model):
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     session = db.relationship("PlaybackSession", backref="queue_items")
-
-
-class ShowAutomatorSession(db.Model):
-    __tablename__ = "show_automator_session"
-
-    id = db.Column(db.Integer, primary_key=True)
-    show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
-    started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    ended_at = db.Column(db.DateTime, nullable=True)
-    deck_assignment = db.Column(db.String(16), nullable=True)
-    playback_status = db.Column(db.String(32), nullable=True)
-    loop_state = db.Column(db.String(32), nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-        nullable=False,
-    )
-
-    show_run = db.relationship("ShowRun", backref="show_automator_sessions")
-
-
-class ShowAutomatorQueueItem(db.Model):
-    __tablename__ = "show_automator_queue_item"
-
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(
-        db.Integer,
-        db.ForeignKey("show_automator_session.id"),
-        nullable=False
-    )
-    position = db.Column(db.Integer, nullable=False, default=0)
-    item_type = db.Column(db.String(32), nullable=False)
-    path = db.Column(db.String(500), nullable=True)
-    title = db.Column(db.String(255), nullable=True)
-    artist = db.Column(db.String(255), nullable=True)
-    album = db.Column(db.String(255), nullable=True)
-    duration = db.Column(db.Float, nullable=True)
-    cue_in = db.Column(db.Float, nullable=True)
-    cue_out = db.Column(db.Float, nullable=True)
-    intro = db.Column(db.Float, nullable=True)
-    outro = db.Column(db.Float, nullable=True)
-    next = db.Column(db.Float, nullable=True)
-    loop_in = db.Column(db.Float, nullable=True)
-    loop_out = db.Column(db.Float, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    updated_at = db.Column(
-        db.DateTime,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
-        nullable=False,
-    )
-
-    session = db.relationship("ShowAutomatorSession", backref="queue_items")
 
 
 class LogEntry(db.Model):
@@ -282,41 +222,8 @@ class NowPlayingState(db.Model):
     __tablename__ = "now_playing_state"
 
     id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=True)
-    queue_item_id = db.Column(db.Integer, db.ForeignKey("playback_queue_item.id"), nullable=True)
-    item_type = db.Column(db.String(32), nullable=True)
-    title = db.Column(db.String(255), nullable=True)
-    artist = db.Column(db.String(255), nullable=True)
-    duration = db.Column(db.Float, nullable=True)
-    item_metadata = db.Column("metadata", Text, nullable=True)
-    status = db.Column(db.String(32), nullable=True)
-    started_at = db.Column(db.DateTime, nullable=True)
-    cue_in = db.Column(db.Float, nullable=True)
-    cue_out = db.Column(db.Float, nullable=True)
-    fade_out = db.Column(db.Float, nullable=True)
     override_enabled = db.Column(db.Boolean, default=False, nullable=False)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-    session = db.relationship("PlaybackSession", backref="now_playing_states")
-    queue_item = db.relationship("PlaybackQueueItem", backref="now_playing_states")
-
-
-class ShowAutomatorPlayLog(db.Model):
-    __tablename__ = "show_automator_play_log"
-
-    id = db.Column(db.Integer, primary_key=True)
-    session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=True)
-    show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
-    timestamp = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-    item_type = db.Column(db.String(32), nullable=True)
-    title = db.Column(db.String(255), nullable=True)
-    artist = db.Column(db.String(255), nullable=True)
-    album = db.Column(db.String(255), nullable=True)
-    description = db.Column(db.Text, nullable=True)
-
-    session = db.relationship("PlaybackSession", backref="play_logs")
-    show_run = db.relationship("ShowRun", backref="automator_play_logs")
 
 
 class IcecastStat(db.Model):

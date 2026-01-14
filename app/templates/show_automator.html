@@ -6,21 +6,6 @@
     <meta name="robots" content="noindex, nofollow">
     <title>Show Automator</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <style>
-        .queue-item.dragging {
-            opacity: 0.5;
-        }
-        .queue-item.drop-target {
-            border: 2px dashed #0d6efd;
-        }
-        .queue-handle {
-            cursor: grab;
-        }
-        .queue-handle.is-disabled {
-            cursor: not-allowed;
-            opacity: 0.4;
-        }
-    </style>
 </head>
 <body>
 {% include '_nav.html' %}
@@ -30,7 +15,7 @@
             <h3 class="mb-0">Show Automator</h3>
             <div class="text-muted">DJ Tools &middot; Manual controls ready for on-air use.</div>
         </div>
-        <span class="badge bg-success" id="show-automator-mode">Manual Control Active</span>
+        <span class="badge bg-success">Manual Control Active</span>
     </div>
 
     <div class="alert alert-info">
@@ -42,34 +27,34 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Now Playing</span>
-                    <span class="text-muted small" id="now-playing-deck">Deck A</span>
+                    <span class="text-muted small">Deck A</span>
                 </div>
-                <div class="card-body" id="nowPlayingCard" data-item-type="music">
+                <div class="card-body">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-4 text-center">
-                            <img src="{{ url_for('static', filename='logo.png') }}" alt="Album art" class="img-fluid rounded shadow-sm" id="now-playing-art">
-                            <div class="mt-2 small text-muted" id="now-playing-note">Awaiting playback data</div>
+                            <img src="https://via.placeholder.com/240x240.png?text=Album+Art" alt="Album art" class="img-fluid rounded shadow-sm">
+                            <div class="mt-2 small text-muted">Live audio bed available</div>
                         </div>
                         <div class="col-md-8">
-                            <h4 class="mb-1" id="now-playing-title">Loading...</h4>
-                            <div class="text-muted" id="now-playing-artist">Artist: --</div>
-                            <div class="text-muted" id="now-playing-album">Album: --</div>
+                            <h4 class="mb-1">Midnight Drive</h4>
+                            <div class="text-muted">Artist: The Night Shift</div>
+                            <div class="text-muted">Album: City Lights &middot; 2023</div>
                             <div class="mt-3">
                                 <div class="d-flex justify-content-between">
                                     <span class="small text-muted">Playback Position</span>
-                                    <span class="small" id="playback-position-label">--:-- / --:--</span>
+                                    <span class="small">01:42 / 04:10</span>
                                 </div>
-                                <input type="range" class="form-range" value="0" min="0" max="0" id="playback-position-range">
+                                <input type="range" class="form-range" value="42">
                             </div>
                         </div>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="mb-0">Live Queue</h5>
-                        <span class="text-muted small">Drag & drop to reorder</span>
+                        <span class="text-muted small">Drag & drop planned</span>
                     </div>
-                    <ul class="list-group" id="showQueue">
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="imaging">
+                    <ul class="list-group">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="fw-semibold">Station ID &mdash; Summer</div>
                                 <div class="small text-muted">Imaging &middot; :10</div>
@@ -80,7 +65,7 @@
                                 <button class="btn btn-outline-danger" type="button">Remove</button>
                             </div>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="psa">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="fw-semibold">Community PSA: Food Drive</div>
                                 <div class="small text-muted">PSA &middot; :30</div>
@@ -91,7 +76,7 @@
                                 <button class="btn btn-outline-danger" type="button">Remove</button>
                             </div>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="music">
+                        <li class="list-group-item d-flex justify-content-between align-items-center">
                             <div>
                                 <div class="fw-semibold">Next Track: Golden Hour</div>
                                 <div class="small text-muted">Music &middot; 03:22</div>
@@ -110,32 +95,27 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Deck Controls</span>
-                    <span class="text-muted small" id="deck-control-mode">Manual</span>
+                    <span class="text-muted small">Manual</span>
                 </div>
                 <div class="card-body">
-                    <audio id="showDeckAudio" class="w-100 mb-3" controls></audio>
                     <div class="btn-group w-100 mb-2" role="group" aria-label="Playback controls">
-                        <button class="btn btn-primary" type="button" id="control-play">Play</button>
-                        <button class="btn btn-outline-primary" type="button" id="control-pause">Pause</button>
-                        <button class="btn btn-outline-secondary" type="button" id="control-cue-in">Cue In</button>
-                        <button class="btn btn-outline-secondary" type="button" id="control-cue-out">Cue Out</button>
+                        <button class="btn btn-primary" type="button">Play</button>
+                        <button class="btn btn-outline-primary" type="button">Pause</button>
+                        <button class="btn btn-outline-secondary" type="button">Cue In</button>
+                        <button class="btn btn-outline-secondary" type="button">Cue Out</button>
                     </div>
                     <div class="btn-group w-100 mb-3" role="group" aria-label="Navigation controls">
-                        <button class="btn btn-outline-secondary" type="button" id="control-previous">Previous</button>
-                        <button class="btn btn-outline-secondary" type="button" id="control-fade">Fade</button>
-                        <button class="btn btn-outline-secondary" type="button" id="control-next">Next</button>
+                        <button class="btn btn-outline-secondary" type="button">Previous</button>
+                        <button class="btn btn-outline-secondary" type="button">Fade</button>
+                        <button class="btn btn-outline-secondary" type="button">Next</button>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small text-muted">Fade Length (seconds)</label>
-                        <input type="range" class="form-range" min="0" max="10" value="3" id="control-fade-length">
+                        <input type="range" class="form-range" min="0" max="10" value="3">
                     </div>
                     <div>
                         <label class="form-label small text-muted">Output Level</label>
-                        <input type="range" class="form-range" min="0" max="100" value="80" id="control-output-level">
-                    </div>
-                    <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="showTop40Boost">
-                        <label class="form-check-label" for="showTop40Boost">Top-40 boost (+0.5 semitone on music)</label>
+                        <input type="range" class="form-range" min="0" max="100" value="80">
                     </div>
                 </div>
             </div>
@@ -143,12 +123,12 @@
                 <div class="card-header">Run Show Control</div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-success" type="button" id="control-start-show">Start Show</button>
-                        <button class="btn btn-outline-primary" type="button" id="control-insert-psa">Insert PSA</button>
-                        <button class="btn btn-outline-primary" type="button" id="control-insert-imaging">Insert Imaging</button>
-                        <button class="btn btn-outline-danger" type="button" id="control-override-next">Override Next Item</button>
+                        <button class="btn btn-success" type="button">Start Show</button>
+                        <button class="btn btn-outline-primary" type="button">Insert PSA</button>
+                        <button class="btn btn-outline-primary" type="button">Insert Imaging</button>
+                        <button class="btn btn-outline-danger" type="button">Override Next Item</button>
                     </div>
-                    <div class="mt-3 small text-muted" id="run-control-note">Scheduler integration pending. Manual overrides will update the queue locally.</div>
+                    <div class="mt-3 small text-muted">Scheduler integration pending. Manual overrides will update the queue locally.</div>
                 </div>
             </div>
         </div>
@@ -170,29 +150,6 @@
             </ul>
             <div class="tab-content pt-3" id="libraryTabsContent">
                 <div class="tab-pane fade show active" id="music" role="tabpanel" aria-labelledby="music-tab">
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-lg-5">
-                            <label class="form-label small text-muted" for="musicSearch">Search</label>
-                            <input class="form-control" id="musicSearch" type="text" placeholder="Search tracks (use % for all)">
-                        </div>
-                        <div class="col-lg-3">
-                            <label class="form-label small text-muted" for="musicFolder">Folder</label>
-                            <select class="form-select" id="musicFolder">
-                                <option value="">All folders</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2">
-                            <label class="form-label small text-muted" for="musicPerPage">Per page</label>
-                            <select class="form-select" id="musicPerPage">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2 d-grid">
-                            <button class="btn btn-outline-secondary" id="musicRefresh" type="button">Refresh</button>
-                        </div>
-                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -204,41 +161,26 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody id="musicTableBody"></tbody>
+                            <tbody>
+                                <tr>
+                                    <td>Golden Hour</td>
+                                    <td>Solstice</td>
+                                    <td>Sunset Sessions</td>
+                                    <td>03:22</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Morning Tide</td>
+                                    <td>Harbor Lights</td>
+                                    <td>Coastal Dreams</td>
+                                    <td>04:05</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
                         </table>
-                    </div>
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <small class="text-muted" id="musicMeta">Ready to search the music library.</small>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Music pagination">
-                            <button class="btn btn-outline-secondary" id="musicPrev" type="button">Prev</button>
-                            <button class="btn btn-outline-secondary" id="musicNext" type="button">Next</button>
-                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="psa" role="tabpanel" aria-labelledby="psa-tab">
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-lg-5">
-                            <label class="form-label small text-muted" for="psaSearch">Search</label>
-                            <input class="form-control" id="psaSearch" type="text" placeholder="Search PSA library">
-                        </div>
-                        <div class="col-lg-3">
-                            <label class="form-label small text-muted" for="psaCategory">Category</label>
-                            <select class="form-select" id="psaCategory">
-                                <option value="">All categories</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2">
-                            <label class="form-label small text-muted" for="psaPerPage">Per page</label>
-                            <select class="form-select" id="psaPerPage">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2 d-grid">
-                            <button class="btn btn-outline-secondary" id="psaRefresh" type="button">Refresh</button>
-                        </div>
-                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -249,41 +191,24 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody id="psaTableBody"></tbody>
+                            <tbody>
+                                <tr>
+                                    <td>Food Drive</td>
+                                    <td>Community</td>
+                                    <td>:30</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Blood Donation</td>
+                                    <td>Health</td>
+                                    <td>:20</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
                         </table>
-                    </div>
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <small class="text-muted" id="psaMeta">Loading PSA library.</small>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="PSA pagination">
-                            <button class="btn btn-outline-secondary" id="psaPrev" type="button">Prev</button>
-                            <button class="btn btn-outline-secondary" id="psaNext" type="button">Next</button>
-                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="imaging" role="tabpanel" aria-labelledby="imaging-tab">
-                    <div class="row g-2 align-items-end mb-3">
-                        <div class="col-lg-5">
-                            <label class="form-label small text-muted" for="imagingSearch">Search</label>
-                            <input class="form-control" id="imagingSearch" type="text" placeholder="Search imaging library">
-                        </div>
-                        <div class="col-lg-3">
-                            <label class="form-label small text-muted" for="imagingCategory">Category</label>
-                            <select class="form-select" id="imagingCategory">
-                                <option value="">All categories</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2">
-                            <label class="form-label small text-muted" for="imagingPerPage">Per page</label>
-                            <select class="form-select" id="imagingPerPage">
-                                <option value="10">10</option>
-                                <option value="25" selected>25</option>
-                                <option value="50">50</option>
-                            </select>
-                        </div>
-                        <div class="col-lg-2 d-grid">
-                            <button class="btn btn-outline-secondary" id="imagingRefresh" type="button">Refresh</button>
-                        </div>
-                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -294,19 +219,24 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody id="imagingTableBody"></tbody>
+                            <tbody>
+                                <tr>
+                                    <td>Station ID - Summer</td>
+                                    <td>Branding</td>
+                                    <td>:10</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                                <tr>
+                                    <td>Show Intro - Night Mix</td>
+                                    <td>Show</td>
+                                    <td>:15</td>
+                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
+                                </tr>
+                            </tbody>
                         </table>
-                    </div>
-                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
-                        <small class="text-muted" id="imagingMeta">Loading imaging library.</small>
-                        <div class="btn-group btn-group-sm" role="group" aria-label="Imaging pagination">
-                            <button class="btn btn-outline-secondary" id="imagingPrev" type="button">Prev</button>
-                            <button class="btn btn-outline-secondary" id="imagingNext" type="button">Next</button>
-                        </div>
                     </div>
                 </div>
             </div>
-            <div class="alert alert-secondary small mt-3 mb-0" id="queueStatus">Queue ready.</div>
         </div>
     </div>
 
@@ -326,9 +256,24 @@
                                     <th>Notes</th>
                                 </tr>
                             </thead>
-                            <tbody id="queue-builder-body">
+                            <tbody>
                                 <tr>
-                                    <td colspan="4" class="text-muted small">Queue builder syncing...</td>
+                                    <td>Weather Update</td>
+                                    <td>Voice</td>
+                                    <td>00:45</td>
+                                    <td>Host live read</td>
+                                </tr>
+                                <tr>
+                                    <td>Community PSA: Food Drive</td>
+                                    <td>PSA</td>
+                                    <td>00:30</td>
+                                    <td>Auto insert ready</td>
+                                </tr>
+                                <tr>
+                                    <td>Station ID - Summer</td>
+                                    <td>Imaging</td>
+                                    <td>00:10</td>
+                                    <td>Scheduled sweep</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -372,285 +317,8 @@
             </div>
         </div>
     </div>
-
-    <div class="card mt-4" id="log-generator">
-        <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
-            <div>
-                <div class="fw-semibold">Generate Log</div>
-                <div class="small text-muted">Build a log from your playback history and add DJ notes before submission.</div>
-            </div>
-            <button class="btn btn-outline-primary btn-sm" type="button" id="generateLogBtn">Generate Log</button>
-        </div>
-        <div class="card-body">
-            <div class="alert d-none" role="alert" id="logFeedback"></div>
-            <div class="row g-3 mb-3">
-                <div class="col-md-5">
-                    <label class="form-label">Show Name</label>
-                    <input class="form-control" type="text" id="logShowName" placeholder="Show Name">
-                </div>
-                <div class="col-md-4">
-                    <label class="form-label">DJ Name</label>
-                    <input class="form-control" type="text" id="logDjName" placeholder="DJ Name">
-                </div>
-                <div class="col-md-3">
-                    <label class="form-label">Show Date</label>
-                    <input class="form-control" type="date" id="logShowDate">
-                </div>
-            </div>
-            <div class="table-responsive">
-                <table class="table table-sm align-middle" id="logEntriesTable">
-                    <thead>
-                        <tr>
-                            <th style="width: 110px;">Time</th>
-                            <th style="width: 130px;">Type</th>
-                            <th>Title</th>
-                            <th>Artist</th>
-                            <th>Notes</th>
-                            <th></th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        <tr class="text-muted" id="logEntriesPlaceholder">
-                            <td colspan="6">Generate a log to review your entries.</td>
-                        </tr>
-                    </tbody>
-                </table>
-            </div>
-            <div class="d-flex flex-wrap gap-2">
-                <button class="btn btn-outline-secondary btn-sm" type="button" id="addEventRowBtn">Add Event</button>
-                <button class="btn btn-primary btn-sm" type="button" id="submitLogBtn">Submit Log</button>
-            </div>
-            <div class="mt-3">
-                <label class="form-label">DJ Notes (optional)</label>
-                <textarea class="form-control" id="logNotes" rows="3" placeholder="Add any handoffs, events, or compliance notes."></textarea>
-            </div>
-        </div>
-    </div>
 </div>
 {% include '_footer.html' %}
-<script type="application/json" id="show-automator-bootstrap">
-    {{ {
-        "endpoints": {
-            "state": url_for("api.show_automator_state")
-        },
-        "station": {
-            "name": station_name,
-            "slogan": station_slogan
-        },
-        "user": {
-            "display_name": session.get("display_name"),
-            "email": session.get("user_email"),
-            "permissions": session_permissions
-        },
-        "config": {
-            "pollIntervalMs": 5000
-        },
-        "assets": {
-            "fallbackArt": url_for("static", filename="logo.png")
-        }
-    } | tojson }}
-</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script>
-    const logFeedback = document.getElementById("logFeedback");
-    const logShowName = document.getElementById("logShowName");
-    const logDjName = document.getElementById("logDjName");
-    const logShowDate = document.getElementById("logShowDate");
-    const logNotes = document.getElementById("logNotes");
-    const logEntriesTableBody = document.querySelector("#logEntriesTable tbody");
-    const generateLogBtn = document.getElementById("generateLogBtn");
-    const submitLogBtn = document.getElementById("submitLogBtn");
-    const addEventRowBtn = document.getElementById("addEventRowBtn");
-
-    const logTypes = [
-        { value: "music", label: "Music" },
-        { value: "psa", label: "PSA" },
-        { value: "imaging", label: "Imaging" },
-        { value: "voicetrack", label: "Voicetrack" },
-        { value: "event", label: "Event" },
-    ];
-
-    const setFeedback = (message, type) => {
-        logFeedback.textContent = message;
-        logFeedback.className = `alert alert-${type}`;
-        logFeedback.classList.remove("d-none");
-    };
-
-    const clearFeedback = () => {
-        logFeedback.classList.add("d-none");
-        logFeedback.textContent = "";
-    };
-
-    const formatTime = (timestamp) => {
-        if (!timestamp) {
-            return "";
-        }
-        const date = new Date(timestamp);
-        if (Number.isNaN(date.getTime())) {
-            return "";
-        }
-        const hours = String(date.getHours()).padStart(2, "0");
-        const minutes = String(date.getMinutes()).padStart(2, "0");
-        return `${hours}:${minutes}`;
-    };
-
-    const createSelect = (value = "music") => {
-        const select = document.createElement("select");
-        select.className = "form-select form-select-sm";
-        logTypes.forEach((type) => {
-            const option = document.createElement("option");
-            option.value = type.value;
-            option.textContent = type.label;
-            select.appendChild(option);
-        });
-        select.value = value || "music";
-        return select;
-    };
-
-    const addLogRow = (entry = {}) => {
-        const placeholder = document.getElementById("logEntriesPlaceholder");
-        if (placeholder) {
-            placeholder.remove();
-        }
-        const row = document.createElement("tr");
-
-        const timeCell = document.createElement("td");
-        const timeInput = document.createElement("input");
-        timeInput.type = "time";
-        timeInput.className = "form-control form-control-sm";
-        timeInput.value = entry.entry_time || formatTime(entry.timestamp);
-        timeCell.appendChild(timeInput);
-
-        const typeCell = document.createElement("td");
-        const typeSelect = createSelect(entry.entry_type || entry.type);
-        typeCell.appendChild(typeSelect);
-
-        const titleCell = document.createElement("td");
-        const titleInput = document.createElement("input");
-        titleInput.type = "text";
-        titleInput.className = "form-control form-control-sm";
-        titleInput.value = entry.title || "";
-        titleCell.appendChild(titleInput);
-
-        const artistCell = document.createElement("td");
-        const artistInput = document.createElement("input");
-        artistInput.type = "text";
-        artistInput.className = "form-control form-control-sm";
-        artistInput.value = entry.artist || "";
-        artistCell.appendChild(artistInput);
-
-        const messageCell = document.createElement("td");
-        const messageInput = document.createElement("input");
-        messageInput.type = "text";
-        messageInput.className = "form-control form-control-sm";
-        messageInput.value = entry.message || "";
-        messageCell.appendChild(messageInput);
-
-        const actionCell = document.createElement("td");
-        const removeBtn = document.createElement("button");
-        removeBtn.type = "button";
-        removeBtn.className = "btn btn-outline-danger btn-sm";
-        removeBtn.textContent = "Remove";
-        removeBtn.addEventListener("click", () => row.remove());
-        actionCell.appendChild(removeBtn);
-
-        row.appendChild(timeCell);
-        row.appendChild(typeCell);
-        row.appendChild(titleCell);
-        row.appendChild(artistCell);
-        row.appendChild(messageCell);
-        row.appendChild(actionCell);
-        logEntriesTableBody.appendChild(row);
-    };
-
-    const collectEntries = () => {
-        const entries = [];
-        logEntriesTableBody.querySelectorAll("tr").forEach((row) => {
-            const inputs = row.querySelectorAll("input, select");
-            if (!inputs.length) {
-                return;
-            }
-            const [timeInput, typeSelect, titleInput, artistInput, messageInput] = inputs;
-            const entry = {
-                entry_time: timeInput.value,
-                entry_type: typeSelect.value,
-                title: titleInput.value.trim(),
-                artist: artistInput.value.trim(),
-                message: messageInput.value.trim(),
-            };
-            const hasData = entry.entry_time || entry.title || entry.artist || entry.message;
-            if (hasData) {
-                entries.push(entry);
-            }
-        });
-        return entries;
-    };
-
-    generateLogBtn.addEventListener("click", async () => {
-        clearFeedback();
-        generateLogBtn.disabled = true;
-        generateLogBtn.textContent = "Generating...";
-        try {
-            const response = await fetch("/api/show-automator/logs/generate");
-            const payload = await response.json();
-            if (!response.ok || payload.status !== "ok") {
-                throw new Error(payload.message || "Unable to generate log.");
-            }
-            logShowName.value = payload.show_name || "";
-            logDjName.value = payload.dj_name || "";
-            logShowDate.value = payload.show_date || "";
-            logEntriesTableBody.innerHTML = "";
-            if (!payload.entries || !payload.entries.length) {
-                const placeholder = document.createElement("tr");
-                placeholder.className = "text-muted";
-                placeholder.id = "logEntriesPlaceholder";
-                placeholder.innerHTML = "<td colspan='6'>No playback entries found. Add events manually below.</td>";
-                logEntriesTableBody.appendChild(placeholder);
-            } else {
-                payload.entries.forEach((entry) => addLogRow(entry));
-            }
-            setFeedback("Log generated. Review entries before submitting.", "info");
-        } catch (error) {
-            setFeedback(error.message || "Unable to generate log.", "danger");
-        } finally {
-            generateLogBtn.disabled = false;
-            generateLogBtn.textContent = "Generate Log";
-        }
-    });
-
-    addEventRowBtn.addEventListener("click", () => {
-        addLogRow({ entry_type: "event" });
-    });
-
-    submitLogBtn.addEventListener("click", async () => {
-        clearFeedback();
-        submitLogBtn.disabled = true;
-        submitLogBtn.textContent = "Submitting...";
-        try {
-            const payload = {
-                show_name: logShowName.value.trim(),
-                dj_name: logDjName.value.trim(),
-                show_date: logShowDate.value,
-                notes: logNotes.value.trim(),
-                entries: collectEntries(),
-            };
-            const response = await fetch("/logs/submit/automator", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(payload),
-            });
-            const data = await response.json();
-            if (!response.ok || data.status !== "ok") {
-                throw new Error(data.message || "Submission failed.");
-            }
-            setFeedback("Log submitted successfully. Thank you!", "success");
-        } catch (error) {
-            setFeedback(error.message || "Submission failed.", "danger");
-        } finally {
-            submitLogBtn.disabled = false;
-            submitLogBtn.textContent = "Submit Log";
-        }
-    });
-</script>
 </body>
 </html>

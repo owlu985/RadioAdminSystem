@@ -100,7 +100,6 @@
                         <button class="btn btn-outline-secondary btn-sm" id="radiodjOverride">RadioDJ Override</button>
                     </div>
                     <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
-                    <div class="text-muted small" id="loopStatusTop">Looping: off</div>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-secondary py-2 px-3 mb-2" id="radiodjStatus">
@@ -108,11 +107,9 @@
                     </div>
                     <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                         <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
-                        <div class="text-muted small" id="loopStatus">Looping: off</div>
                         <div class="d-flex gap-2 align-items-center">
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
-                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="nextCueBadge" style="display:none;">Next Cue</span>
                         </div>
                     </div>
                     <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
@@ -191,14 +188,9 @@
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="togglePause">Pause</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
-                        <button class="btn btn-outline-success btn-sm" id="resumeQueue" disabled>Resume</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
-                        <button class="btn btn-outline-info btn-sm" id="stopLooping" disabled>Stop Looping</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
                         <button class="btn btn-outline-warning btn-sm" id="pushQueue" disabled>Push Queue to RadioDJ</button>
-                    </div>
-                    <div class="mb-2">
-                        <span class="badge text-bg-warning d-none" id="automationPausedBadge">Automation paused at stop cue.</span>
                     </div>
                     <div class="text-muted small mb-2" id="radiodjQueueStatus"></div>
                     <ol class="mb-0" id="queueList"></ol>
@@ -328,7 +320,6 @@
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
     const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
-    const loopStatusEls = [document.getElementById('loopStatus'), document.getElementById('loopStatusTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const libraryMeta = document.getElementById('libraryMeta');
     const libraryPrev = document.getElementById('libraryPrev');
@@ -339,9 +330,7 @@
     const loopBetween = document.getElementById('loopBetween');
     const togglePauseBtn = document.getElementById('togglePause');
     const playNextBtn = document.getElementById('playNext');
-    const resumeQueueBtn = document.getElementById('resumeQueue');
     const fadeOutBtn = document.getElementById('fadeOut');
-    const stopLoopingBtn = document.getElementById('stopLooping');
     const addStopBtn = document.getElementById('addStop');
     const controlModeLabel = document.getElementById('controlModeLabel');
     const radiodjOverrideBtn = document.getElementById('radiodjOverride');
@@ -349,10 +338,8 @@
     const radiodjStatus = document.getElementById('radiodjStatus');
     const radiodjTrack = document.getElementById('radiodjTrack');
     const radiodjQueueStatus = document.getElementById('radiodjQueueStatus');
-    const automationPausedBadge = document.getElementById('automationPausedBadge');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
-    const nextCueBadge = document.getElementById('nextCueBadge');
     const talkOverlay = document.getElementById('talkOverlay');
     const talkOverlayIntro = document.getElementById('talkOverlayIntro');
     const talkOverlayOutro = document.getElementById('talkOverlayOutro');
@@ -366,8 +353,6 @@
     let currentItem = null;
     let fadeTimer = null;
     let timerInterval = null;
-    let sessionStateInterval = null;
-    let sessionTimerSnapshot = null;
     let recorder = null;
     let recordChunks = [];
     let autoNextTriggered = false;
@@ -380,7 +365,6 @@
     const libraryPerPage = 50;
     let libraryQuery = '';
     let controlMode = 'rams';
-    let automationPaused = false;
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
@@ -490,7 +474,6 @@
         if (!queue.length) {
             queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
             resetTimers();
-            setAutomationPaused(false);
             if (pushQueueBtn) {
                 pushQueueBtn.disabled = true;
             }
@@ -499,42 +482,32 @@
         queue.forEach((item, idx) => {
             const li = document.createElement('li');
             const meta = [];
-            const isStop = !!item.stop;
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
             if (item.metadata && item.metadata.host) meta.push(item.metadata.host);
             if (item.metadata && item.metadata.notes) meta.push(item.metadata.notes);
             const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
-            const loopBadge = isLoopItem(item) ? '<span class="badge text-bg-info me-1">Loop</span>' : '';
             const displayName = item.title || item.name;
-            const label = isStop ? 'STOP' : (displayName || 'Untitled');
-            const stopBadge = isStop ? '<span class="badge text-bg-warning me-1">Stop</span>' : '';
-            const vtBadge = item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : '';
-            const metaLine = meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : '';
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-                <div>${stopBadge}${vtBadge}${label}${introMeta} ${metaLine}</div>
+                <div>${item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : ''}${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
                 <div class="d-flex gap-2">
-                    ${isStop ? '' : '<button class=\"btn btn-sm btn-outline-secondary\" data-cue>Edit</button>'}
+                    <button class="btn btn-sm btn-outline-secondary" data-cue>Edit</button>
                     <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
                 </div>
             </div>`;
             li.dataset.index = idx;
             li.tabIndex = 0;
             li.addEventListener('click', (ev) => {
-                if (!ev.target.dataset.remove && controlMode === 'rams' && !isStop) {
+                if (!ev.target.dataset.remove && controlMode === 'rams') {
                     startFrom(idx);
                 }
             });
             li.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter' && controlMode === 'rams' && !isStop) {
+                if (ev.key === 'Enter' && controlMode === 'rams') {
                     startFrom(idx);
                 }
             });
             li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
-            const cueBtn = li.querySelector('[data-cue]');
-            if (cueBtn) {
-                cueBtn.addEventListener('click', (ev) => { ev.stopPropagation(); selectCueItem(item); });
-            }
             queueList.appendChild(li);
         });
         if (pushQueueBtn) {
@@ -554,7 +527,7 @@
         if (pushQueueBtn) {
             pushQueueBtn.disabled = !isRadioDJ || !queue.length;
         }
-        [togglePauseBtn, playNextBtn, resumeQueueBtn, fadeOutBtn, addStopBtn].forEach(btn => {
+        [togglePauseBtn, playNextBtn, fadeOutBtn, addStopBtn].forEach(btn => {
             if (btn) btn.disabled = isRadioDJ;
         });
         if (isRadioDJ) {
@@ -562,10 +535,6 @@
             stopAllAudio();
             stopTimer();
             togglePauseBtn.textContent = 'Pause';
-            setAutomationPaused(false);
-        }
-        if (!isRadioDJ && resumeQueueBtn) {
-            resumeQueueBtn.disabled = !automationPaused;
         }
     }
 
@@ -580,17 +549,6 @@
         }
     }
 
-    function updateCueBadge(badge, label, remaining) {
-        if (!badge) return;
-        const safeRemaining = remaining != null ? Math.max(0, remaining) : null;
-        const text = safeRemaining != null ? safeRemaining.toFixed(1) : '0.0';
-        badge.style.display = 'inline-block';
-        badge.textContent = `${label}: ${text}s`;
-        const flash = safeRemaining != null && safeRemaining > 0 && safeRemaining <= 5;
-        badge.classList.toggle('countdown-flash', flash);
-        badge.classList.toggle('text-bg-danger', flash);
-    }
-
     function resetTimers() {
         const text = '00:00.00';
         timerEls.forEach(el => {
@@ -599,15 +557,15 @@
             el.style.color = '';
             el.style.fontWeight = '400';
         });
-        updateCueBadge(introBadge, 'Intro', 0);
-        updateCueBadge(outroBadge, 'Outro', 0);
-        updateCueBadge(nextCueBadge, 'Next', 0);
-        sessionTimerSnapshot = null;
+        introBadge.style.display = 'inline-block';
+        introBadge.textContent = 'Intro: 0.0s';
+        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        outroBadge.style.display = 'inline-block';
+        outroBadge.textContent = 'Outro: 0.0s';
+        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
         updateTalkOverlay(null);
         loopBetween.checked = false;
         loopBetween.disabled = true;
-        loopState = { active: false, remaining: null };
-        updateLoopStatus();
         togglePauseBtn.textContent = 'Pause';
     }
 
@@ -714,9 +672,15 @@
             el.style.color = '';
             el.style.fontWeight = '400';
         });
-        updateCueBadge(introBadge, 'Intro', cues.intro);
-        updateCueBadge(outroBadge, 'Outro', cues.outro);
-        updateCueBadge(nextCueBadge, 'Next', cues.start_next);
+        const introVal = cues.intro ? cues.intro.toFixed(1) : '0.0';
+        introBadge.style.display = 'inline-block';
+        introBadge.textContent = `Intro: ${introVal}s`;
+        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
+
+        const outroVal = cues.outro ? cues.outro.toFixed(1) : '0.0';
+        outroBadge.style.display = 'inline-block';
+        outroBadge.textContent = `Outro: ${outroVal}s`;
+        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
         updateTalkOverlay(cues, 0, 0);
 
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
@@ -728,7 +692,6 @@
         players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
         currentItem = null;
         resetTimers();
-        updateNowPlayingState('idle');
     }
 
     function addToQueue(item) {
@@ -746,53 +709,6 @@
     }
 
     function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
-
-    function consumeStopCues() {
-        let removed = false;
-        while (queue.length && queue[0].stop) {
-            queue.shift();
-            removed = true;
-        }
-        return removed;
-    }
-
-    function setAutomationPaused(paused) {
-        automationPaused = paused;
-        if (automationPausedBadge) {
-            automationPausedBadge.classList.toggle('d-none', !paused);
-        }
-        if (resumeQueueBtn) {
-            resumeQueueBtn.disabled = !paused || controlMode === 'radiodj';
-        }
-        if (togglePauseBtn) {
-            togglePauseBtn.disabled = paused || controlMode === 'radiodj';
-        }
-    }
-
-    function pauseAtStopCue() {
-        stopFade();
-        stopAllAudio();
-        setAutomationPaused(true);
-        autoNextTriggered = false;
-        prestartedIdx = null;
-        renderQueue();
-        if (queue.length) {
-            previewCues(queue[0]);
-        }
-    }
-
-    function resumeFromStopCue() {
-        if (!automationPaused) return;
-        setAutomationPaused(false);
-        consumeStopCues();
-        autoNextTriggered = false;
-        prestartedIdx = null;
-        if (queue.length) {
-            startFrom(0);
-        } else {
-            renderQueue();
-        }
-    }
 
     const TOP40_RATE = Math.pow(2, 0.5 / 12);
     const OVERLAY_KINDS = ['voicetrack', 'overlay'];
@@ -823,69 +739,6 @@
         return item && OVERLAY_KINDS.includes(item.kind);
     }
 
-    function buildNowPlayingMetadata(item) {
-        return {
-            cues: item.cues || {},
-            category: item.category || null,
-            deck: currentIdx === 0 ? 'A' : 'B',
-            kind: item.kind || null,
-        };
-    }
-
-    async function updateNowPlayingState(status) {
-        if (!status) {
-            status = activePlayer().paused ? 'paused' : 'playing';
-        }
-        if (controlMode !== 'rams' && status !== 'idle') {
-            return;
-        }
-        if (!currentItem && status !== 'idle') {
-            return;
-        }
-        const payload = { status };
-        if (currentItem && status !== 'idle') {
-            payload.type = currentItem.kind || currentItem.category || 'media';
-            payload.title = currentItem.title || currentItem.name || '';
-            payload.artist = currentItem.artist || '';
-            payload.duration = currentItem.duration || null;
-            payload.metadata = buildNowPlayingMetadata(currentItem);
-        }
-        try {
-            await fetch('/api/playback/now-playing', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(payload),
-            });
-        } catch (err) {
-            // ignore
-        }
-    }
-
-    async function reportSessionState() {
-        if (controlMode !== 'rams') return;
-        if (!sessionTimerSnapshot) return;
-        try {
-            await fetch('/api/playback/session/state', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ timers: sessionTimerSnapshot }),
-            });
-        } catch (err) {
-            // ignore
-        }
-    }
-
-    function startSessionStateReporter() {
-        if (sessionStateInterval) return;
-        sessionStateInterval = setInterval(reportSessionState, 1000);
-    }
-
-    function stopSessionStateReporter() {
-        if (!sessionStateInterval) return;
-        clearInterval(sessionStateInterval);
-        sessionStateInterval = null;
-    }
-
     function startFrom(idx, preferredIdx = currentIdx) {
         if (controlMode !== 'rams') {
             return;
@@ -894,11 +747,12 @@
         if (!item) return;
         if (item.stop) {
             queue.splice(0, idx + 1);
-            consumeStopCues();
-            pauseAtStopCue();
+            shiftPastStops();
+            stopAllAudio();
+            renderQueue();
+            if (queue.length) previewCues(queue[0]);
             return;
         }
-        setAutomationPaused(false);
         stopFade();
         const playerObj = players[preferredIdx];
         const otherObj = players[1 - preferredIdx];
@@ -913,54 +767,29 @@
         playerObj.item = item;
         const cues = item.cues || {};
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
-        const forceLoop = isLoopItem(item);
-        loopState.active = forceLoop;
-        loopBetween.disabled = !hasLoop || forceLoop;
-        if (forceLoop) {
-            loopBetween.checked = hasLoop;
-        } else if (!hasLoop) {
-            loopBetween.checked = false;
-        }
-        updateLoopStatus();
+        loopBetween.disabled = !hasLoop;
+        if (!hasLoop) loopBetween.checked = false;
         autoNextTriggered = false;
         prestartedIdx = null;
         if (idx > 0) queue.splice(0, idx);
         player.src = item.url;
         player.volume = 1;
         applyPlaybackRate(player, item);
-        if (startAt != null && !Number.isNaN(startAt)) {
-            const seekTo = Math.max(0, startAt);
-            const applySeek = () => {
-                if (!Number.isNaN(player.duration)) {
-                    player.currentTime = Math.min(seekTo, player.duration || seekTo);
-                }
-            };
-            if (player.readyState >= 1) {
-                applySeek();
-            } else {
-                player.addEventListener('loadedmetadata', function onLoaded() {
-                    player.removeEventListener('loadedmetadata', onLoaded);
-                    applySeek();
-                });
-            }
-        }
         player.play();
         togglePauseBtn.textContent = 'Pause';
         renderQueue();
     }
 
+    function shiftPastStops() {
+        while (queue.length && queue[0].stop) {
+            queue.shift();
+        }
+    }
+
     function playNext() {
         if (!queue.length) return;
-        if (automationPaused) {
-            resumeFromStopCue();
-            return;
-        }
         queue.shift();
-        if (consumeStopCues()) {
-            pauseAtStopCue();
-            return;
-        }
-        setAutomationPaused(false);
+        shiftPastStops();
         stopFade();
         stopAllAudio();
         autoNextTriggered = false;
@@ -970,22 +799,6 @@
         } else {
             renderQueue();
         }
-    }
-
-    function stopLooping() {
-        if (!loopState.active) return;
-        if (queue.length <= 1) {
-            queue.shift();
-            stopAllAudio();
-            renderQueue();
-            return;
-        }
-        const nextItem = queue[1];
-        const startAt = getIntroCue(nextItem);
-        stopFade();
-        autoNextTriggered = false;
-        prestartedIdx = null;
-        startFrom(1, 1 - currentIdx, startAt);
     }
 
     function startNextWithOverlay() {
@@ -1015,11 +828,7 @@
         current.removeAttribute('src');
 
         queue.shift();
-        if (consumeStopCues()) {
-            pauseAtStopCue();
-            return;
-        }
-        setAutomationPaused(false);
+        shiftPastStops();
 
         const nextIdx = 1 - currentIdx;
         const nextObj = players[nextIdx];
@@ -1039,10 +848,6 @@
     }
 
     function fadeAndNext() {
-        if (automationPaused) {
-            resumeFromStopCue();
-            return;
-        }
         if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
             playNext();
             return;
@@ -1066,11 +871,7 @@
                 current.volume = 1;
                 current.removeAttribute('src');
                 queue.shift();
-                if (consumeStopCues()) {
-                    pauseAtStopCue();
-                    return;
-                }
-                setAutomationPaused(false);
+                shiftPastStops();
                 currentIdx = nextIdx;
                 currentItem = nextItem;
                 prestartedIdx = null;
@@ -1108,29 +909,38 @@
             el.style.fontWeight = urgent ? '700' : '400';
         });
 
-        const introRem = cues.intro != null ? Math.max(0, cues.intro - player.currentTime) : null;
-        const outroRem = cues.outro != null ? Math.max(0, cues.outro - player.currentTime) : null;
-        const nextCueRem = cues.start_next != null ? Math.max(0, cues.start_next - player.currentTime) : null;
-        updateCueBadge(introBadge, 'Intro', introRem);
-        updateCueBadge(outroBadge, 'Outro', outroRem);
-        updateCueBadge(nextCueBadge, 'Next', nextCueRem);
-        sessionTimerSnapshot = {
-            deck: currentIdx === 0 ? 'A' : 'B',
-            intro_remaining: introRem,
-            outro_remaining: outroRem,
-            next_cue_remaining: nextCueRem,
-            status: player.paused ? 'paused' : 'playing',
-        };
+        if (cues.intro) {
+            const introRem = Math.max(0, cues.intro - player.currentTime);
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
+            const flash = introRem > 0 && introRem <= 5;
+            introBadge.classList.toggle('countdown-flash', flash);
+            introBadge.classList.toggle('text-bg-danger', flash);
+        } else {
+            introBadge.style.display = 'inline-block';
+            introBadge.textContent = 'Intro: 0.0s';
+            introBadge.classList.remove('countdown-flash','text-bg-danger');
+        }
+
+        if (cues.outro) {
+            const outroRem = Math.max(0, cues.outro - player.currentTime);
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
+            const flash = outroRem > 0 && outroRem <= 5;
+            outroBadge.classList.toggle('countdown-flash', flash);
+            outroBadge.classList.toggle('text-bg-danger', flash);
+        } else {
+            outroBadge.style.display = 'inline-block';
+            outroBadge.textContent = 'Outro: 0.0s';
+            outroBadge.classList.remove('countdown-flash','text-bg-danger');
+        }
         updateTalkOverlay(cues, player.currentTime, player.duration);
 
         // Auto-advance when start_next cue is hit.
-        if (!(loopState.active || loopBetween.checked) && !autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
+        if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
             resetTimers();
             if (queue.length > 1) {
-                if (queue[1] && queue[1].stop) {
-                    return;
-                }
                 if (overlayEligible(currentItem)) {
                     startNextWithOverlay();
                 } else {
@@ -1139,15 +949,7 @@
             }
         }
 
-        const shouldLoop = (loopState.active || loopBetween.checked) && cues.loop_in != null && cues.loop_out != null;
-        if (shouldLoop) {
-            loopState.remaining = Math.max(0, cues.loop_out - player.currentTime);
-        } else {
-            loopState.remaining = null;
-        }
-        updateLoopStatus();
-
-        if (shouldLoop) {
+        if (loopBetween.checked && cues.loop_in != null && cues.loop_out != null) {
             const loopIn = cues.loop_in;
             const loopOut = cues.loop_out;
             if (player.currentTime >= loopOut - 0.05) {
@@ -1159,9 +961,6 @@
         // Voice track smart start for next track intro/outro.
         if (!prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
             const nextItem = queue[1];
-            if (nextItem && nextItem.stop) {
-                return;
-            }
             const nextCues = nextItem.cues || {};
             const target = nextCues.intro || nextCues.outro;
             if (target && remaining <= target + 0.25) {
@@ -1178,28 +977,14 @@
         }
     }
 
-    function startTimer() {
-        stopTimer();
-        timerInterval = setInterval(updateTimer, 80);
-        startSessionStateReporter();
-    }
-    function stopTimer() {
-        if (timerInterval) {
-            clearInterval(timerInterval);
-            timerInterval = null;
-        }
-        stopSessionStateReporter();
-    }
+    function startTimer() { stopTimer(); timerInterval = setInterval(updateTimer, 80); }
+    function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
 
     function handleEnded(idx) {
         if (idx !== currentIdx) return;
         stopTimer();
         queue.shift();
-        if (consumeStopCues()) {
-            pauseAtStopCue();
-            return;
-        }
-        setAutomationPaused(false);
+        shiftPastStops();
         if (queue.length) {
             if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
                 currentIdx = prestartedIdx;
@@ -1221,7 +1006,6 @@
         queue.length = 0;
         stopFade();
         stopAllAudio();
-        setAutomationPaused(false);
         renderQueue();
     });
     togglePauseBtn.addEventListener('click', () => {
@@ -1236,16 +1020,9 @@
         }
     });
     playNextBtn.addEventListener('click', playNext);
-    resumeQueueBtn.addEventListener('click', resumeFromStopCue);
     addStopBtn.addEventListener('click', addStopCue);
     fadeOutBtn.addEventListener('click', fadeAndNext);
-    if (stopLoopingBtn) {
-        stopLoopingBtn.addEventListener('click', stopLooping);
-    }
     pushQueueBtn.addEventListener('click', pushQueueToRadioDJ);
-    if (loopBetween) {
-        loopBetween.addEventListener('change', updateLoopStatus);
-    }
     document.getElementById('overlayPlay').addEventListener('click', () => {
         const url = document.getElementById('overlayUrl').value.trim();
         if (!url) return;
@@ -1349,22 +1126,9 @@
 
     players.forEach((p, idx) => {
         preservesPitchOff(p.el);
-        p.el.addEventListener('play', () => {
-            if (idx === currentIdx) {
-                startTimer();
-                applyPlaybackRate(p.el, p.item);
-                togglePauseBtn.textContent = 'Pause';
-                updateNowPlayingState('playing');
-            }
-        });
+        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
         p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-        p.el.addEventListener('pause', () => {
-            if (idx === currentIdx) {
-                stopTimer();
-                togglePauseBtn.textContent = 'Play';
-                updateNowPlayingState('paused');
-            }
-        });
+        p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });
 
