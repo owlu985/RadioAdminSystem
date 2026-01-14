@@ -110,6 +110,7 @@
                         <div class="d-flex gap-2 align-items-center">
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
+                            <span class="badge rounded-pill text-bg-secondary countdown-badge" id="nextCueBadge" style="display:none;">Next Cue</span>
                         </div>
                     </div>
                     <audio id="psaAudioA" controls class="w-100 mb-2"></audio>
@@ -340,6 +341,7 @@
     const radiodjQueueStatus = document.getElementById('radiodjQueueStatus');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
+    const nextCueBadge = document.getElementById('nextCueBadge');
     const talkOverlay = document.getElementById('talkOverlay');
     const talkOverlayIntro = document.getElementById('talkOverlayIntro');
     const talkOverlayOutro = document.getElementById('talkOverlayOutro');
@@ -353,6 +355,8 @@
     let currentItem = null;
     let fadeTimer = null;
     let timerInterval = null;
+    let sessionStateInterval = null;
+    let sessionTimerSnapshot = null;
     let recorder = null;
     let recordChunks = [];
     let autoNextTriggered = false;
@@ -549,6 +553,17 @@
         }
     }
 
+    function updateCueBadge(badge, label, remaining) {
+        if (!badge) return;
+        const safeRemaining = remaining != null ? Math.max(0, remaining) : null;
+        const text = safeRemaining != null ? safeRemaining.toFixed(1) : '0.0';
+        badge.style.display = 'inline-block';
+        badge.textContent = `${label}: ${text}s`;
+        const flash = safeRemaining != null && safeRemaining > 0 && safeRemaining <= 5;
+        badge.classList.toggle('countdown-flash', flash);
+        badge.classList.toggle('text-bg-danger', flash);
+    }
+
     function resetTimers() {
         const text = '00:00.00';
         timerEls.forEach(el => {
@@ -557,12 +572,10 @@
             el.style.color = '';
             el.style.fontWeight = '400';
         });
-        introBadge.style.display = 'inline-block';
-        introBadge.textContent = 'Intro: 0.0s';
-        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
-        outroBadge.style.display = 'inline-block';
-        outroBadge.textContent = 'Outro: 0.0s';
-        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        updateCueBadge(introBadge, 'Intro', 0);
+        updateCueBadge(outroBadge, 'Outro', 0);
+        updateCueBadge(nextCueBadge, 'Next', 0);
+        sessionTimerSnapshot = null;
         updateTalkOverlay(null);
         loopBetween.checked = false;
         loopBetween.disabled = true;
@@ -672,15 +685,9 @@
             el.style.color = '';
             el.style.fontWeight = '400';
         });
-        const introVal = cues.intro ? cues.intro.toFixed(1) : '0.0';
-        introBadge.style.display = 'inline-block';
-        introBadge.textContent = `Intro: ${introVal}s`;
-        introBadge.classList.remove('countdown-flash', 'text-bg-danger');
-
-        const outroVal = cues.outro ? cues.outro.toFixed(1) : '0.0';
-        outroBadge.style.display = 'inline-block';
-        outroBadge.textContent = `Outro: ${outroVal}s`;
-        outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
+        updateCueBadge(introBadge, 'Intro', cues.intro);
+        updateCueBadge(outroBadge, 'Outro', cues.outro);
+        updateCueBadge(nextCueBadge, 'Next', cues.start_next);
         updateTalkOverlay(cues, 0, 0);
 
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
@@ -692,6 +699,7 @@
         players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
         currentItem = null;
         resetTimers();
+        updateNowPlayingState('idle');
     }
 
     function addToQueue(item) {
@@ -737,6 +745,69 @@
         // Only use the overlay deck for dedicated voice tracks/overlays to avoid
         // fighting the main deck when rolling into music intros.
         return item && OVERLAY_KINDS.includes(item.kind);
+    }
+
+    function buildNowPlayingMetadata(item) {
+        return {
+            cues: item.cues || {},
+            category: item.category || null,
+            deck: currentIdx === 0 ? 'A' : 'B',
+            kind: item.kind || null,
+        };
+    }
+
+    async function updateNowPlayingState(status) {
+        if (!status) {
+            status = activePlayer().paused ? 'paused' : 'playing';
+        }
+        if (controlMode !== 'rams' && status !== 'idle') {
+            return;
+        }
+        if (!currentItem && status !== 'idle') {
+            return;
+        }
+        const payload = { status };
+        if (currentItem && status !== 'idle') {
+            payload.type = currentItem.kind || currentItem.category || 'media';
+            payload.title = currentItem.title || currentItem.name || '';
+            payload.artist = currentItem.artist || '';
+            payload.duration = currentItem.duration || null;
+            payload.metadata = buildNowPlayingMetadata(currentItem);
+        }
+        try {
+            await fetch('/api/playback/now-playing', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+        } catch (err) {
+            // ignore
+        }
+    }
+
+    async function reportSessionState() {
+        if (controlMode !== 'rams') return;
+        if (!sessionTimerSnapshot) return;
+        try {
+            await fetch('/api/playback/session/state', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ timers: sessionTimerSnapshot }),
+            });
+        } catch (err) {
+            // ignore
+        }
+    }
+
+    function startSessionStateReporter() {
+        if (sessionStateInterval) return;
+        sessionStateInterval = setInterval(reportSessionState, 1000);
+    }
+
+    function stopSessionStateReporter() {
+        if (!sessionStateInterval) return;
+        clearInterval(sessionStateInterval);
+        sessionStateInterval = null;
     }
 
     function startFrom(idx, preferredIdx = currentIdx) {
@@ -909,31 +980,19 @@
             el.style.fontWeight = urgent ? '700' : '400';
         });
 
-        if (cues.intro) {
-            const introRem = Math.max(0, cues.intro - player.currentTime);
-            introBadge.style.display = 'inline-block';
-            introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-            const flash = introRem > 0 && introRem <= 5;
-            introBadge.classList.toggle('countdown-flash', flash);
-            introBadge.classList.toggle('text-bg-danger', flash);
-        } else {
-            introBadge.style.display = 'inline-block';
-            introBadge.textContent = 'Intro: 0.0s';
-            introBadge.classList.remove('countdown-flash','text-bg-danger');
-        }
-
-        if (cues.outro) {
-            const outroRem = Math.max(0, cues.outro - player.currentTime);
-            outroBadge.style.display = 'inline-block';
-            outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-            const flash = outroRem > 0 && outroRem <= 5;
-            outroBadge.classList.toggle('countdown-flash', flash);
-            outroBadge.classList.toggle('text-bg-danger', flash);
-        } else {
-            outroBadge.style.display = 'inline-block';
-            outroBadge.textContent = 'Outro: 0.0s';
-            outroBadge.classList.remove('countdown-flash','text-bg-danger');
-        }
+        const introRem = cues.intro != null ? Math.max(0, cues.intro - player.currentTime) : null;
+        const outroRem = cues.outro != null ? Math.max(0, cues.outro - player.currentTime) : null;
+        const nextCueRem = cues.start_next != null ? Math.max(0, cues.start_next - player.currentTime) : null;
+        updateCueBadge(introBadge, 'Intro', introRem);
+        updateCueBadge(outroBadge, 'Outro', outroRem);
+        updateCueBadge(nextCueBadge, 'Next', nextCueRem);
+        sessionTimerSnapshot = {
+            deck: currentIdx === 0 ? 'A' : 'B',
+            intro_remaining: introRem,
+            outro_remaining: outroRem,
+            next_cue_remaining: nextCueRem,
+            status: player.paused ? 'paused' : 'playing',
+        };
         updateTalkOverlay(cues, player.currentTime, player.duration);
 
         // Auto-advance when start_next cue is hit.
@@ -977,8 +1036,18 @@
         }
     }
 
-    function startTimer() { stopTimer(); timerInterval = setInterval(updateTimer, 80); }
-    function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerInterval = null; } }
+    function startTimer() {
+        stopTimer();
+        timerInterval = setInterval(updateTimer, 80);
+        startSessionStateReporter();
+    }
+    function stopTimer() {
+        if (timerInterval) {
+            clearInterval(timerInterval);
+            timerInterval = null;
+        }
+        stopSessionStateReporter();
+    }
 
     function handleEnded(idx) {
         if (idx !== currentIdx) return;
@@ -1126,9 +1195,22 @@
 
     players.forEach((p, idx) => {
         preservesPitchOff(p.el);
-        p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
+        p.el.addEventListener('play', () => {
+            if (idx === currentIdx) {
+                startTimer();
+                applyPlaybackRate(p.el, p.item);
+                togglePauseBtn.textContent = 'Pause';
+                updateNowPlayingState('playing');
+            }
+        });
         p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-        p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
+        p.el.addEventListener('pause', () => {
+            if (idx === currentIdx) {
+                stopTimer();
+                togglePauseBtn.textContent = 'Play';
+                updateNowPlayingState('paused');
+            }
+        });
         p.el.addEventListener('ended', () => handleEnded(idx));
     });
 
