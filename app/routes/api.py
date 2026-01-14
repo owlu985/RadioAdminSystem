@@ -15,6 +15,8 @@ from app.models import (
     ShowRun,
     StreamProbe,
     LogEntry,
+    PlaybackSession,
+    PlaybackQueueItem,
     DJ,
     Show,
     SavedSearch,
@@ -29,6 +31,7 @@ from app.models import (
     MarathonEvent,
     ArchivistRipResult,
     NowPlayingState,
+    ShowAutomatorPlayLog,
     db,
 )
 from app.utils import (
@@ -69,6 +72,7 @@ from app.services.archivist_db import (
     delete_album_rip_upload,
     cleanup_album_tmp,
 )
+from app.auth_utils import effective_permissions
 from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
@@ -76,6 +80,7 @@ import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
 QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack", "stop"}
+RECENT_TRACK_LIMIT = 10
 _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "fetched_at": None,
     "payload": None,
@@ -108,7 +113,7 @@ def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
         "id": item.id,
         "session_id": item.session_id,
         "position": item.position,
-        "type": item.item_type,
+        "type": item.media_type,
         "title": item.title,
         "artist": item.artist,
         "duration": item.duration,
@@ -127,13 +132,55 @@ def _serialize_now_playing(state: NowPlayingState | None) -> dict | None:
         "title": state.title,
         "artist": state.artist,
         "duration": state.duration,
-        "metadata": _deserialize_metadata(state.metadata),
+        "metadata": _deserialize_metadata(state.item_metadata),
         "status": state.status,
         "started_at": state.started_at.isoformat() if state.started_at else None,
         "cue_in": state.cue_in,
         "cue_out": state.cue_out,
         "fade_out": state.fade_out,
         "updated_at": state.updated_at.isoformat(),
+    }
+
+
+def _coerce_float(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_cues(metadata: dict | None) -> dict:
+    if not metadata:
+        return {}
+    cues = metadata.get("cues")
+    if isinstance(cues, dict):
+        return cues
+    return {k: metadata.get(k) for k in ["intro", "outro", "start_next"] if metadata.get(k) is not None}
+
+
+def _playback_timer_snapshot(state: NowPlayingState | None) -> dict | None:
+    if not state:
+        return None
+    metadata = _deserialize_metadata(state.metadata)
+    if isinstance(metadata, dict):
+        timers = metadata.get("timers")
+        if isinstance(timers, dict):
+            return timers
+    elapsed = None
+    if state.started_at:
+        elapsed = max(0.0, (datetime.utcnow() - state.started_at).total_seconds())
+    cues = _extract_cues(metadata if isinstance(metadata, dict) else None)
+    def remaining_for(cue_value: object) -> float | None:
+        cue = _coerce_float(cue_value)
+        if cue is None or elapsed is None:
+            return None
+        return max(0.0, cue - elapsed)
+    return {
+        "deck": metadata.get("deck") if isinstance(metadata, dict) else None,
+        "intro_remaining": remaining_for(cues.get("intro")),
+        "outro_remaining": remaining_for(cues.get("outro")),
+        "next_cue_remaining": remaining_for(cues.get("start_next")),
+        "elapsed": elapsed,
     }
 
 
@@ -154,6 +201,21 @@ def _get_playback_session() -> PlaybackSession:
         db.session.add(playback)
         db.session.commit()
         session["playback_session_id"] = playback.id
+    return playback
+
+
+def _get_existing_playback_session() -> PlaybackSession | None:
+    requested = request.headers.get("X-Playback-Session") or request.args.get("session_id")
+    stored = session.get("playback_session_id")
+    session_id = requested or stored
+    if not session_id:
+        return None
+    try:
+        playback = db.session.get(PlaybackSession, int(session_id))
+    except (TypeError, ValueError):
+        playback = None
+    if requested and not playback:
+        abort(404, description="playback_session_not_found")
     return playback
 
 
@@ -183,35 +245,18 @@ def _now_playing_for(session_id: int) -> NowPlayingState:
 
 def _set_now_playing_from_item(state: NowPlayingState, item: PlaybackQueueItem | None, status: str) -> None:
     state.queue_item_id = item.id if item else None
-    state.item_type = item.item_type if item else None
+    state.item_type = item.media_type if item else None
     state.title = item.title if item else None
     state.artist = item.artist if item else None
     state.duration = item.duration if item else None
-    state.metadata = item.item_metadata if item else None
+    state.item_metadata = item.item_metadata if item else None
     state.status = status
     state.started_at = datetime.utcnow() if item else None
     state.updated_at = datetime.utcnow()
     db.session.add(state)
 
 
-def _consume_stop_items(items: list[PlaybackQueueItem]) -> tuple[bool, list[PlaybackQueueItem]]:
-    removed = False
-    while items and items[0].item_type == "stop":
-        removed = True
-        db.session.delete(items[0])
-        items = items[1:]
-    return removed, items
-
-
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
-
-
-class PlaybackQueueItem(TypedDict, total=False):
+class PlaybackQueueItemPayload(TypedDict, total=False):
     name: str
     artist: str
     album: str
@@ -369,8 +414,8 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dic
                     )
                 log_q = LogEntry.query.filter_by(entry_type="music")
                 total = log_q.count()
-                if total >= 10:
-                    excess = total - 9
+                if total >= RECENT_TRACK_LIMIT:
+                    excess = total - (RECENT_TRACK_LIMIT - 1)
                     oldest = log_q.order_by(LogEntry.timestamp.asc()).limit(excess).all()
                     for entry in oldest:
                         db.session.delete(entry)
@@ -427,6 +472,92 @@ def _override_enabled() -> bool:
     return bool(state.override_enabled) if state else False
 
 
+def _ensure_playback_show_run(playback: PlaybackSession) -> ShowRun | None:
+    if playback.show_run_id:
+        return playback.show_run
+    show = get_current_show()
+    if not show:
+        return None
+    dj_first, dj_last = show_primary_host(show)
+    run = get_or_create_active_run(
+        show_name=show_display_title(show),
+        dj_first_name=dj_first,
+        dj_last_name=dj_last,
+    )
+    playback.show_run_id = run.id
+    db.session.add(playback)
+    return run
+
+
+def _trim_show_automator_logs(session_id: int) -> None:
+    log_q = ShowAutomatorPlayLog.query.filter_by(session_id=session_id)
+    total = log_q.count()
+    if total >= RECENT_TRACK_LIMIT:
+        excess = total - (RECENT_TRACK_LIMIT - 1)
+        oldest = log_q.order_by(ShowAutomatorPlayLog.timestamp.asc()).limit(excess).all()
+        for entry in oldest:
+            db.session.delete(entry)
+
+
+def _record_show_automator_playback(
+    playback: PlaybackSession,
+    *,
+    item: PlaybackQueueItem | None = None,
+    now_playing: NowPlayingState | None = None,
+    status: str | None = None,
+    metadata: dict | None = None,
+) -> None:
+    effective_status = (status or (now_playing.status if now_playing else None) or "").lower()
+    if effective_status and effective_status != "playing":
+        return
+    if item:
+        title = item.title
+        artist = item.artist
+        album = item.album
+        item_type = item.media_type
+        description = None
+    else:
+        title = now_playing.title if now_playing else None
+        artist = now_playing.artist if now_playing else None
+        item_type = now_playing.item_type if now_playing else None
+        album = None
+        description = None
+        if metadata is None and now_playing:
+            metadata = _deserialize_metadata(now_playing.item_metadata)
+        if isinstance(metadata, dict):
+            album = metadata.get("album") or metadata.get("Album")
+            description = metadata.get("description")
+    if not title and not artist:
+        return
+    run = _ensure_playback_show_run(playback)
+    _trim_show_automator_logs(playback.id)
+    db.session.add(ShowAutomatorPlayLog(
+        session_id=playback.id,
+        show_run_id=run.id if run else None,
+        item_type=item_type,
+        title=title,
+        artist=artist,
+        album=album,
+        description=description,
+    ))
+
+
+def _get_active_automator_state(playback: PlaybackSession | None) -> dict | None:
+    if not playback:
+        return None
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    if not now_playing:
+        return None
+    status = (now_playing.get("status") or "").lower()
+    if status in {"", "idle"} and not now_playing.get("title") and not now_playing.get("artist"):
+        return None
+    return {
+        "session_id": playback.id,
+        "now_playing": now_playing,
+        "queue": [_serialize_queue_item(item) for item in _queue_items(playback.id)],
+    }
+
+
 def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
     host_label = show_host_names(show)
     if absence and absence.replacement_name:
@@ -472,6 +603,8 @@ def now_playing():
     show = get_current_show()
     absence = active_absence_for_show(show, now=now) if show else None
     override_enabled = _override_enabled()
+    playback = _get_existing_playback_session()
+    automator_state = _get_active_automator_state(playback)
 
     if not show:
         base = {
@@ -479,6 +612,8 @@ def now_playing():
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
             "override_enabled": override_enabled,
         }
+        if automator_state:
+            base["automator"] = automator_state
         if override_enabled:
             track = _get_cached_radiodj_nowplaying()
             if track:
@@ -525,6 +660,8 @@ def now_playing():
             "dj": absence.dj_name,
         } if absence else None,
     }
+    if automator_state:
+        payload["automator"] = automator_state
     if next_show and window:
         start_dt, end_dt = window
         payload["next_show"] = {
@@ -541,6 +678,43 @@ def now_playing():
         }
 
     return jsonify(payload)
+
+
+@api_bp.route("/show-automator/now", strict_slashes=False)
+def show_automator_now():
+    playback = _get_playback_session()
+    now = datetime.utcnow()
+    show = get_current_show()
+    absence = active_absence_for_show(show, now=now) if show else None
+    run_payload = None
+    show_payload = None
+    if show:
+        dj_first, dj_last = show_primary_host(show)
+        if absence and absence.replacement_name:
+            parts = absence.replacement_name.split(" ", 1)
+            if parts:
+                dj_first, dj_last = parts[0], parts[1] if len(parts) > 1 else ""
+        run = get_or_create_active_run(
+            show_name=show_display_title(show),
+            dj_first_name=dj_first,
+            dj_last_name=dj_last,
+        )
+        playback.show_run_id = run.id
+        db.session.add(playback)
+        _touch_playback_session(playback)
+        db.session.commit()
+        run_payload = _serialize_show_run(run)
+        show_payload = _serialize_show(show, absence=absence)
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    items = _queue_items(playback.id)
+    return jsonify({
+        "status": "ok",
+        "session_id": playback.id,
+        "show": show_payload,
+        "run": run_payload,
+        "now_playing": now_playing,
+        "queue": [_serialize_queue_item(item) for item in items],
+    })
 
 
 @api_bp.route("/now/widget", strict_slashes=False)
@@ -562,10 +736,29 @@ def now_widget():
 
 @api_bp.route("/now/recent-tracks")
 def recent_tracks():
+    playback = _get_existing_playback_session()
+    automator_state = _get_active_automator_state(playback)
+    if automator_state and playback:
+        entries = (
+            ShowAutomatorPlayLog.query.filter_by(session_id=playback.id)
+            .order_by(ShowAutomatorPlayLog.timestamp.desc())
+            .limit(RECENT_TRACK_LIMIT)
+            .all()
+        )
+        payload = []
+        for entry in entries:
+            payload.append({
+                "title": entry.title or None,
+                "artist": entry.artist or None,
+                "album": entry.album,
+                "cover_url": None,
+                "played_at": entry.timestamp.isoformat(),
+            })
+        return jsonify({"status": "ok", "tracks": payload, "source": "show_automator"})
     entries = (
         LogEntry.query.filter_by(entry_type="music")
         .order_by(LogEntry.timestamp.desc())
-        .limit(10)
+        .limit(RECENT_TRACK_LIMIT)
         .all()
     )
     index = get_music_index()
@@ -1627,6 +1820,34 @@ def radiodj_autodj():
     return jsonify(result)
 
 
+@api_bp.route("/show-automator/state", methods=["GET"])
+def show_automator_state():
+    playback = _get_playback_session()
+    queue_items = _queue_items(playback.id)
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    next_item = _serialize_queue_item(queue_items[0]) if queue_items else None
+    payload = {
+        "server_time": datetime.utcnow().isoformat(),
+        "session": {
+            "id": playback.id,
+            "show_name": playback.show_name,
+            "dj_name": playback.dj_name,
+            "notes": playback.notes,
+            "updated_at": playback.updated_at.isoformat(),
+        },
+        "now_playing": now_playing,
+        "queue": [_serialize_queue_item(item) for item in queue_items],
+        "decks": {
+            "a": now_playing,
+            "b": next_item,
+        },
+        "controls": {
+            "mode": "manual",
+        },
+    }
+    return jsonify(payload)
+
+
 @api_bp.route("/playback/session", methods=["GET", "POST"])
 def playback_session():
     playback = _get_playback_session()
@@ -1647,6 +1868,37 @@ def playback_session():
         "created_at": playback.created_at.isoformat(),
         "updated_at": playback.updated_at.isoformat(),
         "automation_paused": automation_paused,
+    })
+
+
+@api_bp.route("/playback/session/state", methods=["GET", "POST"])
+def playback_session_state():
+    playback = _get_playback_session()
+    now_playing = _now_playing_for(playback.id)
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        timers = payload.get("timers")
+        if not isinstance(timers, dict):
+            timers = {}
+        metadata = _deserialize_metadata(now_playing.metadata)
+        if not isinstance(metadata, dict):
+            metadata = {} if metadata is None else {"raw": metadata}
+        if timers:
+            metadata["timers"] = timers
+        deck = payload.get("deck")
+        if deck:
+            metadata["deck"] = deck
+        if metadata:
+            now_playing.metadata = json.dumps(metadata)
+        now_playing.updated_at = datetime.utcnow()
+        _touch_playback_session(playback)
+        db.session.add(now_playing)
+        db.session.commit()
+        return jsonify({"status": "ok", "timers": timers})
+    return jsonify({
+        "session_id": playback.id,
+        "now_playing": _serialize_now_playing(now_playing),
+        "timers": _playback_timer_snapshot(now_playing),
     })
 
 
@@ -1689,8 +1941,8 @@ def playback_queue_list():
 def playback_queue_enqueue():
     playback = _get_playback_session()
     payload = request.get_json(silent=True) or {}
-    item_type = (payload.get("type") or "").lower()
-    if item_type not in QUEUE_ITEM_TYPES:
+    media_type = (payload.get("type") or "").lower()
+    if media_type not in QUEUE_ITEM_TYPES:
         return jsonify({"status": "error", "message": "invalid_type"}), 400
     items = _queue_items(playback.id)
     position = payload.get("position")
@@ -1709,9 +1961,10 @@ def playback_queue_enqueue():
     item = PlaybackQueueItem(
         session_id=playback.id,
         position=position,
-        item_type=item_type,
-        title=title,
+        media_type=media_type,
+        title=payload.get("title"),
         artist=payload.get("artist"),
+        album=payload.get("album"),
         duration=payload.get("duration"),
         item_metadata=json.dumps(metadata) if metadata is not None else None,
     )
@@ -1821,11 +2074,12 @@ def playback_queue_resume():
     if next_item:
         items = items[1:]
         db.session.delete(next_item)
-        _set_now_playing_from_item(now_playing, next_item, status="playing")
-    else:
-        _set_now_playing_from_item(now_playing, None, status="idle")
+    status = "playing" if next_item else "idle"
+    _set_now_playing_from_item(now_playing, next_item, status=status)
     _resequence_queue(items)
     _touch_playback_session(playback)
+    if next_item:
+        _record_show_automator_playback(playback, item=next_item, status=status)
     db.session.commit()
     return jsonify({
         "status": "ok",
@@ -1883,6 +2137,7 @@ def playback_set_now_playing():
             return jsonify({"status": "error", "message": "item_not_found"}), 404
         db.session.delete(item)
         _set_now_playing_from_item(now_playing, item, status=status)
+        _record_show_automator_playback(playback, item=item, status=status)
     else:
         now_playing.queue_item_id = None
         now_playing.item_type = payload.get("type", now_playing.item_type)
@@ -1891,11 +2146,372 @@ def playback_set_now_playing():
         now_playing.duration = payload.get("duration", now_playing.duration)
         metadata = payload.get("metadata")
         if metadata is not None:
-            now_playing.metadata = json.dumps(metadata)
+            now_playing.item_metadata = json.dumps(metadata)
         now_playing.status = status
         now_playing.started_at = datetime.utcnow()
         now_playing.updated_at = datetime.utcnow()
         db.session.add(now_playing)
+        _record_show_automator_playback(playback, now_playing=now_playing, status=status, metadata=metadata)
     _touch_playback_session(playback)
     db.session.commit()
     return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/show-automator/queue/enqueue", methods=["POST"])
+def show_automator_queue_enqueue():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return playback_queue_enqueue()
+
+
+@api_bp.route("/show-automator/queue/remove", methods=["POST"])
+def show_automator_queue_remove():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return playback_queue_dequeue()
+
+
+@api_bp.route("/show-automator/queue/move", methods=["POST"])
+def show_automator_queue_move():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return playback_queue_move()
+
+
+@api_bp.route("/show-automator/queue/reorder", methods=["POST"])
+def show_automator_queue_reorder():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    order = payload.get("order")
+    if not isinstance(order, list):
+        return jsonify({"status": "error", "message": "order_required"}), 400
+    try:
+        order_ids = [int(item_id) for item_id in order]
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_order"}), 400
+    items = _queue_items(playback.id)
+    if len(order_ids) != len(set(order_ids)):
+        return jsonify({"status": "error", "message": "duplicate_ids"}), 400
+    item_map = {item.id: item for item in items}
+    if set(order_ids) != set(item_map.keys()):
+        return jsonify({"status": "error", "message": "invalid_order"}), 400
+    ordered = [item_map[item_id] for item_id in order_ids]
+    _resequence_queue(ordered)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "queue": [_serialize_queue_item(item) for item in ordered]})
+
+
+@api_bp.route("/show-automator/queue/clear", methods=["POST"])
+def show_automator_queue_clear():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    items = _queue_items(playback.id)
+    for item in items:
+        db.session.delete(item)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "queue": []})
+
+
+@api_bp.route("/show-automator/deck/play", methods=["POST"])
+def show_automator_deck_play():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    now_playing = _now_playing_for(playback.id)
+    item_id = payload.get("item_id")
+    if item_id is not None:
+        try:
+            item_id = int(item_id)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid_item_id"}), 400
+        item = PlaybackQueueItem.query.filter_by(session_id=playback.id, id=item_id).first()
+        if not item:
+            return jsonify({"status": "error", "message": "item_not_found"}), 404
+        db.session.delete(item)
+        _set_now_playing_from_item(now_playing, item, status="playing")
+    elif now_playing.queue_item_id or now_playing.title:
+        now_playing.status = "playing"
+        now_playing.updated_at = datetime.utcnow()
+        db.session.add(now_playing)
+    else:
+        items = _queue_items(playback.id)
+        if not items:
+            return jsonify({"status": "error", "message": "queue_empty"}), 400
+        item = items[0]
+        remaining = items[1:]
+        db.session.delete(item)
+        _set_now_playing_from_item(now_playing, item, status="playing")
+        _resequence_queue(remaining)
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/show-automator/deck/pause", methods=["POST"])
+def show_automator_deck_pause():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    now_playing = _now_playing_for(playback.id)
+    if not now_playing.queue_item_id and not now_playing.title:
+        return jsonify({"status": "error", "message": "nothing_playing"}), 400
+    now_playing.status = "paused"
+    now_playing.updated_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    db.session.add(now_playing)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/show-automator/deck/stop", methods=["POST"])
+def show_automator_deck_stop():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    now_playing = _now_playing_for(playback.id)
+    _set_now_playing_from_item(now_playing, None, status="stopped")
+    _touch_playback_session(playback)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/show-automator/deck/fade", methods=["POST"])
+def show_automator_deck_fade():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return playback_queue_fade()
+
+
+@api_bp.route("/show-automator/deck/seek", methods=["POST"])
+def show_automator_deck_seek():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    position = payload.get("position")
+    if position is None:
+        return jsonify({"status": "error", "message": "position_required"}), 400
+    try:
+        position = float(position)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_position"}), 400
+    now_playing = _now_playing_for(playback.id)
+    if not now_playing.queue_item_id and not now_playing.title:
+        return jsonify({"status": "error", "message": "nothing_playing"}), 400
+    metadata = _deserialize_metadata(now_playing.metadata) or {}
+    metadata["position"] = position
+    now_playing.metadata = json.dumps(metadata)
+    now_playing.updated_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    db.session.add(now_playing)
+    db.session.commit()
+    return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route("/show-automator/deck/next", methods=["POST"])
+def show_automator_deck_next():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return playback_queue_skip()
+
+
+@api_bp.route("/show-automator/overlay/add", methods=["POST"])
+def show_automator_overlay_add():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    payload = request.get_json(silent=True) or {}
+    overlay_type = (payload.get("type") or "").lower()
+    if overlay_type not in {"voicetrack", "sweeper", "overlay"}:
+        return jsonify({"status": "error", "message": "invalid_type"}), 400
+    state = _show_automator_overlay_state()
+    overlay_id = state["next_id"]
+    state["next_id"] += 1
+    item = {
+        "id": overlay_id,
+        "type": overlay_type,
+        "title": payload.get("title"),
+        "artist": payload.get("artist"),
+        "duration": payload.get("duration"),
+        "source": payload.get("source"),
+        "metadata": payload.get("metadata"),
+        "status": "queued",
+        "added_at": datetime.utcnow().isoformat(),
+    }
+    state["items"].append(item)
+    session["show_automator_overlays"] = state
+    return jsonify({"status": "ok", "overlay": item, "overlays": state["items"]})
+
+
+@api_bp.route("/show-automator/overlay/remove", methods=["POST"])
+def show_automator_overlay_remove():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    payload = request.get_json(silent=True) or {}
+    overlay_id = payload.get("overlay_id")
+    if overlay_id is None:
+        return jsonify({"status": "error", "message": "overlay_id_required"}), 400
+    try:
+        overlay_id = int(overlay_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_overlay_id"}), 400
+    state = _show_automator_overlay_state()
+    items = [item for item in state["items"] if item["id"] != overlay_id]
+    if len(items) == len(state["items"]):
+        return jsonify({"status": "error", "message": "overlay_not_found"}), 404
+    state["items"] = items
+    session["show_automator_overlays"] = state
+    return jsonify({"status": "ok", "overlays": state["items"]})
+
+
+def _trigger_overlay(overlay_type: str):
+    payload = request.get_json(silent=True) or {}
+    overlay_id = payload.get("overlay_id")
+    state = _show_automator_overlay_state()
+    if overlay_id is not None:
+        try:
+            overlay_id = int(overlay_id)
+        except (TypeError, ValueError):
+            return jsonify({"status": "error", "message": "invalid_overlay_id"}), 400
+        for item in state["items"]:
+            if item["id"] == overlay_id:
+                item["status"] = "triggered"
+                item["triggered_at"] = datetime.utcnow().isoformat()
+                session["show_automator_overlays"] = state
+                return jsonify({"status": "ok", "overlay": item})
+        return jsonify({"status": "error", "message": "overlay_not_found"}), 404
+    overlay_id = state["next_id"]
+    state["next_id"] += 1
+    item = {
+        "id": overlay_id,
+        "type": overlay_type,
+        "title": payload.get("title"),
+        "artist": payload.get("artist"),
+        "duration": payload.get("duration"),
+        "source": payload.get("source"),
+        "metadata": payload.get("metadata"),
+        "status": "triggered",
+        "added_at": datetime.utcnow().isoformat(),
+        "triggered_at": datetime.utcnow().isoformat(),
+    }
+    state["items"].append(item)
+    session["show_automator_overlays"] = state
+    return jsonify({"status": "ok", "overlay": item})
+
+
+@api_bp.route("/show-automator/overlay/trigger/voicetrack", methods=["POST"])
+def show_automator_overlay_trigger_voicetrack():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return _trigger_overlay("voicetrack")
+
+
+@api_bp.route("/show-automator/overlay/trigger/sweeper", methods=["POST"])
+def show_automator_overlay_trigger_sweeper():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    return _trigger_overlay("sweeper")
+
+
+@api_bp.route("/show-automator/loop/start", methods=["POST"])
+def show_automator_loop_start():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    payload = request.get_json(silent=True) or {}
+    state = _show_automator_loop_state()
+    state["enabled"] = True
+    if "loop_in" in payload:
+        state["loop_in"] = payload.get("loop_in")
+    if "loop_out" in payload:
+        state["loop_out"] = payload.get("loop_out")
+    state["cue_next_intro"] = False
+    state["updated_at"] = datetime.utcnow().isoformat()
+    session["show_automator_loop"] = state
+    return jsonify({"status": "ok", "loop": state})
+
+
+@api_bp.route("/show-automator/loop/stop", methods=["POST"])
+def show_automator_loop_stop():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    state = _show_automator_loop_state()
+    state["enabled"] = False
+    state["cue_next_intro"] = False
+    state["updated_at"] = datetime.utcnow().isoformat()
+    session["show_automator_loop"] = state
+    return jsonify({"status": "ok", "loop": state})
+
+
+@api_bp.route("/show-automator/loop/cue-next-intro", methods=["POST"])
+def show_automator_loop_cue_next_intro():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    state = _show_automator_loop_state()
+    state["cue_next_intro"] = True
+    state["updated_at"] = datetime.utcnow().isoformat()
+    session["show_automator_loop"] = state
+    return jsonify({"status": "ok", "loop": state})
+
+
+@api_bp.route("/show-automator/session", methods=["GET", "POST"])
+def show_automator_session_state():
+    guard = _require_show_automator_access()
+    if guard:
+        return guard
+    playback = _get_playback_session()
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        updates = payload.get("config")
+        if updates is None:
+            updates = payload.get("configuration")
+        if updates is None:
+            return jsonify({"status": "error", "message": "config_required"}), 400
+        if not isinstance(updates, dict):
+            return jsonify({"status": "error", "message": "invalid_config"}), 400
+        config = _show_automator_config()
+        config.update(updates)
+        session["show_automator_config"] = config
+    items = _queue_items(playback.id)
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    overlays = _show_automator_overlay_state()["items"]
+    loop_state = _show_automator_loop_state()
+    config = _show_automator_config()
+    return jsonify({
+        "status": "ok",
+        "session": {
+            "id": playback.id,
+            "show_name": playback.show_name,
+            "dj_name": playback.dj_name,
+            "notes": playback.notes,
+            "created_at": playback.created_at.isoformat(),
+            "updated_at": playback.updated_at.isoformat(),
+        },
+        "queue": [_serialize_queue_item(item) for item in items],
+        "now_playing": now_playing,
+        "overlays": overlays,
+        "loop": loop_state,
+        "config": config,
+    })
