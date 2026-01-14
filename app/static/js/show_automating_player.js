@@ -78,6 +78,7 @@ let automationContext = null;
 let automationPlanKey = null;
 let playbackSession = null;
 let activeShowRunId = null;
+let activeLogSheetId = null;
 let showRunStartPromise = null;
 
 function activePlayer() { return players[currentIdx].el; }
@@ -240,7 +241,7 @@ function updateAutomationModeUI() {
 
 function updateShowLogExport() {
     if (!showLogExport) return;
-    if (!activeShowRunId) {
+    if (!activeLogSheetId) {
         showLogExport.classList.add('disabled');
         showLogExport.setAttribute('aria-disabled', 'true');
         showLogExport.href = '#';
@@ -248,7 +249,7 @@ function updateShowLogExport() {
     }
     showLogExport.classList.remove('disabled');
     showLogExport.removeAttribute('aria-disabled');
-    showLogExport.href = `/logs/download/show-run/csv?show_run_id=${encodeURIComponent(activeShowRunId)}`;
+    showLogExport.href = `/logs/download/csv?sheet_id=${encodeURIComponent(activeLogSheetId)}`;
 }
 
 async function ensureShowRun() {
@@ -265,6 +266,7 @@ async function ensureShowRun() {
     }).then(res => res.json()).then(data => {
         if (data.status === 'ok' && data.show_run_id) {
             activeShowRunId = data.show_run_id;
+            activeLogSheetId = data.log_sheet_id;
             updateShowLogExport();
         }
         return activeShowRunId;
@@ -276,6 +278,7 @@ function buildLogPayload(event, item, extra = {}) {
     if (!item) return null;
     return {
         show_run_id: activeShowRunId,
+        log_sheet_id: activeLogSheetId,
         event,
         type: item.kind || item.category || item.type || 'item',
         title: item.title || item.name || null,
@@ -359,8 +362,11 @@ async function loadAutomationMode() {
         playbackSession = data;
         if (data.show_run_id) {
             activeShowRunId = data.show_run_id;
-            updateShowLogExport();
         }
+        if (data.log_sheet_id) {
+            activeLogSheetId = data.log_sheet_id;
+        }
+        updateShowLogExport();
     } catch (err) {
         // ignore
     }
@@ -1052,7 +1058,7 @@ updateShowLogExport();
 
 window.addEventListener('beforeunload', () => {
     if (!activeShowRunId) return;
-    const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId })], { type: 'application/json' });
+    const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
     navigator.sendBeacon('/api/playback/show/stop', payload);
 });
 

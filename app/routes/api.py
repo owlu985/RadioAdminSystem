@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import time
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timedelta, timezone, date
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort, send_file
 import os
 import shutil
@@ -14,6 +14,7 @@ from app.models import (
     ShowRun,
     StreamProbe,
     LogEntry,
+    LogSheet,
     DJ,
     Show,
     SavedSearch,
@@ -191,6 +192,16 @@ def _resolve_show_metadata(payload: dict) -> dict:
         "dj_last_name": dj_last,
         "dj_name": f"{dj_first} {dj_last}".strip(),
     }
+
+
+def _resolve_show_date(payload: dict) -> date:
+    raw = payload.get("show_date")
+    if isinstance(raw, str) and raw.strip():
+        try:
+            return datetime.strptime(raw, "%Y-%m-%d").date()
+        except ValueError:
+            return datetime.utcnow().date()
+    return datetime.utcnow().date()
 
 
 def _get_playback_session() -> PlaybackSession:
@@ -1705,6 +1716,7 @@ def playback_session():
     return jsonify({
         "id": playback.id,
         "show_run_id": playback.show_run_id,
+        "log_sheet_id": session.get("playback_log_sheet_id"),
         "automation_mode": playback.automation_mode,
         "show_name": playback.show_name,
         "dj_name": playback.dj_name,
@@ -1719,11 +1731,21 @@ def playback_show_start():
     playback = _get_playback_session()
     payload = request.get_json(silent=True) or {}
     meta = _resolve_show_metadata(payload)
+    show_date = _resolve_show_date(payload)
     show_run = start_show_run(
         dj_first_name=meta["dj_first_name"],
         dj_last_name=meta["dj_last_name"],
         show_name=meta["show_name"],
     )
+    log_sheet = LogSheet(
+        dj_first_name=meta["dj_first_name"],
+        dj_last_name=meta["dj_last_name"],
+        show_name=meta["show_name"],
+        show_date=show_date,
+    )
+    db.session.add(log_sheet)
+    db.session.flush()
+    session["playback_log_sheet_id"] = log_sheet.id
     playback.show_run_id = show_run.id
     playback.show_name = meta["show_name"]
     playback.dj_name = meta["dj_name"]
@@ -1731,6 +1753,7 @@ def playback_show_start():
     _touch_playback_session(playback)
     log_entry = LogEntry(
         show_run_id=show_run.id,
+        log_sheet_id=log_sheet.id,
         timestamp=datetime.utcnow(),
         entry_time=datetime.utcnow().time(),
         entry_type="show",
@@ -1744,6 +1767,7 @@ def playback_show_start():
     return jsonify({
         "status": "ok",
         "show_run_id": show_run.id,
+        "log_sheet_id": log_sheet.id,
         "show_name": meta["show_name"],
         "dj_name": meta["dj_name"],
         "started_at": show_run.start_time.isoformat(),
@@ -1755,6 +1779,7 @@ def playback_show_stop():
     playback = _get_playback_session()
     payload = request.get_json(silent=True) or {}
     show_run_id = payload.get("show_run_id") or playback.show_run_id
+    log_sheet_id = payload.get("log_sheet_id") or session.get("playback_log_sheet_id")
     if not show_run_id:
         return jsonify({"status": "error", "message": "show_run_id required"}), 400
     try:
@@ -1769,6 +1794,7 @@ def playback_show_stop():
     _touch_playback_session(playback)
     log_entry = LogEntry(
         show_run_id=show_run.id,
+        log_sheet_id=log_sheet_id,
         timestamp=datetime.utcnow(),
         entry_time=datetime.utcnow().time(),
         entry_type="show",
@@ -1779,9 +1805,11 @@ def playback_show_stop():
     db.session.add(log_entry)
     db.session.add(playback)
     db.session.commit()
+    session.pop("playback_log_sheet_id", None)
     return jsonify({
         "status": "ok",
         "show_run_id": show_run.id,
+        "log_sheet_id": log_sheet_id,
         "ended_at": show_run.end_time.isoformat() if show_run.end_time else None,
     })
 
@@ -1791,8 +1819,11 @@ def playback_log_entry():
     playback = _get_playback_session()
     payload = request.get_json(silent=True) or {}
     show_run_id = payload.get("show_run_id") or playback.show_run_id
+    log_sheet_id = payload.get("log_sheet_id") or session.get("playback_log_sheet_id")
     if not show_run_id:
         return jsonify({"status": "error", "message": "show_run_id required"}), 400
+    if not log_sheet_id:
+        return jsonify({"status": "error", "message": "log_sheet_id required"}), 400
     try:
         show_run_id = int(show_run_id)
     except (TypeError, ValueError):
@@ -1820,6 +1851,7 @@ def playback_log_entry():
         description_payload = None
     entry = LogEntry(
         show_run_id=show_run_id,
+        log_sheet_id=log_sheet_id,
         timestamp=timestamp,
         entry_time=timestamp.time(),
         entry_type=entry_type,
