@@ -100,6 +100,7 @@
                         <button class="btn btn-outline-secondary btn-sm" id="radiodjOverride">RadioDJ Override</button>
                     </div>
                     <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
+                    <div class="text-muted small" id="loopStatusTop">Looping: off</div>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-secondary py-2 px-3 mb-2" id="radiodjStatus">
@@ -107,6 +108,7 @@
                     </div>
                     <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                         <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="text-muted small" id="loopStatus">Looping: off</div>
                         <div class="d-flex gap-2 align-items-center">
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
@@ -189,9 +191,14 @@
                         <button class="btn btn-outline-secondary btn-sm" id="clearQueue">Clear Queue</button>
                         <button class="btn btn-outline-primary btn-sm" id="togglePause">Pause</button>
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
+                        <button class="btn btn-outline-success btn-sm" id="resumeQueue" disabled>Resume</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                        <button class="btn btn-outline-info btn-sm" id="stopLooping" disabled>Stop Looping</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
                         <button class="btn btn-outline-warning btn-sm" id="pushQueue" disabled>Push Queue to RadioDJ</button>
+                    </div>
+                    <div class="mb-2">
+                        <span class="badge text-bg-warning d-none" id="automationPausedBadge">Automation paused at stop cue.</span>
                     </div>
                     <div class="text-muted small mb-2" id="radiodjQueueStatus"></div>
                     <ol class="mb-0" id="queueList"></ol>
@@ -321,6 +328,7 @@
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
     const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
+    const loopStatusEls = [document.getElementById('loopStatus'), document.getElementById('loopStatusTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const libraryMeta = document.getElementById('libraryMeta');
     const libraryPrev = document.getElementById('libraryPrev');
@@ -331,7 +339,9 @@
     const loopBetween = document.getElementById('loopBetween');
     const togglePauseBtn = document.getElementById('togglePause');
     const playNextBtn = document.getElementById('playNext');
+    const resumeQueueBtn = document.getElementById('resumeQueue');
     const fadeOutBtn = document.getElementById('fadeOut');
+    const stopLoopingBtn = document.getElementById('stopLooping');
     const addStopBtn = document.getElementById('addStop');
     const controlModeLabel = document.getElementById('controlModeLabel');
     const radiodjOverrideBtn = document.getElementById('radiodjOverride');
@@ -339,6 +349,7 @@
     const radiodjStatus = document.getElementById('radiodjStatus');
     const radiodjTrack = document.getElementById('radiodjTrack');
     const radiodjQueueStatus = document.getElementById('radiodjQueueStatus');
+    const automationPausedBadge = document.getElementById('automationPausedBadge');
     const introBadge = document.getElementById('introBadge');
     const outroBadge = document.getElementById('outroBadge');
     const nextCueBadge = document.getElementById('nextCueBadge');
@@ -369,6 +380,7 @@
     const libraryPerPage = 50;
     let libraryQuery = '';
     let controlMode = 'rams';
+    let automationPaused = false;
 
     function activePlayer() { return players[currentIdx].el; }
     function otherPlayer() { return players[1 - currentIdx].el; }
@@ -478,6 +490,7 @@
         if (!queue.length) {
             queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
             resetTimers();
+            setAutomationPaused(false);
             if (pushQueueBtn) {
                 pushQueueBtn.disabled = true;
             }
@@ -486,32 +499,42 @@
         queue.forEach((item, idx) => {
             const li = document.createElement('li');
             const meta = [];
+            const isStop = !!item.stop;
             if (item.duration) meta.push(`${item.duration}s`);
             if (item.category) meta.push(item.category);
             if (item.metadata && item.metadata.host) meta.push(item.metadata.host);
             if (item.metadata && item.metadata.notes) meta.push(item.metadata.notes);
             const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
+            const loopBadge = isLoopItem(item) ? '<span class="badge text-bg-info me-1">Loop</span>' : '';
             const displayName = item.title || item.name;
+            const label = isStop ? 'STOP' : (displayName || 'Untitled');
+            const stopBadge = isStop ? '<span class="badge text-bg-warning me-1">Stop</span>' : '';
+            const vtBadge = item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : '';
+            const metaLine = meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : '';
             li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-                <div>${item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : ''}${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+                <div>${stopBadge}${vtBadge}${label}${introMeta} ${metaLine}</div>
                 <div class="d-flex gap-2">
-                    <button class="btn btn-sm btn-outline-secondary" data-cue>Edit</button>
+                    ${isStop ? '' : '<button class=\"btn btn-sm btn-outline-secondary\" data-cue>Edit</button>'}
                     <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
                 </div>
             </div>`;
             li.dataset.index = idx;
             li.tabIndex = 0;
             li.addEventListener('click', (ev) => {
-                if (!ev.target.dataset.remove && controlMode === 'rams') {
+                if (!ev.target.dataset.remove && controlMode === 'rams' && !isStop) {
                     startFrom(idx);
                 }
             });
             li.addEventListener('keydown', (ev) => {
-                if (ev.key === 'Enter' && controlMode === 'rams') {
+                if (ev.key === 'Enter' && controlMode === 'rams' && !isStop) {
                     startFrom(idx);
                 }
             });
             li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
+            const cueBtn = li.querySelector('[data-cue]');
+            if (cueBtn) {
+                cueBtn.addEventListener('click', (ev) => { ev.stopPropagation(); selectCueItem(item); });
+            }
             queueList.appendChild(li);
         });
         if (pushQueueBtn) {
@@ -531,7 +554,7 @@
         if (pushQueueBtn) {
             pushQueueBtn.disabled = !isRadioDJ || !queue.length;
         }
-        [togglePauseBtn, playNextBtn, fadeOutBtn, addStopBtn].forEach(btn => {
+        [togglePauseBtn, playNextBtn, resumeQueueBtn, fadeOutBtn, addStopBtn].forEach(btn => {
             if (btn) btn.disabled = isRadioDJ;
         });
         if (isRadioDJ) {
@@ -539,6 +562,10 @@
             stopAllAudio();
             stopTimer();
             togglePauseBtn.textContent = 'Pause';
+            setAutomationPaused(false);
+        }
+        if (!isRadioDJ && resumeQueueBtn) {
+            resumeQueueBtn.disabled = !automationPaused;
         }
     }
 
@@ -579,6 +606,8 @@
         updateTalkOverlay(null);
         loopBetween.checked = false;
         loopBetween.disabled = true;
+        loopState = { active: false, remaining: null };
+        updateLoopStatus();
         togglePauseBtn.textContent = 'Pause';
     }
 
@@ -718,6 +747,53 @@
 
     function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
 
+    function consumeStopCues() {
+        let removed = false;
+        while (queue.length && queue[0].stop) {
+            queue.shift();
+            removed = true;
+        }
+        return removed;
+    }
+
+    function setAutomationPaused(paused) {
+        automationPaused = paused;
+        if (automationPausedBadge) {
+            automationPausedBadge.classList.toggle('d-none', !paused);
+        }
+        if (resumeQueueBtn) {
+            resumeQueueBtn.disabled = !paused || controlMode === 'radiodj';
+        }
+        if (togglePauseBtn) {
+            togglePauseBtn.disabled = paused || controlMode === 'radiodj';
+        }
+    }
+
+    function pauseAtStopCue() {
+        stopFade();
+        stopAllAudio();
+        setAutomationPaused(true);
+        autoNextTriggered = false;
+        prestartedIdx = null;
+        renderQueue();
+        if (queue.length) {
+            previewCues(queue[0]);
+        }
+    }
+
+    function resumeFromStopCue() {
+        if (!automationPaused) return;
+        setAutomationPaused(false);
+        consumeStopCues();
+        autoNextTriggered = false;
+        prestartedIdx = null;
+        if (queue.length) {
+            startFrom(0);
+        } else {
+            renderQueue();
+        }
+    }
+
     const TOP40_RATE = Math.pow(2, 0.5 / 12);
     const OVERLAY_KINDS = ['voicetrack', 'overlay'];
 
@@ -818,12 +894,11 @@
         if (!item) return;
         if (item.stop) {
             queue.splice(0, idx + 1);
-            shiftPastStops();
-            stopAllAudio();
-            renderQueue();
-            if (queue.length) previewCues(queue[0]);
+            consumeStopCues();
+            pauseAtStopCue();
             return;
         }
+        setAutomationPaused(false);
         stopFade();
         const playerObj = players[preferredIdx];
         const otherObj = players[1 - preferredIdx];
@@ -838,29 +913,54 @@
         playerObj.item = item;
         const cues = item.cues || {};
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
-        loopBetween.disabled = !hasLoop;
-        if (!hasLoop) loopBetween.checked = false;
+        const forceLoop = isLoopItem(item);
+        loopState.active = forceLoop;
+        loopBetween.disabled = !hasLoop || forceLoop;
+        if (forceLoop) {
+            loopBetween.checked = hasLoop;
+        } else if (!hasLoop) {
+            loopBetween.checked = false;
+        }
+        updateLoopStatus();
         autoNextTriggered = false;
         prestartedIdx = null;
         if (idx > 0) queue.splice(0, idx);
         player.src = item.url;
         player.volume = 1;
         applyPlaybackRate(player, item);
+        if (startAt != null && !Number.isNaN(startAt)) {
+            const seekTo = Math.max(0, startAt);
+            const applySeek = () => {
+                if (!Number.isNaN(player.duration)) {
+                    player.currentTime = Math.min(seekTo, player.duration || seekTo);
+                }
+            };
+            if (player.readyState >= 1) {
+                applySeek();
+            } else {
+                player.addEventListener('loadedmetadata', function onLoaded() {
+                    player.removeEventListener('loadedmetadata', onLoaded);
+                    applySeek();
+                });
+            }
+        }
         player.play();
         togglePauseBtn.textContent = 'Pause';
         renderQueue();
     }
 
-    function shiftPastStops() {
-        while (queue.length && queue[0].stop) {
-            queue.shift();
-        }
-    }
-
     function playNext() {
         if (!queue.length) return;
+        if (automationPaused) {
+            resumeFromStopCue();
+            return;
+        }
         queue.shift();
-        shiftPastStops();
+        if (consumeStopCues()) {
+            pauseAtStopCue();
+            return;
+        }
+        setAutomationPaused(false);
         stopFade();
         stopAllAudio();
         autoNextTriggered = false;
@@ -870,6 +970,22 @@
         } else {
             renderQueue();
         }
+    }
+
+    function stopLooping() {
+        if (!loopState.active) return;
+        if (queue.length <= 1) {
+            queue.shift();
+            stopAllAudio();
+            renderQueue();
+            return;
+        }
+        const nextItem = queue[1];
+        const startAt = getIntroCue(nextItem);
+        stopFade();
+        autoNextTriggered = false;
+        prestartedIdx = null;
+        startFrom(1, 1 - currentIdx, startAt);
     }
 
     function startNextWithOverlay() {
@@ -899,7 +1015,11 @@
         current.removeAttribute('src');
 
         queue.shift();
-        shiftPastStops();
+        if (consumeStopCues()) {
+            pauseAtStopCue();
+            return;
+        }
+        setAutomationPaused(false);
 
         const nextIdx = 1 - currentIdx;
         const nextObj = players[nextIdx];
@@ -919,6 +1039,10 @@
     }
 
     function fadeAndNext() {
+        if (automationPaused) {
+            resumeFromStopCue();
+            return;
+        }
         if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
             playNext();
             return;
@@ -942,7 +1066,11 @@
                 current.volume = 1;
                 current.removeAttribute('src');
                 queue.shift();
-                shiftPastStops();
+                if (consumeStopCues()) {
+                    pauseAtStopCue();
+                    return;
+                }
+                setAutomationPaused(false);
                 currentIdx = nextIdx;
                 currentItem = nextItem;
                 prestartedIdx = null;
@@ -996,10 +1124,13 @@
         updateTalkOverlay(cues, player.currentTime, player.duration);
 
         // Auto-advance when start_next cue is hit.
-        if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
+        if (!(loopState.active || loopBetween.checked) && !autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
             resetTimers();
             if (queue.length > 1) {
+                if (queue[1] && queue[1].stop) {
+                    return;
+                }
                 if (overlayEligible(currentItem)) {
                     startNextWithOverlay();
                 } else {
@@ -1008,7 +1139,15 @@
             }
         }
 
-        if (loopBetween.checked && cues.loop_in != null && cues.loop_out != null) {
+        const shouldLoop = (loopState.active || loopBetween.checked) && cues.loop_in != null && cues.loop_out != null;
+        if (shouldLoop) {
+            loopState.remaining = Math.max(0, cues.loop_out - player.currentTime);
+        } else {
+            loopState.remaining = null;
+        }
+        updateLoopStatus();
+
+        if (shouldLoop) {
             const loopIn = cues.loop_in;
             const loopOut = cues.loop_out;
             if (player.currentTime >= loopOut - 0.05) {
@@ -1020,6 +1159,9 @@
         // Voice track smart start for next track intro/outro.
         if (!prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
             const nextItem = queue[1];
+            if (nextItem && nextItem.stop) {
+                return;
+            }
             const nextCues = nextItem.cues || {};
             const target = nextCues.intro || nextCues.outro;
             if (target && remaining <= target + 0.25) {
@@ -1053,7 +1195,11 @@
         if (idx !== currentIdx) return;
         stopTimer();
         queue.shift();
-        shiftPastStops();
+        if (consumeStopCues()) {
+            pauseAtStopCue();
+            return;
+        }
+        setAutomationPaused(false);
         if (queue.length) {
             if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
                 currentIdx = prestartedIdx;
@@ -1075,6 +1221,7 @@
         queue.length = 0;
         stopFade();
         stopAllAudio();
+        setAutomationPaused(false);
         renderQueue();
     });
     togglePauseBtn.addEventListener('click', () => {
@@ -1089,9 +1236,16 @@
         }
     });
     playNextBtn.addEventListener('click', playNext);
+    resumeQueueBtn.addEventListener('click', resumeFromStopCue);
     addStopBtn.addEventListener('click', addStopCue);
     fadeOutBtn.addEventListener('click', fadeAndNext);
+    if (stopLoopingBtn) {
+        stopLoopingBtn.addEventListener('click', stopLooping);
+    }
     pushQueueBtn.addEventListener('click', pushQueueToRadioDJ);
+    if (loopBetween) {
+        loopBetween.addEventListener('change', updateLoopStatus);
+    }
     document.getElementById('overlayPlay').addEventListener('click', () => {
         const url = document.getElementById('overlayUrl').value.trim();
         if (!url) return;
