@@ -287,14 +287,25 @@ def _push_icecast_metadata(track: dict) -> None:
         return
     artist = _strip_p_tag(track.get("artist") or track.get("Artist"))
     title = _strip_p_tag(track.get("title") or track.get("Title"))
+    song_override = _strip_p_tag(track.get("song") or track.get("Song"))
     if not title and not artist:
         return
-    song = " - ".join([part for part in [artist, title] if part])
-    params = {"mount": mount, "mode": "updinfo", "song": song}
+    song = song_override or " - ".join([part for part in [artist, title] if part])
+    params = {
+        "mount": mount,
+        "mode": "updinfo",
+        "song": song,
+        "artist": artist or "",
+        "title": title or "",
+    }
     username = current_app.config.get("ICECAST_USERNAME") or "admin"
     password = current_app.config.get("ICECAST_PASSWORD")
     try:
-        requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+        resp = requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+        if resp.ok:
+            logger.info("Icecast metadata update ok: %s", song)
+        else:
+            logger.warning("Icecast metadata update failed: %s (status %s)", song, resp.status_code)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Icecast metadata update failed: %s", exc)
 
@@ -308,7 +319,7 @@ def _strip_p_tag(value: Optional[str]) -> Optional[str]:
     return text
 
 
-def _get_cached_radiodj_nowplaying() -> Optional[dict]:
+def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dict]:
     now_ts = time.time()
     last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
     if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
@@ -321,8 +332,37 @@ def _get_cached_radiodj_nowplaying() -> Optional[dict]:
     if payload:
         track = _extract_radiodj_track(payload)
         if track:
-            _RADIODJ_NOWPLAYING_CACHE["payload"] = track
-            _push_icecast_metadata(track)
+            cached_track = _RADIODJ_NOWPLAYING_CACHE.get("payload")
+            if cached_track != track:
+                _RADIODJ_NOWPLAYING_CACHE["payload"] = track
+                if push_icecast:
+                    _push_icecast_metadata(track)
+                show = get_current_show()
+                show_run = None
+                if show:
+                    dj_first, dj_last = show_primary_host(show)
+                    show_run = get_or_create_active_run(
+                        show_name=show_display_title(show),
+                        dj_first_name=dj_first,
+                        dj_last_name=dj_last,
+                    )
+                log_q = LogEntry.query.filter_by(entry_type="music")
+                total = log_q.count()
+                if total >= 10:
+                    excess = total - 9
+                    oldest = log_q.order_by(LogEntry.timestamp.asc()).limit(excess).all()
+                    for entry in oldest:
+                        db.session.delete(entry)
+                db.session.add(LogEntry(
+                    show_run_id=show_run.id if show_run else None,
+                    timestamp=datetime.utcnow(),
+                    message="Now playing",
+                    entry_type="music",
+                    title=track.get("title"),
+                    artist=track.get("artist"),
+                    description=track.get("album"),
+                ))
+                db.session.commit()
     return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
 
 
@@ -331,14 +371,9 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         return None
     track_payload = payload.get("CurrentTrack") if isinstance(payload.get("CurrentTrack"), dict) else payload
     raw_track_type = track_payload.get("TrackType") or track_payload.get("tracktype") or ""
-    if isinstance(raw_track_type, (int, float)):
-        is_music = int(raw_track_type) == 0
-    else:
-        track_type = str(raw_track_type).strip().lower()
-        if track_type.isdigit():
-            is_music = int(track_type) == 0
-        else:
-            is_music = track_type == "music"
+    track_type = str(raw_track_type).strip().lower()
+    track_type_label = track_type or None
+    is_music = not track_type or track_type == "music"
     if not is_music:
         return None
     artist = _strip_p_tag(track_payload.get("Artist") or track_payload.get("artist"))
@@ -350,6 +385,8 @@ def _extract_radiodj_track(payload: dict) -> Optional[dict]:
         "album": album,
         "title": title,
         "started_at": started_at,
+        "track_type": track_type_label,
+        "is_music": is_music,
     }
 
 
@@ -408,7 +445,7 @@ def _find_next_show(now: datetime) -> tuple[Show | None, tuple[datetime, datetim
     return show_obj, (start_dt, end_dt), absence
 
 
-@api_bp.route("/now")
+@api_bp.route("/now", strict_slashes=False)
 def now_playing():
     now = datetime.utcnow()
     show = get_current_show()
@@ -421,12 +458,10 @@ def now_playing():
             "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
             "override_enabled": override_enabled,
         }
-        if override_enabled and current_app.config.get("RADIODJ_HOOK_ENABLED"):
-            rdj = RadioDJClient()
-            rdj_payload = rdj.now_playing()
-            track = _extract_radiodj_track(rdj_payload or {})
+        if override_enabled:
+            track = _get_cached_radiodj_nowplaying()
             if track:
-                base.update({"status": "automation", "source": "radiodj", "track": track})
+                base.update({"status": "automation", "source": "radiodj_cached", "track": track})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -487,7 +522,7 @@ def now_playing():
     return jsonify(payload)
 
 
-@api_bp.route("/now/widget")
+@api_bp.route("/now/widget", strict_slashes=False)
 def now_widget():
     """
     Widget-friendly now-playing: if a scheduled show is active, show it; otherwise
@@ -501,14 +536,6 @@ def now_widget():
         base = base or {}
         base.update({"status": "automation", "source": "radiodj_cached", "track": nowplaying_payload})
         return jsonify(base)
-    if base and base.get("override_enabled") and current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        rdj = RadioDJClient()
-        rdj_payload = rdj.now_playing()
-        track = _extract_radiodj_track(rdj_payload or {})
-        if track:
-            base = base or {}
-            base.update({"status": "automation", "source": "radiodj", "track": track})
-            return jsonify(base)
     return jsonify(base or {"status": "off_air"})
 
 
@@ -1469,8 +1496,6 @@ def list_psas():
 
 @api_bp.route("/radiodj/now-playing")
 def radiodj_now_playing():
-    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        return jsonify({"status": "disabled", "track": None}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "disabled", "track": None}), 503
@@ -1482,8 +1507,6 @@ def radiodj_now_playing():
 
 @api_bp.route("/radiodj/queue", methods=["POST"])
 def radiodj_queue():
-    if not current_app.config.get("RADIODJ_HOOK_ENABLED"):
-        return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
     client = RadioDJClient()
     if not client.enabled:
         return jsonify({"status": "error", "message": "radiodj_disabled"}), 503
