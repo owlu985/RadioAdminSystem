@@ -1,9 +1,10 @@
 from datetime import datetime, date, time
+import json
 import csv
 import io
 import zipfile
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
-from app.models import db, LogEntry, LogSheet, DJ, Show
+from app.models import db, LogEntry, LogSheet, DJ, Show, ShowRun
 from app.utils import get_current_show, show_display_title, show_primary_host
 from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.logger import init_logger
@@ -171,6 +172,61 @@ def download_csv():
         ])
     resp = make_response(output.getvalue())
     resp.headers["Content-Disposition"] = "attachment; filename=logs.csv"
+    resp.headers["Content-Type"] = "text/csv"
+    return resp
+
+
+@logs_bp.route("/download/show-run/csv")
+def download_show_run_csv():
+    show_run_id = request.args.get("show_run_id", type=int)
+    if not show_run_id:
+        return make_response("show_run_id required", 400)
+    show_run = ShowRun.query.get(show_run_id)
+    entries = LogEntry.query.filter_by(show_run_id=show_run_id).order_by(LogEntry.timestamp.asc()).all()
+    output = io.StringIO()
+    writer = csv.writer(output)
+    writer.writerow([
+        "Show Run ID",
+        "Show Name",
+        "DJ",
+        "Timestamp",
+        "Type",
+        "Title",
+        "Artist",
+        "Message",
+        "Duration",
+        "Event",
+        "Reason",
+    ])
+    show_name = show_run.show_name if show_run else ""
+    dj_name = f"{show_run.dj_first_name} {show_run.dj_last_name}".strip() if show_run else ""
+    for entry in entries:
+        duration = ""
+        event = ""
+        reason = ""
+        if entry.description:
+            try:
+                payload = json.loads(entry.description)
+                duration = payload.get("duration", "")
+                event = payload.get("event", "")
+                reason = payload.get("reason", "")
+            except json.JSONDecodeError:
+                duration = ""
+        writer.writerow([
+            show_run_id,
+            show_name,
+            dj_name,
+            entry.timestamp.isoformat(),
+            entry.entry_type or "",
+            entry.title or "",
+            entry.artist or "",
+            entry.message or "",
+            duration,
+            event,
+            reason,
+        ])
+    resp = make_response(output.getvalue())
+    resp.headers["Content-Disposition"] = f"attachment; filename=show-run-{show_run_id}.csv"
     resp.headers["Content-Type"] = "text/csv"
     return resp
 

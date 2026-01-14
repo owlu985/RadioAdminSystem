@@ -17,6 +17,7 @@ const fadeOutBtn = document.getElementById('fadeOut');
 const addStopBtn = document.getElementById('addStop');
 const modeBadgeTop = document.getElementById('modeBadgeTop');
 const modeToggleButtons = document.querySelectorAll('[data-automation-mode]');
+const showLogExport = document.getElementById('showLogExport');
 const introBadge = document.getElementById('introBadge');
 const outroBadge = document.getElementById('outroBadge');
 const talkOverlay = document.getElementById('talkOverlay');
@@ -75,6 +76,10 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
+let playbackSession = null;
+let activeShowRunId = null;
+let activeLogSheetId = null;
+let showRunStartPromise = null;
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -206,12 +211,12 @@ function renderQueue() {
         li.tabIndex = 0;
         li.addEventListener('click', (ev) => {
             if (!ev.target.dataset.remove) {
-                startFrom(idx);
+                startFrom(idx, currentIdx, 'manual');
             }
         });
         li.addEventListener('keydown', (ev) => {
             if (ev.key === 'Enter') {
-                startFrom(idx);
+                startFrom(idx, currentIdx, 'manual');
             }
         });
         li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
@@ -232,6 +237,99 @@ function updateAutomationModeUI() {
         btn.className = `badge rounded-pill ${active ? activeClass : 'text-bg-light border'}`;
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
+}
+
+function updateShowLogExport() {
+    if (!showLogExport) return;
+    if (!activeLogSheetId) {
+        showLogExport.classList.add('disabled');
+        showLogExport.setAttribute('aria-disabled', 'true');
+        showLogExport.href = '#';
+        return;
+    }
+    showLogExport.classList.remove('disabled');
+    showLogExport.removeAttribute('aria-disabled');
+    showLogExport.href = `/logs/download/csv?sheet_id=${encodeURIComponent(activeLogSheetId)}`;
+}
+
+async function ensureShowRun() {
+    if (activeShowRunId) return activeShowRunId;
+    if (showRunStartPromise) return showRunStartPromise;
+    const payload = {
+        show_name: playbackSession?.show_name || undefined,
+        dj_name: playbackSession?.dj_name || undefined,
+    };
+    showRunStartPromise = fetch('/api/playback/show/start', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).then(res => res.json()).then(data => {
+        if (data.status === 'ok' && data.show_run_id) {
+            activeShowRunId = data.show_run_id;
+            activeLogSheetId = data.log_sheet_id;
+            updateShowLogExport();
+        }
+        return activeShowRunId;
+    }).catch(() => null).finally(() => { showRunStartPromise = null; });
+    return showRunStartPromise;
+}
+
+function buildLogPayload(event, item, extra = {}) {
+    if (!item) return null;
+    return {
+        show_run_id: activeShowRunId,
+        log_sheet_id: activeLogSheetId,
+        event,
+        type: item.kind || item.category || item.type || 'item',
+        title: item.title || item.name || null,
+        artist: item.artist || null,
+        duration: item.duration || null,
+        metadata: item.metadata || null,
+        reason: extra.reason,
+        timestamp: new Date().toISOString(),
+    };
+}
+
+async function logPlaybackEvent(event, item, extra = {}) {
+    if (!item) return;
+    await ensureShowRun();
+    if (!activeShowRunId) return;
+    const payload = buildLogPayload(event, item, extra);
+    if (!payload) return;
+    fetch('/api/playback/log', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+    }).catch(() => {});
+}
+
+function ensureLogState(item) {
+    if (!item) return null;
+    if (!item._logState) {
+        item._logState = { started: false, ended: false, inserted: false };
+    }
+    return item._logState;
+}
+
+function logItemStart(item, reason = 'play') {
+    const state = ensureLogState(item);
+    if (!state || state.started) return;
+    state.started = true;
+    logPlaybackEvent('start', item, { reason });
+}
+
+function logItemEnd(item, reason = 'end') {
+    const state = ensureLogState(item);
+    if (!state || state.ended) return;
+    state.ended = true;
+    logPlaybackEvent('end', item, { reason });
+}
+
+function logItemInsert(item, reason = 'manual') {
+    const state = ensureLogState(item);
+    if (!state || state.inserted) return;
+    state.inserted = true;
+    logPlaybackEvent('insert', item, { reason });
 }
 
 function resetTimers() {
@@ -261,6 +359,14 @@ async function loadAutomationMode() {
         if (res.ok && data.automation_mode) {
             automationMode = data.automation_mode;
         }
+        playbackSession = data;
+        if (data.show_run_id) {
+            activeShowRunId = data.show_run_id;
+        }
+        if (data.log_sheet_id) {
+            activeLogSheetId = data.log_sheet_id;
+        }
+        updateShowLogExport();
     } catch (err) {
         // ignore
     }
@@ -445,7 +551,7 @@ function scheduleAutomationPlan(plan, context) {
             if (automationMode !== 'automation') return;
             if (currentItem !== context.currentItem) return;
             if (queue.length > 1) {
-                fadeAndNext();
+                fadeAndNext('automation');
             } else {
                 fadeOutCurrent();
             }
@@ -520,8 +626,9 @@ function stopAllAudio() {
 
 function addToQueue(item) {
     queue.push(item);
+    logItemInsert(item);
     if (queue.length === 1 && activePlayer().paused) {
-        startFrom(0);
+        startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
 }
@@ -529,8 +636,9 @@ function addToQueue(item) {
 function insertToQueue(item, idx) {
     const position = Math.max(0, Math.min(queue.length, idx));
     queue.splice(position, 0, item);
+    logItemInsert(item);
     if (position === 0 && activePlayer().paused) {
-        startFrom(0);
+        startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
 }
@@ -572,11 +680,14 @@ function overlayEligible(item) {
     return item && OVERLAY_KINDS.includes(item.kind);
 }
 
-function startFrom(idx, preferredIdx = currentIdx) {
+function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     const item = queue[idx];
     if (!item) return;
     if (item.stop) {
         queue.splice(0, idx + 1);
+        if (currentItem) {
+            logItemEnd(currentItem, 'stop');
+        }
         shiftPastStops();
         stopAllAudio();
         renderQueue();
@@ -588,6 +699,9 @@ function startFrom(idx, preferredIdx = currentIdx) {
     const otherObj = players[1 - preferredIdx];
     const player = playerObj.el;
     const other = otherObj.el;
+    if (currentItem && currentItem !== item) {
+        logItemEnd(currentItem, 'skip');
+    }
     other.pause();
     other.removeAttribute('src');
     other.volume = 1;
@@ -606,6 +720,7 @@ function startFrom(idx, preferredIdx = currentIdx) {
     player.volume = 1;
     applyPlaybackRate(player, item);
     player.play();
+    logItemStart(item, reason);
     togglePauseBtn.textContent = 'Pause';
     renderQueue();
 }
@@ -616,8 +731,11 @@ function shiftPastStops() {
     }
 }
 
-function playNext() {
+function playNext(reason = 'skip') {
     if (!queue.length) return;
+    if (currentItem) {
+        logItemEnd(currentItem, reason);
+    }
     queue.shift();
     shiftPastStops();
     stopFade();
@@ -625,15 +743,15 @@ function playNext() {
     autoNextTriggered = false;
     prestartedIdx = null;
     if (queue.length) {
-        startFrom(0);
+        startFrom(0, currentIdx, 'auto');
     } else {
         renderQueue();
     }
 }
 
-function startNextWithOverlay() {
+function startNextWithOverlay(reason = 'auto') {
     if (queue.length <= 1) {
-        fadeAndNext();
+        fadeAndNext(reason);
         return;
     }
 
@@ -673,13 +791,17 @@ function startNextWithOverlay() {
     autoNextTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
+    if (currentPlaying) {
+        logItemEnd(currentPlaying, reason);
+    }
+    logItemStart(nextItem, reason);
     startTimer();
     renderQueue();
 }
 
-function fadeAndNext() {
+function fadeAndNext(reason = 'auto') {
     if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
-        playNext();
+        playNext(reason);
         return;
     }
     const current = activePlayer();
@@ -693,6 +815,10 @@ function fadeAndNext() {
     nextPlayer.volume = 1;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
+    if (currentItem) {
+        logItemEnd(currentItem, reason);
+    }
+    logItemStart(nextItem, reason);
     fadeTimer = setInterval(() => {
         current.volume = Math.max(0, current.volume - 0.06);
         if (current.volume <= 0.02) {
@@ -773,9 +899,9 @@ function updateTimer() {
             resetTimers();
             if (queue.length > 1) {
                 if (overlayEligible(currentItem)) {
-                    startNextWithOverlay();
+                    startNextWithOverlay('auto');
                 } else {
-                    fadeAndNext();
+                    fadeAndNext('auto');
                 }
             }
         }
@@ -815,6 +941,9 @@ function stopTimer() { if (timerInterval) { clearInterval(timerInterval); timerI
 function handleEnded(idx) {
     if (idx !== currentIdx) return;
     stopTimer();
+    if (currentItem) {
+        logItemEnd(currentItem, 'ended');
+    }
     queue.shift();
     shiftPastStops();
     if (queue.length) {
@@ -823,10 +952,11 @@ function handleEnded(idx) {
             currentItem = queue[0];
             prestartedIdx = null;
             applyPlaybackRate();
+            logItemStart(currentItem, 'auto');
             startTimer();
             renderQueue();
         } else {
-            startFrom(0);
+            startFrom(0, currentIdx, 'auto');
         }
     } else {
         stopAllAudio();
@@ -851,9 +981,9 @@ togglePauseBtn.addEventListener('click', () => {
         togglePauseBtn.textContent = 'Play';
     }
 });
-playNextBtn.addEventListener('click', playNext);
+playNextBtn.addEventListener('click', () => playNext('manual'));
 addStopBtn.addEventListener('click', addStopCue);
-fadeOutBtn.addEventListener('click', fadeAndNext);
+fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
 document.getElementById('overlayPlay').addEventListener('click', () => {
     const url = document.getElementById('overlayUrl').value.trim();
     if (!url) return;
@@ -923,7 +1053,14 @@ async function loadPSAs() {
     }
 }
 loadPSAs();
-loadAutomationMode();
+loadAutomationMode().then(() => ensureShowRun());
+updateShowLogExport();
+
+window.addEventListener('beforeunload', () => {
+    if (!activeShowRunId) return;
+    const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
+    navigator.sendBeacon('/api/playback/show/stop', payload);
+});
 
 libraryPrev.addEventListener('click', async () => {
     if (libraryPage <= 1) return;
