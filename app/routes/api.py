@@ -1606,6 +1606,34 @@ def radiodj_autodj():
     return jsonify(result)
 
 
+@api_bp.route("/show-automator/state", methods=["GET"])
+def show_automator_state():
+    playback = _get_playback_session()
+    queue_items = _queue_items(playback.id)
+    now_playing = _serialize_now_playing(_now_playing_for(playback.id))
+    next_item = _serialize_queue_item(queue_items[0]) if queue_items else None
+    payload = {
+        "server_time": datetime.utcnow().isoformat(),
+        "session": {
+            "id": playback.id,
+            "show_name": playback.show_name,
+            "dj_name": playback.dj_name,
+            "notes": playback.notes,
+            "updated_at": playback.updated_at.isoformat(),
+        },
+        "now_playing": now_playing,
+        "queue": [_serialize_queue_item(item) for item in queue_items],
+        "decks": {
+            "a": now_playing,
+            "b": next_item,
+        },
+        "controls": {
+            "mode": "manual",
+        },
+    }
+    return jsonify(payload)
+
+
 @api_bp.route("/playback/session", methods=["GET", "POST"])
 def playback_session():
     playback = _get_playback_session()
