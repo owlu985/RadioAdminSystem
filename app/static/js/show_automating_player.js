@@ -69,6 +69,12 @@ let libraryTotal = 0;
 const libraryPerPage = 50;
 let libraryQuery = '';
 let automationMode = 'manual';
+let automationPollTimer = null;
+let automationPlan = null;
+let automationOverlayTimer = null;
+let automationFadeTimer = null;
+let automationContext = null;
+let automationPlanKey = null;
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -259,6 +265,7 @@ async function loadAutomationMode() {
         // ignore
     }
     updateAutomationModeUI();
+    toggleAutomationPolling();
 }
 
 async function setAutomationMode(mode) {
@@ -277,6 +284,207 @@ async function setAutomationMode(mode) {
         automationMode = mode;
     }
     updateAutomationModeUI();
+    toggleAutomationPolling();
+}
+
+function toggleAutomationPolling() {
+    if (automationMode === 'automation') {
+        startAutomationPolling();
+    } else {
+        stopAutomationPolling();
+    }
+}
+
+function startAutomationPolling() {
+    if (automationPollTimer) return;
+    automationPollTimer = setInterval(automationTick, 1000);
+    automationTick();
+}
+
+function stopAutomationPolling() {
+    if (automationPollTimer) {
+        clearInterval(automationPollTimer);
+        automationPollTimer = null;
+    }
+    automationPlan = null;
+    automationContext = null;
+    automationPlanKey = null;
+    clearAutomationTimers();
+}
+
+function clearAutomationTimers() {
+    if (automationOverlayTimer) {
+        clearTimeout(automationOverlayTimer);
+        automationOverlayTimer = null;
+    }
+    if (automationFadeTimer) {
+        clearTimeout(automationFadeTimer);
+        automationFadeTimer = null;
+    }
+}
+
+function automationKindFor(item) {
+    if (!item) return '';
+    if (item.kind) return item.kind;
+    if (item.stop) return 'stop';
+    const category = (item.category || '').toLowerCase();
+    if (category === 'music') return 'music';
+    if (category) return category;
+    return 'music';
+}
+
+function buildAutomationItem(item, durationOverride = null) {
+    if (!item) return null;
+    const cues = item.cues || {};
+    const duration = durationOverride != null && !isNaN(durationOverride)
+        ? durationOverride
+        : (item.duration || 0);
+    return {
+        kind: automationKindFor(item),
+        title: item.title || item.name || '',
+        duration,
+        cues: {
+            cue_in: cues.cue_in,
+            cue_out: cues.cue_out,
+            intro: cues.intro,
+            outro: cues.outro,
+            start_next: cues.start_next,
+        },
+    };
+}
+
+function automationItemKey(item) {
+    if (!item) return '';
+    return item.token || item.id || item.name || item.title || item.url || '';
+}
+
+function buildAutomationPlanKey(plan, context) {
+    if (!plan || !context) return '';
+    return [
+        automationItemKey(context.currentItem),
+        automationItemKey(context.overlayItem),
+        automationItemKey(context.nextItem),
+        plan.paused ? 'paused' : 'active',
+        plan.fade ? plan.fade.action : '',
+        plan.overlay ? plan.overlay.status : '',
+    ].join('|');
+}
+
+function getAutomationQueueContext() {
+    if (!currentItem) return null;
+    const remaining = queue.slice(1);
+    const overlayItem = remaining.find(item => overlayEligible(item)) || null;
+    const nextItem = remaining.find(item => !overlayEligible(item) && !item.stop) || null;
+    const currentDuration = activePlayer().duration;
+    return {
+        currentItem,
+        overlayItem,
+        nextItem,
+        currentPayload: buildAutomationItem(currentItem, currentDuration),
+        overlayPayload: buildAutomationItem(overlayItem),
+        nextPayload: buildAutomationItem(nextItem),
+    };
+}
+
+async function automationTick() {
+    try {
+        await fetch('/api/show-automator/state');
+    } catch (err) {
+        // ignore
+    }
+
+    if (automationMode !== 'automation') return;
+    if (!currentItem) return;
+    const context = getAutomationQueueContext();
+    if (!context || !context.currentPayload) return;
+    const player = activePlayer();
+    const position = (!player || isNaN(player.currentTime)) ? 0 : player.currentTime;
+    const payload = {
+        current_position: position,
+        current: context.currentPayload,
+        next: context.nextPayload,
+        overlay: context.overlayPayload,
+    };
+    try {
+        const res = await fetch('/api/show-automator/plan', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (res.ok && data.plan) {
+            automationPlan = data.plan;
+            automationContext = context;
+            scheduleAutomationPlan(data.plan, context);
+        }
+    } catch (err) {
+        // ignore
+    }
+}
+
+function scheduleAutomationPlan(plan, context) {
+    if (!plan || automationMode !== 'automation' || !context) return;
+    const key = buildAutomationPlanKey(plan, context);
+    if (automationPlanKey === key) return;
+    automationPlanKey = key;
+    clearAutomationTimers();
+    if (plan.paused) return;
+
+    if (plan.overlay && plan.overlay.status === 'scheduled' && context.overlayItem) {
+        const delay = Math.max(0, (plan.overlay.start_in || 0) * 1000);
+        automationOverlayTimer = setTimeout(() => {
+            if (automationMode !== 'automation') return;
+            if (currentItem !== context.currentItem) return;
+            playOverlayItem(context.overlayItem);
+        }, delay);
+    }
+
+    if (plan.fade && plan.fade.start_in != null && ['crossfade', 'fade_out'].includes(plan.fade.action)) {
+        const delay = Math.max(0, plan.fade.start_in * 1000);
+        automationFadeTimer = setTimeout(() => {
+            if (automationMode !== 'automation') return;
+            if (currentItem !== context.currentItem) return;
+            if (queue.length > 1) {
+                fadeAndNext();
+            } else {
+                fadeOutCurrent();
+            }
+        }, delay);
+    }
+}
+
+function playOverlayItem(item) {
+    if (!item || !item.url) return;
+    const idx = queue.indexOf(item);
+    if (idx !== -1) {
+        queue.splice(idx, 1);
+        renderQueue();
+    }
+    overlayPlayer.src = item.url;
+    overlayPlayer.currentTime = 0;
+    overlayPlayer.volume = 1;
+    try { overlayPlayer.play(); } catch (e) { /* ignore */ }
+}
+
+function fadeOutCurrent() {
+    const player = activePlayer();
+    if (!player || !player.src) return;
+    stopFade();
+    fadeTimer = setInterval(() => {
+        player.volume = Math.max(0, player.volume - 0.06);
+        if (player.volume <= 0.02) {
+            stopFade();
+            player.pause();
+            player.volume = 1;
+            player.removeAttribute('src');
+            if (queue.length && queue[0] === currentItem) {
+                queue.shift();
+            }
+            currentItem = null;
+            resetTimers();
+            renderQueue();
+        }
+    }, 80);
 }
 
 function previewCues(item) {
@@ -333,7 +541,7 @@ function removeFromQueue(idx) {
     renderQueue();
 }
 
-function addStopCue() { queue.push({ name: 'STOP', stop: true }); renderQueue(); }
+function addStopCue() { queue.push({ name: 'STOP', stop: true, kind: 'stop' }); renderQueue(); }
 
 const TOP40_RATE = Math.pow(2, 0.5 / 12);
 const OVERLAY_KINDS = ['voicetrack', 'overlay'];
@@ -558,15 +766,17 @@ function updateTimer() {
     }
     updateTalkOverlay(cues, player.currentTime, player.duration);
 
-    // Auto-advance when start_next cue is hit.
-    if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
-        autoNextTriggered = true;
-        resetTimers();
-        if (queue.length > 1) {
-            if (overlayEligible(currentItem)) {
-                startNextWithOverlay();
-            } else {
-                fadeAndNext();
+    if (automationMode !== 'automation') {
+        // Auto-advance when start_next cue is hit.
+        if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
+            autoNextTriggered = true;
+            resetTimers();
+            if (queue.length > 1) {
+                if (overlayEligible(currentItem)) {
+                    startNextWithOverlay();
+                } else {
+                    fadeAndNext();
+                }
             }
         }
     }
@@ -581,7 +791,7 @@ function updateTimer() {
     }
 
     // Voice track smart start for next track intro/outro.
-    if (!prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
+    if (automationMode !== 'automation' && !prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
         const nextItem = queue[1];
         const nextCues = nextItem.cues || {};
         const target = nextCues.intro || nextCues.outro;
