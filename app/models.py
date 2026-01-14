@@ -1,5 +1,6 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from sqlalchemy.orm import synonym
 from sqlalchemy.types import Text
 
 db = SQLAlchemy()
@@ -144,9 +145,14 @@ class PlaybackSession(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     show_run_id = db.Column(db.Integer, db.ForeignKey("show_run.id"), nullable=True)
+    show_name = db.Column(db.String(255), nullable=True)
+    dj_name = db.Column(db.String(255), nullable=True)
+    notes = db.Column(db.Text, nullable=True)
     started_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
     ended_at = db.Column(db.DateTime, nullable=True)
     automation_mode = db.Column(db.String(32), default="manual", nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     show_run = db.relationship("ShowRun", backref="playback_sessions")
 
@@ -157,13 +163,16 @@ class PlaybackQueueItem(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     session_id = db.Column(db.Integer, db.ForeignKey("playback_session.id"), nullable=False)
     position = db.Column(db.Integer, nullable=False, default=0)
-    media_type = db.Column(db.String(32), nullable=False)
+    item_type = db.Column("media_type", db.String(32), nullable=False)
+    media_type = synonym("item_type")
+    kind = db.Column(db.String(32), nullable=True)
     path = db.Column(db.String(500), nullable=True)
     title = db.Column(db.String(255), nullable=True)
     artist = db.Column(db.String(255), nullable=True)
     album = db.Column(db.String(255), nullable=True)
     duration = db.Column(db.Float, nullable=True)
     item_metadata = db.Column("metadata", Text, nullable=True)
+    cues = db.Column(Text, nullable=True)
     created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
     session = db.relationship("PlaybackSession", backref="queue_items")
@@ -223,6 +232,20 @@ class NowPlayingState(db.Model):
     __tablename__ = "now_playing_state"
 
     id = db.Column(db.Integer, primary_key=True)
+    session_id = db.Column(db.Integer, nullable=True)
+    queue_item_id = db.Column(db.Integer, nullable=True)
+    item_type = db.Column(db.String(32), nullable=True)
+    kind = db.Column(db.String(32), nullable=True)
+    title = db.Column(db.String(255), nullable=True)
+    artist = db.Column(db.String(255), nullable=True)
+    duration = db.Column(db.Float, nullable=True)
+    item_metadata = db.Column("metadata", Text, nullable=True)
+    status = db.Column(db.String(32), nullable=True)
+    started_at = db.Column(db.DateTime, nullable=True)
+    cue_in = db.Column(db.Float, nullable=True)
+    cue_out = db.Column(db.Float, nullable=True)
+    fade_out = db.Column(db.Float, nullable=True)
+    cues = db.Column(Text, nullable=True)
     override_enabled = db.Column(db.Boolean, default=False, nullable=False)
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
