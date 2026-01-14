@@ -150,6 +150,29 @@
             </ul>
             <div class="tab-content pt-3" id="libraryTabsContent">
                 <div class="tab-pane fade show active" id="music" role="tabpanel" aria-labelledby="music-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="musicSearch">Search</label>
+                            <input class="form-control" id="musicSearch" type="text" placeholder="Search tracks (use % for all)">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="musicFolder">Folder</label>
+                            <select class="form-select" id="musicFolder">
+                                <option value="">All folders</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="musicPerPage">Per page</label>
+                            <select class="form-select" id="musicPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="musicRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -161,26 +184,41 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Golden Hour</td>
-                                    <td>Solstice</td>
-                                    <td>Sunset Sessions</td>
-                                    <td>03:22</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Morning Tide</td>
-                                    <td>Harbor Lights</td>
-                                    <td>Coastal Dreams</td>
-                                    <td>04:05</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="musicTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="musicMeta">Ready to search the music library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Music pagination">
+                            <button class="btn btn-outline-secondary" id="musicPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="musicNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="psa" role="tabpanel" aria-labelledby="psa-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="psaSearch">Search</label>
+                            <input class="form-control" id="psaSearch" type="text" placeholder="Search PSA library">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="psaCategory">Category</label>
+                            <select class="form-select" id="psaCategory">
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="psaPerPage">Per page</label>
+                            <select class="form-select" id="psaPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="psaRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -191,24 +229,41 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Food Drive</td>
-                                    <td>Community</td>
-                                    <td>:30</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Blood Donation</td>
-                                    <td>Health</td>
-                                    <td>:20</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="psaTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="psaMeta">Loading PSA library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="PSA pagination">
+                            <button class="btn btn-outline-secondary" id="psaPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="psaNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="imaging" role="tabpanel" aria-labelledby="imaging-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="imagingSearch">Search</label>
+                            <input class="form-control" id="imagingSearch" type="text" placeholder="Search imaging library">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="imagingCategory">Category</label>
+                            <select class="form-select" id="imagingCategory">
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="imagingPerPage">Per page</label>
+                            <select class="form-select" id="imagingPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="imagingRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -219,24 +274,19 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Station ID - Summer</td>
-                                    <td>Branding</td>
-                                    <td>:10</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Show Intro - Night Mix</td>
-                                    <td>Show</td>
-                                    <td>:15</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="imagingTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="imagingMeta">Loading imaging library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Imaging pagination">
+                            <button class="btn btn-outline-secondary" id="imagingPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="imagingNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
             </div>
+            <div class="alert alert-secondary small mt-3 mb-0" id="queueStatus">Queue ready.</div>
         </div>
     </div>
 
@@ -320,5 +370,367 @@
 </div>
 {% include '_footer.html' %}
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const queueStatus = document.getElementById('queueStatus');
+    const musicTableBody = document.getElementById('musicTableBody');
+    const musicMeta = document.getElementById('musicMeta');
+    const musicPrev = document.getElementById('musicPrev');
+    const musicNext = document.getElementById('musicNext');
+    const musicSearch = document.getElementById('musicSearch');
+    const musicFolder = document.getElementById('musicFolder');
+    const musicPerPage = document.getElementById('musicPerPage');
+    const musicRefresh = document.getElementById('musicRefresh');
+
+    const psaTableBody = document.getElementById('psaTableBody');
+    const psaMeta = document.getElementById('psaMeta');
+    const psaPrev = document.getElementById('psaPrev');
+    const psaNext = document.getElementById('psaNext');
+    const psaSearch = document.getElementById('psaSearch');
+    const psaCategory = document.getElementById('psaCategory');
+    const psaPerPage = document.getElementById('psaPerPage');
+    const psaRefresh = document.getElementById('psaRefresh');
+
+    const imagingTableBody = document.getElementById('imagingTableBody');
+    const imagingMeta = document.getElementById('imagingMeta');
+    const imagingPrev = document.getElementById('imagingPrev');
+    const imagingNext = document.getElementById('imagingNext');
+    const imagingSearch = document.getElementById('imagingSearch');
+    const imagingCategory = document.getElementById('imagingCategory');
+    const imagingPerPage = document.getElementById('imagingPerPage');
+    const imagingRefresh = document.getElementById('imagingRefresh');
+
+    const state = {
+        music: {items: [], page: 1, perPage: 25, query: '', folder: ''},
+        psa: {items: [], page: 1, perPage: 25, query: '', category: ''},
+        imaging: {items: [], page: 1, perPage: 25, query: '', category: ''},
+    };
+
+    function updateQueueStatus(message, variant = 'secondary') {
+        queueStatus.textContent = message;
+        queueStatus.className = `alert alert-${variant} small mt-3 mb-0`;
+    }
+
+    function formatDuration(totalSeconds) {
+        if (totalSeconds === null || totalSeconds === undefined) return '—';
+        const seconds = Math.round(Number(totalSeconds));
+        if (Number.isNaN(seconds)) return '—';
+        const minutes = Math.floor(seconds / 60);
+        const remainder = String(seconds % 60).padStart(2, '0');
+        return `${minutes}:${remainder}`;
+    }
+
+    function fallbackTitle(item) {
+        if (item.title) return item.title;
+        if (item.name) return item.name;
+        const path = item.path || '';
+        if (!path) return 'Untitled';
+        const parts = path.split(/[\\/]/);
+        return parts[parts.length - 1].replace(/\.[^/.]+$/, '');
+    }
+
+    async function enqueueItem(payload) {
+        try {
+            updateQueueStatus('Queueing item...', 'info');
+            const res = await fetch('/api/playback/queue/enqueue', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.status !== 'ok') {
+                updateQueueStatus('Unable to queue item. Please try again.', 'warning');
+                return;
+            }
+            updateQueueStatus(`Queued: ${payload.title}`, 'success');
+        } catch (err) {
+            updateQueueStatus('Queue request failed.', 'danger');
+        }
+    }
+
+    async function queueMusicItem(item) {
+        const title = fallbackTitle(item);
+        let cues = {};
+        try {
+            const cueRes = await fetch(`/api/music/cue?path=${encodeURIComponent(item.path)}`);
+            const cueData = await cueRes.json();
+            cues = cueData.cue || {};
+        } catch (err) {
+            cues = {};
+        }
+        await enqueueItem({
+            type: 'music',
+            title,
+            artist: item.artist,
+            duration: item.duration_seconds,
+            metadata: {
+                path: item.path,
+                album: item.album,
+                album_artist: item.album_artist,
+                folder: item.folder,
+                cues,
+            },
+        });
+    }
+
+    async function queueLibraryItem(item) {
+        const title = fallbackTitle(item);
+        await enqueueItem({
+            type: item.kind,
+            title,
+            duration: item.duration,
+            metadata: {
+                token: item.token,
+                url: item.url,
+                category: item.category,
+                library_category: item.library_category,
+                cues: item.cues || {},
+                kind: item.kind,
+            },
+        });
+    }
+
+    function renderMusicTable() {
+        if (!state.music.items.length) {
+            musicTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No music tracks found.</td></tr>';
+            return;
+        }
+        musicTableBody.innerHTML = state.music.items.map((item, idx) => `
+            <tr>
+                <td>${fallbackTitle(item)}</td>
+                <td>${item.artist || '—'}</td>
+                <td>${item.album || '—'}</td>
+                <td>${formatDuration(item.duration_seconds)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-action="queue-music" data-index="${idx}">
+                        Add to Queue
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderLibraryTable(targetBody, items, emptyLabel, action) {
+        if (!items.length) {
+            targetBody.innerHTML = `<tr><td colspan="4" class="text-muted">${emptyLabel}</td></tr>`;
+            return;
+        }
+        targetBody.innerHTML = items.map((item, idx) => `
+            <tr>
+                <td>${fallbackTitle(item)}</td>
+                <td>${item.category || '—'}</td>
+                <td>${formatDuration(item.duration)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-action="${action}" data-index="${idx}">
+                        Add to Queue
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadMusic() {
+        const params = new URLSearchParams({
+            q: state.music.query || '%',
+            page: state.music.page,
+            per_page: state.music.perPage,
+        });
+        if (state.music.folder) {
+            params.set('folder', state.music.folder);
+        }
+        try {
+            const res = await fetch(`/api/music/search?${params.toString()}`);
+            const data = await res.json();
+            state.music.items = data.items || [];
+            renderMusicTable();
+            if (data.folders) {
+                const current = state.music.folder;
+                const options = ['<option value="">All folders</option>'];
+                data.folders.filter(Boolean).sort().forEach(folder => {
+                    options.push(`<option value="${folder}">${folder}</option>`);
+                });
+                musicFolder.innerHTML = options.join('');
+                musicFolder.value = current;
+            }
+            const total = data.total || 0;
+            const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
+            const end = Math.min(total, data.page * data.per_page);
+            musicMeta.textContent = total
+                ? `Showing ${start}-${end} of ${total}`
+                : 'No music tracks found.';
+            musicPrev.disabled = data.page <= 1;
+            musicNext.disabled = end >= total;
+        } catch (err) {
+            musicTableBody.innerHTML = '<tr><td colspan="5" class="text-danger">Unable to load music library.</td></tr>';
+            musicMeta.textContent = 'Error loading music library.';
+        }
+    }
+
+    async function loadMediaLibrary(kind, stateKey, targetBody, targetMeta, targetPrev, targetNext, targetCategory) {
+        const payload = state[stateKey];
+        const params = new URLSearchParams({
+            page: payload.page,
+            per_page: payload.perPage,
+            kind,
+        });
+        if (payload.query) params.set('q', payload.query);
+        if (payload.category) params.set('category', payload.category);
+        try {
+            const res = await fetch(`/api/psa/library?${params.toString()}`);
+            const data = await res.json();
+            payload.items = data.items || [];
+            renderLibraryTable(
+                targetBody,
+                payload.items,
+                `No ${kind} items found.`,
+                `queue-${kind}`,
+            );
+            if (data.categories && targetCategory) {
+                const current = payload.category;
+                const options = ['<option value="">All categories</option>'];
+                data.categories.forEach(cat => {
+                    options.push(`<option value="${cat}">${cat}</option>`);
+                });
+                targetCategory.innerHTML = options.join('');
+                targetCategory.value = current;
+            }
+            const total = data.total || 0;
+            const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
+            const end = Math.min(total, data.page * data.per_page);
+            targetMeta.textContent = total
+                ? `Showing ${start}-${end} of ${total}`
+                : `No ${kind} items found.`;
+            targetPrev.disabled = data.page <= 1;
+            targetNext.disabled = end >= total;
+        } catch (err) {
+            targetBody.innerHTML = `<tr><td colspan="4" class="text-danger">Unable to load ${kind} library.</td></tr>`;
+            targetMeta.textContent = `Error loading ${kind} library.`;
+        }
+    }
+
+    let musicTimer = null;
+    musicSearch.addEventListener('input', () => {
+        if (musicTimer) clearTimeout(musicTimer);
+        musicTimer = setTimeout(() => {
+            state.music.query = musicSearch.value.trim();
+            state.music.page = 1;
+            loadMusic();
+        }, 250);
+    });
+    musicFolder.addEventListener('change', () => {
+        state.music.folder = musicFolder.value;
+        state.music.page = 1;
+        loadMusic();
+    });
+    musicPerPage.addEventListener('change', () => {
+        state.music.perPage = Number(musicPerPage.value);
+        state.music.page = 1;
+        loadMusic();
+    });
+    musicRefresh.addEventListener('click', () => loadMusic());
+    musicPrev.addEventListener('click', () => {
+        if (state.music.page <= 1) return;
+        state.music.page -= 1;
+        loadMusic();
+    });
+    musicNext.addEventListener('click', () => {
+        state.music.page += 1;
+        loadMusic();
+    });
+
+    let psaTimer = null;
+    psaSearch.addEventListener('input', () => {
+        if (psaTimer) clearTimeout(psaTimer);
+        psaTimer = setTimeout(() => {
+            state.psa.query = psaSearch.value.trim();
+            state.psa.page = 1;
+            loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+        }, 250);
+    });
+    psaCategory.addEventListener('change', () => {
+        state.psa.category = psaCategory.value;
+        state.psa.page = 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaPerPage.addEventListener('change', () => {
+        state.psa.perPage = Number(psaPerPage.value);
+        state.psa.page = 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaRefresh.addEventListener('click', () => {
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaPrev.addEventListener('click', () => {
+        if (state.psa.page <= 1) return;
+        state.psa.page -= 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaNext.addEventListener('click', () => {
+        state.psa.page += 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+
+    let imagingTimer = null;
+    imagingSearch.addEventListener('input', () => {
+        if (imagingTimer) clearTimeout(imagingTimer);
+        imagingTimer = setTimeout(() => {
+            state.imaging.query = imagingSearch.value.trim();
+            state.imaging.page = 1;
+            loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+        }, 250);
+    });
+    imagingCategory.addEventListener('change', () => {
+        state.imaging.category = imagingCategory.value;
+        state.imaging.page = 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingPerPage.addEventListener('change', () => {
+        state.imaging.perPage = Number(imagingPerPage.value);
+        state.imaging.page = 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingRefresh.addEventListener('click', () => {
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingPrev.addEventListener('click', () => {
+        if (state.imaging.page <= 1) return;
+        state.imaging.page -= 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingNext.addEventListener('click', () => {
+        state.imaging.page += 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+
+    musicTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-music"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.music.items[idx];
+        if (!item) return;
+        queueMusicItem(item);
+    });
+
+    psaTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-psa"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.psa.items[idx];
+        if (!item) return;
+        queueLibraryItem(item);
+    });
+
+    imagingTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-imaging"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.imaging.items[idx];
+        if (!item) return;
+        queueLibraryItem(item);
+    });
+
+    loadMusic();
+    loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+</script>
 </body>
 </html>
