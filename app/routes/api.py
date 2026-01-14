@@ -92,6 +92,18 @@ def _deserialize_metadata(raw: str | None) -> dict | None:
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
+    metadata = _deserialize_metadata(item.metadata)
+    loop_in = None
+    loop_out = None
+    if isinstance(metadata, dict):
+        loop_in = metadata.get("loop_in")
+        loop_out = metadata.get("loop_out")
+        cues = metadata.get("cues")
+        if isinstance(cues, dict):
+            if loop_in is None:
+                loop_in = cues.get("loop_in")
+            if loop_out is None:
+                loop_out = cues.get("loop_out")
     return {
         "id": item.id,
         "session_id": item.session_id,

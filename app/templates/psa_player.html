@@ -100,6 +100,7 @@
                         <button class="btn btn-outline-secondary btn-sm" id="radiodjOverride">RadioDJ Override</button>
                     </div>
                     <div class="text-muted fw-semibold" style="font-size:1.4rem;">Timer: <span id="timerTop">00:00.00</span></div>
+                    <div class="text-muted small" id="loopStatusTop">Looping: off</div>
                 </div>
                 <div class="card-body">
                     <div class="alert alert-secondary py-2 px-3 mb-2" id="radiodjStatus">
@@ -107,6 +108,7 @@
                     </div>
                     <div class="d-flex align-items-center justify-content-between mb-2 flex-wrap gap-2">
                         <div class="fw-semibold" style="font-size:1.8rem;">Timer: <span id="timer">00:00.00</span></div>
+                        <div class="text-muted small" id="loopStatus">Looping: off</div>
                         <div class="d-flex gap-2 align-items-center">
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="introBadge" style="display:none;">Intro</span>
                             <span class="badge rounded-pill text-bg-secondary countdown-badge" id="outroBadge" style="display:none;">Outro</span>
@@ -190,6 +192,7 @@
                         <button class="btn btn-outline-primary btn-sm" id="playNext">Play Next</button>
                         <button class="btn btn-outline-success btn-sm" id="resumeQueue" disabled>Resume</button>
                         <button class="btn btn-outline-danger btn-sm" id="fadeOut">Fade & Next</button>
+                        <button class="btn btn-outline-info btn-sm" id="stopLooping" disabled>Stop Looping</button>
                         <button class="btn btn-outline-dark btn-sm" id="addStop">Add STOP</button>
                         <button class="btn btn-outline-warning btn-sm" id="pushQueue" disabled>Push Queue to RadioDJ</button>
                     </div>
@@ -324,6 +327,7 @@
     const psaList = document.getElementById('psaList');
     const queueList = document.getElementById('queueList');
     const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
+    const loopStatusEls = [document.getElementById('loopStatus'), document.getElementById('loopStatusTop')];
     const categoryFilter = document.getElementById('categoryFilter');
     const libraryMeta = document.getElementById('libraryMeta');
     const libraryPrev = document.getElementById('libraryPrev');
@@ -336,6 +340,7 @@
     const playNextBtn = document.getElementById('playNext');
     const resumeQueueBtn = document.getElementById('resumeQueue');
     const fadeOutBtn = document.getElementById('fadeOut');
+    const stopLoopingBtn = document.getElementById('stopLooping');
     const addStopBtn = document.getElementById('addStop');
     const controlModeLabel = document.getElementById('controlModeLabel');
     const radiodjOverrideBtn = document.getElementById('radiodjOverride');
@@ -496,6 +501,7 @@
             if (item.metadata && item.metadata.host) meta.push(item.metadata.host);
             if (item.metadata && item.metadata.notes) meta.push(item.metadata.notes);
             const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
+            const loopBadge = isLoopItem(item) ? '<span class="badge text-bg-info me-1">Loop</span>' : '';
             const displayName = item.title || item.name;
             const label = isStop ? 'STOP' : (displayName || 'Untitled');
             const stopBadge = isStop ? '<span class="badge text-bg-warning me-1">Stop</span>' : '';
@@ -587,6 +593,8 @@
         updateTalkOverlay(null);
         loopBetween.checked = false;
         loopBetween.disabled = true;
+        loopState = { active: false, remaining: null };
+        updateLoopStatus();
         togglePauseBtn.textContent = 'Pause';
     }
 
@@ -807,7 +815,53 @@
         return item && OVERLAY_KINDS.includes(item.kind);
     }
 
-    function startFrom(idx, preferredIdx = currentIdx) {
+    function isLoopItem(item) {
+        return !!(item && (item.kind === 'loop' || item.type === 'loop' || item.loop));
+    }
+
+    function getLoopCues(item) {
+        const cues = item && item.cues ? item.cues : {};
+        return {
+            loopIn: cues.loop_in ?? 0,
+            loopOut: cues.loop_out ?? null,
+        };
+    }
+
+    function getIntroCue(item) {
+        const cues = item && item.cues ? item.cues : {};
+        if (cues.intro != null) return cues.intro;
+        if (cues.cue_in != null) return cues.cue_in;
+        return 0;
+    }
+
+    function formatShortTime(seconds) {
+        if (seconds == null || Number.isNaN(seconds)) return '--:--';
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        const ms = Math.floor((seconds - Math.floor(seconds)) * 100);
+        return `${String(minutes).padStart(2,'0')}:${String(secs).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
+    }
+
+    function updateLoopStatus() {
+        loopStatusEls.forEach(el => {
+            if (!el) return;
+            const active = loopState.active || (loopBetween && loopBetween.checked);
+            el.dataset.looping = active ? 'true' : 'false';
+            el.dataset.remaining = loopState.remaining != null ? loopState.remaining.toFixed(2) : '';
+            if (active && loopState.remaining != null) {
+                el.textContent = `Looping: ${formatShortTime(loopState.remaining)} left`;
+            } else if (active) {
+                el.textContent = 'Looping: active';
+            } else {
+                el.textContent = 'Looping: off';
+            }
+        });
+        if (stopLoopingBtn) {
+            stopLoopingBtn.disabled = !(loopState.active && controlMode === 'rams');
+        }
+    }
+
+    function startFrom(idx, preferredIdx = currentIdx, startAt = null) {
         if (controlMode !== 'rams') {
             return;
         }
@@ -834,14 +888,37 @@
         playerObj.item = item;
         const cues = item.cues || {};
         const hasLoop = cues.loop_in != null && cues.loop_out != null;
-        loopBetween.disabled = !hasLoop;
-        if (!hasLoop) loopBetween.checked = false;
+        const forceLoop = isLoopItem(item);
+        loopState.active = forceLoop;
+        loopBetween.disabled = !hasLoop || forceLoop;
+        if (forceLoop) {
+            loopBetween.checked = hasLoop;
+        } else if (!hasLoop) {
+            loopBetween.checked = false;
+        }
+        updateLoopStatus();
         autoNextTriggered = false;
         prestartedIdx = null;
         if (idx > 0) queue.splice(0, idx);
         player.src = item.url;
         player.volume = 1;
         applyPlaybackRate(player, item);
+        if (startAt != null && !Number.isNaN(startAt)) {
+            const seekTo = Math.max(0, startAt);
+            const applySeek = () => {
+                if (!Number.isNaN(player.duration)) {
+                    player.currentTime = Math.min(seekTo, player.duration || seekTo);
+                }
+            };
+            if (player.readyState >= 1) {
+                applySeek();
+            } else {
+                player.addEventListener('loadedmetadata', function onLoaded() {
+                    player.removeEventListener('loadedmetadata', onLoaded);
+                    applySeek();
+                });
+            }
+        }
         player.play();
         togglePauseBtn.textContent = 'Pause';
         renderQueue();
@@ -868,6 +945,22 @@
         } else {
             renderQueue();
         }
+    }
+
+    function stopLooping() {
+        if (!loopState.active) return;
+        if (queue.length <= 1) {
+            queue.shift();
+            stopAllAudio();
+            renderQueue();
+            return;
+        }
+        const nextItem = queue[1];
+        const startAt = getIntroCue(nextItem);
+        stopFade();
+        autoNextTriggered = false;
+        prestartedIdx = null;
+        startFrom(1, 1 - currentIdx, startAt);
     }
 
     function startNextWithOverlay() {
@@ -1018,7 +1111,7 @@
         updateTalkOverlay(cues, player.currentTime, player.duration);
 
         // Auto-advance when start_next cue is hit.
-        if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
+        if (!(loopState.active || loopBetween.checked) && !autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
             resetTimers();
             if (queue.length > 1) {
@@ -1033,7 +1126,15 @@
             }
         }
 
-        if (loopBetween.checked && cues.loop_in != null && cues.loop_out != null) {
+        const shouldLoop = (loopState.active || loopBetween.checked) && cues.loop_in != null && cues.loop_out != null;
+        if (shouldLoop) {
+            loopState.remaining = Math.max(0, cues.loop_out - player.currentTime);
+        } else {
+            loopState.remaining = null;
+        }
+        updateLoopStatus();
+
+        if (shouldLoop) {
             const loopIn = cues.loop_in;
             const loopOut = cues.loop_out;
             if (player.currentTime >= loopOut - 0.05) {
@@ -1115,7 +1216,13 @@
     resumeQueueBtn.addEventListener('click', resumeFromStopCue);
     addStopBtn.addEventListener('click', addStopCue);
     fadeOutBtn.addEventListener('click', fadeAndNext);
+    if (stopLoopingBtn) {
+        stopLoopingBtn.addEventListener('click', stopLooping);
+    }
     pushQueueBtn.addEventListener('click', pushQueueToRadioDJ);
+    if (loopBetween) {
+        loopBetween.addEventListener('change', updateLoopStatus);
+    }
     document.getElementById('overlayPlay').addEventListener('click', () => {
         const url = document.getElementById('overlayUrl').value.trim();
         if (!url) return;
