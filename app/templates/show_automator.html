@@ -44,7 +44,7 @@
                     <span>Now Playing</span>
                     <span class="text-muted small" id="now-playing-deck">Deck A</span>
                 </div>
-                <div class="card-body" id="nowPlayingCard" data-item-type="music">
+                <div class="card-body">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-4 text-center">
                             <img src="{{ url_for('static', filename='logo.png') }}" alt="Album art" class="img-fluid rounded shadow-sm" id="now-playing-art">
@@ -68,41 +68,8 @@
                         <h5 class="mb-0">Live Queue</h5>
                         <span class="text-muted small">Drag & drop to reorder</span>
                     </div>
-                    <ul class="list-group" id="showQueue">
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="imaging">
-                            <div>
-                                <div class="fw-semibold">Station ID &mdash; Summer</div>
-                                <div class="small text-muted">Imaging &middot; :10</div>
-                            </div>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
-                                <button class="btn btn-outline-secondary" type="button">↑</button>
-                                <button class="btn btn-outline-secondary" type="button">↓</button>
-                                <button class="btn btn-outline-danger" type="button">Remove</button>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="psa">
-                            <div>
-                                <div class="fw-semibold">Community PSA: Food Drive</div>
-                                <div class="small text-muted">PSA &middot; :30</div>
-                            </div>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
-                                <button class="btn btn-outline-secondary" type="button">↑</button>
-                                <button class="btn btn-outline-secondary" type="button">↓</button>
-                                <button class="btn btn-outline-danger" type="button">Remove</button>
-                            </div>
-                        </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="music">
-                            <div>
-                                <div class="fw-semibold">Next Track: Golden Hour</div>
-                                <div class="small text-muted">Music &middot; 03:22</div>
-                            </div>
-                            <div class="btn-group btn-group-sm" role="group" aria-label="Queue controls">
-                                <button class="btn btn-outline-secondary" type="button">↑</button>
-                                <button class="btn btn-outline-secondary" type="button">↓</button>
-                                <button class="btn btn-outline-danger" type="button">Remove</button>
-                            </div>
-                        </li>
-                    </ul>
+                    <div class="text-muted small mb-2" id="queueStatus">Loading queue&hellip;</div>
+                    <ul class="list-group" id="liveQueue" aria-live="polite"></ul>
                 </div>
             </div>
         </div>
@@ -113,7 +80,6 @@
                     <span class="text-muted small" id="deck-control-mode">Manual</span>
                 </div>
                 <div class="card-body">
-                    <audio id="showDeckAudio" class="w-100 mb-3" controls></audio>
                     <div class="btn-group w-100 mb-2" role="group" aria-label="Playback controls">
                         <button class="btn btn-primary" type="button" id="control-play">Play</button>
                         <button class="btn btn-outline-primary" type="button" id="control-pause">Pause</button>
@@ -132,10 +98,6 @@
                     <div>
                         <label class="form-label small text-muted">Output Level</label>
                         <input type="range" class="form-range" min="0" max="100" value="80" id="control-output-level">
-                    </div>
-                    <div class="form-check mt-3">
-                        <input class="form-check-input" type="checkbox" id="showTop40Boost">
-                        <label class="form-check-label" for="showTop40Boost">Top-40 boost (+0.5 semitone on music)</label>
                     </div>
                 </div>
             </div>
@@ -397,6 +359,367 @@
     } | tojson }}
 </script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-<script src="{{ url_for('static', filename='js/show_automator.js') }}"></script>
+<script>
+    const queueStatus = document.getElementById('queueStatus');
+    const musicTableBody = document.getElementById('musicTableBody');
+    const musicMeta = document.getElementById('musicMeta');
+    const musicPrev = document.getElementById('musicPrev');
+    const musicNext = document.getElementById('musicNext');
+    const musicSearch = document.getElementById('musicSearch');
+    const musicFolder = document.getElementById('musicFolder');
+    const musicPerPage = document.getElementById('musicPerPage');
+    const musicRefresh = document.getElementById('musicRefresh');
+
+    const psaTableBody = document.getElementById('psaTableBody');
+    const psaMeta = document.getElementById('psaMeta');
+    const psaPrev = document.getElementById('psaPrev');
+    const psaNext = document.getElementById('psaNext');
+    const psaSearch = document.getElementById('psaSearch');
+    const psaCategory = document.getElementById('psaCategory');
+    const psaPerPage = document.getElementById('psaPerPage');
+    const psaRefresh = document.getElementById('psaRefresh');
+
+    const imagingTableBody = document.getElementById('imagingTableBody');
+    const imagingMeta = document.getElementById('imagingMeta');
+    const imagingPrev = document.getElementById('imagingPrev');
+    const imagingNext = document.getElementById('imagingNext');
+    const imagingSearch = document.getElementById('imagingSearch');
+    const imagingCategory = document.getElementById('imagingCategory');
+    const imagingPerPage = document.getElementById('imagingPerPage');
+    const imagingRefresh = document.getElementById('imagingRefresh');
+
+    const state = {
+        music: {items: [], page: 1, perPage: 25, query: '', folder: ''},
+        psa: {items: [], page: 1, perPage: 25, query: '', category: ''},
+        imaging: {items: [], page: 1, perPage: 25, query: '', category: ''},
+    };
+
+    function updateQueueStatus(message, variant = 'secondary') {
+        queueStatus.textContent = message;
+        queueStatus.className = `alert alert-${variant} small mt-3 mb-0`;
+    }
+
+    function formatDuration(totalSeconds) {
+        if (totalSeconds === null || totalSeconds === undefined) return '—';
+        const seconds = Math.round(Number(totalSeconds));
+        if (Number.isNaN(seconds)) return '—';
+        const minutes = Math.floor(seconds / 60);
+        const remainder = String(seconds % 60).padStart(2, '0');
+        return `${minutes}:${remainder}`;
+    }
+
+    function fallbackTitle(item) {
+        if (item.title) return item.title;
+        if (item.name) return item.name;
+        const path = item.path || '';
+        if (!path) return 'Untitled';
+        const parts = path.split(/[\\/]/);
+        return parts[parts.length - 1].replace(/\.[^/.]+$/, '');
+    }
+
+    async function enqueueItem(payload) {
+        try {
+            updateQueueStatus('Queueing item...', 'info');
+            const res = await fetch('/api/playback/queue/enqueue', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify(payload),
+            });
+            const data = await res.json();
+            if (data.status !== 'ok') {
+                updateQueueStatus('Unable to queue item. Please try again.', 'warning');
+                return;
+            }
+            updateQueueStatus(`Queued: ${payload.title}`, 'success');
+        } catch (err) {
+            updateQueueStatus('Queue request failed.', 'danger');
+        }
+    }
+
+    async function queueMusicItem(item) {
+        const title = fallbackTitle(item);
+        let cues = {};
+        try {
+            const cueRes = await fetch(`/api/music/cue?path=${encodeURIComponent(item.path)}`);
+            const cueData = await cueRes.json();
+            cues = cueData.cue || {};
+        } catch (err) {
+            cues = {};
+        }
+        await enqueueItem({
+            type: 'music',
+            title,
+            artist: item.artist,
+            duration: item.duration_seconds,
+            metadata: {
+                path: item.path,
+                album: item.album,
+                album_artist: item.album_artist,
+                folder: item.folder,
+                cues,
+            },
+        });
+    }
+
+    async function queueLibraryItem(item) {
+        const title = fallbackTitle(item);
+        await enqueueItem({
+            type: item.kind,
+            title,
+            duration: item.duration,
+            metadata: {
+                token: item.token,
+                url: item.url,
+                category: item.category,
+                library_category: item.library_category,
+                cues: item.cues || {},
+                kind: item.kind,
+            },
+        });
+    }
+
+    function renderMusicTable() {
+        if (!state.music.items.length) {
+            musicTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No music tracks found.</td></tr>';
+            return;
+        }
+        musicTableBody.innerHTML = state.music.items.map((item, idx) => `
+            <tr>
+                <td>${fallbackTitle(item)}</td>
+                <td>${item.artist || '—'}</td>
+                <td>${item.album || '—'}</td>
+                <td>${formatDuration(item.duration_seconds)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-action="queue-music" data-index="${idx}">
+                        Add to Queue
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    function renderLibraryTable(targetBody, items, emptyLabel, action) {
+        if (!items.length) {
+            targetBody.innerHTML = `<tr><td colspan="4" class="text-muted">${emptyLabel}</td></tr>`;
+            return;
+        }
+        targetBody.innerHTML = items.map((item, idx) => `
+            <tr>
+                <td>${fallbackTitle(item)}</td>
+                <td>${item.category || '—'}</td>
+                <td>${formatDuration(item.duration)}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" type="button" data-action="${action}" data-index="${idx}">
+                        Add to Queue
+                    </button>
+                </td>
+            </tr>
+        `).join('');
+    }
+
+    async function loadMusic() {
+        const params = new URLSearchParams({
+            q: state.music.query || '%',
+            page: state.music.page,
+            per_page: state.music.perPage,
+        });
+        if (state.music.folder) {
+            params.set('folder', state.music.folder);
+        }
+        try {
+            const res = await fetch(`/api/music/search?${params.toString()}`);
+            const data = await res.json();
+            state.music.items = data.items || [];
+            renderMusicTable();
+            if (data.folders) {
+                const current = state.music.folder;
+                const options = ['<option value="">All folders</option>'];
+                data.folders.filter(Boolean).sort().forEach(folder => {
+                    options.push(`<option value="${folder}">${folder}</option>`);
+                });
+                musicFolder.innerHTML = options.join('');
+                musicFolder.value = current;
+            }
+            const total = data.total || 0;
+            const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
+            const end = Math.min(total, data.page * data.per_page);
+            musicMeta.textContent = total
+                ? `Showing ${start}-${end} of ${total}`
+                : 'No music tracks found.';
+            musicPrev.disabled = data.page <= 1;
+            musicNext.disabled = end >= total;
+        } catch (err) {
+            musicTableBody.innerHTML = '<tr><td colspan="5" class="text-danger">Unable to load music library.</td></tr>';
+            musicMeta.textContent = 'Error loading music library.';
+        }
+    }
+
+    async function loadMediaLibrary(kind, stateKey, targetBody, targetMeta, targetPrev, targetNext, targetCategory) {
+        const payload = state[stateKey];
+        const params = new URLSearchParams({
+            page: payload.page,
+            per_page: payload.perPage,
+            kind,
+        });
+        if (payload.query) params.set('q', payload.query);
+        if (payload.category) params.set('category', payload.category);
+        try {
+            const res = await fetch(`/api/psa/library?${params.toString()}`);
+            const data = await res.json();
+            payload.items = data.items || [];
+            renderLibraryTable(
+                targetBody,
+                payload.items,
+                `No ${kind} items found.`,
+                `queue-${kind}`,
+            );
+            if (data.categories && targetCategory) {
+                const current = payload.category;
+                const options = ['<option value="">All categories</option>'];
+                data.categories.forEach(cat => {
+                    options.push(`<option value="${cat}">${cat}</option>`);
+                });
+                targetCategory.innerHTML = options.join('');
+                targetCategory.value = current;
+            }
+            const total = data.total || 0;
+            const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
+            const end = Math.min(total, data.page * data.per_page);
+            targetMeta.textContent = total
+                ? `Showing ${start}-${end} of ${total}`
+                : `No ${kind} items found.`;
+            targetPrev.disabled = data.page <= 1;
+            targetNext.disabled = end >= total;
+        } catch (err) {
+            targetBody.innerHTML = `<tr><td colspan="4" class="text-danger">Unable to load ${kind} library.</td></tr>`;
+            targetMeta.textContent = `Error loading ${kind} library.`;
+        }
+    }
+
+    let musicTimer = null;
+    musicSearch.addEventListener('input', () => {
+        if (musicTimer) clearTimeout(musicTimer);
+        musicTimer = setTimeout(() => {
+            state.music.query = musicSearch.value.trim();
+            state.music.page = 1;
+            loadMusic();
+        }, 250);
+    });
+    musicFolder.addEventListener('change', () => {
+        state.music.folder = musicFolder.value;
+        state.music.page = 1;
+        loadMusic();
+    });
+    musicPerPage.addEventListener('change', () => {
+        state.music.perPage = Number(musicPerPage.value);
+        state.music.page = 1;
+        loadMusic();
+    });
+    musicRefresh.addEventListener('click', () => loadMusic());
+    musicPrev.addEventListener('click', () => {
+        if (state.music.page <= 1) return;
+        state.music.page -= 1;
+        loadMusic();
+    });
+    musicNext.addEventListener('click', () => {
+        state.music.page += 1;
+        loadMusic();
+    });
+
+    let psaTimer = null;
+    psaSearch.addEventListener('input', () => {
+        if (psaTimer) clearTimeout(psaTimer);
+        psaTimer = setTimeout(() => {
+            state.psa.query = psaSearch.value.trim();
+            state.psa.page = 1;
+            loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+        }, 250);
+    });
+    psaCategory.addEventListener('change', () => {
+        state.psa.category = psaCategory.value;
+        state.psa.page = 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaPerPage.addEventListener('change', () => {
+        state.psa.perPage = Number(psaPerPage.value);
+        state.psa.page = 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaRefresh.addEventListener('click', () => {
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaPrev.addEventListener('click', () => {
+        if (state.psa.page <= 1) return;
+        state.psa.page -= 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+    psaNext.addEventListener('click', () => {
+        state.psa.page += 1;
+        loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    });
+
+    let imagingTimer = null;
+    imagingSearch.addEventListener('input', () => {
+        if (imagingTimer) clearTimeout(imagingTimer);
+        imagingTimer = setTimeout(() => {
+            state.imaging.query = imagingSearch.value.trim();
+            state.imaging.page = 1;
+            loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+        }, 250);
+    });
+    imagingCategory.addEventListener('change', () => {
+        state.imaging.category = imagingCategory.value;
+        state.imaging.page = 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingPerPage.addEventListener('change', () => {
+        state.imaging.perPage = Number(imagingPerPage.value);
+        state.imaging.page = 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingRefresh.addEventListener('click', () => {
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingPrev.addEventListener('click', () => {
+        if (state.imaging.page <= 1) return;
+        state.imaging.page -= 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+    imagingNext.addEventListener('click', () => {
+        state.imaging.page += 1;
+        loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+    });
+
+    musicTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-music"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.music.items[idx];
+        if (!item) return;
+        queueMusicItem(item);
+    });
+
+    psaTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-psa"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.psa.items[idx];
+        if (!item) return;
+        queueLibraryItem(item);
+    });
+
+    imagingTableBody.addEventListener('click', (event) => {
+        const btn = event.target.closest('button[data-action="queue-imaging"]');
+        if (!btn) return;
+        const idx = Number(btn.dataset.index);
+        const item = state.imaging.items[idx];
+        if (!item) return;
+        queueLibraryItem(item);
+    });
+
+    loadMusic();
+    loadMediaLibrary('psa', 'psa', psaTableBody, psaMeta, psaPrev, psaNext, psaCategory);
+    loadMediaLibrary('imaging', 'imaging', imagingTableBody, imagingMeta, imagingPrev, imagingNext, imagingCategory);
+</script>
 </body>
 </html>
