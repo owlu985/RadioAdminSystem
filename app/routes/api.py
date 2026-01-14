@@ -75,7 +75,7 @@ from app.services.audit import start_audit_job, get_audit_status, list_audit_run
 import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
-QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack"}
+QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack", "loop"}
 _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "fetched_at": None,
     "payload": None,
@@ -92,6 +92,18 @@ def _deserialize_metadata(raw: str | None) -> dict | None:
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
+    metadata = _deserialize_metadata(item.metadata)
+    loop_in = None
+    loop_out = None
+    if isinstance(metadata, dict):
+        loop_in = metadata.get("loop_in")
+        loop_out = metadata.get("loop_out")
+        cues = metadata.get("cues")
+        if isinstance(cues, dict):
+            if loop_in is None:
+                loop_in = cues.get("loop_in")
+            if loop_out is None:
+                loop_out = cues.get("loop_out")
     return {
         "id": item.id,
         "session_id": item.session_id,
@@ -100,7 +112,9 @@ def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
         "title": item.title,
         "artist": item.artist,
         "duration": item.duration,
-        "metadata": _deserialize_metadata(item.metadata),
+        "loop_in": loop_in,
+        "loop_out": loop_out,
+        "metadata": metadata,
         "created_at": item.created_at.isoformat(),
     }
 
@@ -1677,6 +1691,12 @@ def playback_queue_enqueue():
             return jsonify({"status": "error", "message": "invalid_position"}), 400
         position = max(0, min(position, len(items)))
     metadata = payload.get("metadata")
+    if metadata is None:
+        metadata = {}
+    if isinstance(metadata, dict):
+        for key in ("loop_in", "loop_out"):
+            if payload.get(key) is not None:
+                metadata[key] = payload.get(key)
     item = PlaybackQueueItem(
         session_id=playback.id,
         position=position,
@@ -1684,7 +1704,7 @@ def playback_queue_enqueue():
         title=payload.get("title"),
         artist=payload.get("artist"),
         duration=payload.get("duration"),
-        metadata=json.dumps(metadata) if metadata is not None else None,
+        metadata=json.dumps(metadata) if metadata else None,
     )
     items.insert(position, item)
     db.session.add(item)
