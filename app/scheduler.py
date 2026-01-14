@@ -39,6 +39,7 @@ def init_scheduler(app):
             schedule_news_rotation()
             schedule_icecast_analytics()
             schedule_settings_backup()
+            schedule_radiodj_now_playing()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -369,6 +370,23 @@ def schedule_settings_backup():
         logger.error(f"Error scheduling settings backup: {e}")
 
 
+def schedule_radiodj_now_playing():
+    """Poll RadioDJ now-playing and update cache/Icecast metadata."""
+    if flask_app is None:
+        return
+    try:
+        scheduler.add_job(
+            run_radiodj_now_playing_job,
+            "interval",
+            seconds=8,
+            id="radiodj_now_playing_job",
+            replace_existing=True,
+        )
+        logger.info("RadioDJ now-playing job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling RadioDJ now-playing job: {e}")
+
+
 def schedule_news_rotation():
     """Daily job to activate the news file for the current date if available."""
     if flask_app is None:
@@ -445,3 +463,24 @@ def run_settings_backup_job():
             backup_data_snapshot()
         except Exception as exc:  # noqa: BLE001
             logger.warning("Settings backup failed: %s", exc)
+
+
+def run_radiodj_now_playing_job():
+    if flask_app is None:
+        return
+    from app.routes.api import _get_cached_radiodj_nowplaying, _push_icecast_metadata
+    from app.utils import get_current_show, show_display_title, show_host_names
+    with flask_app.app_context():
+        try:
+            show = get_current_show()
+            if show:
+                show_name = show_display_title(show)
+                host_label = show_host_names(show)
+                _push_icecast_metadata({
+                    "artist": host_label,
+                    "title": show_name,
+                    "song": f"{show_name} with {host_label}",
+                })
+            _get_cached_radiodj_nowplaying(push_icecast=not show)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("RadioDJ now-playing update failed: %s", exc)
