@@ -1611,6 +1611,9 @@ def playback_session():
     playback = _get_playback_session()
     if request.method == "POST":
         payload = request.get_json(silent=True) or {}
+        automation_mode = payload.get("automation_mode")
+        if automation_mode in {"manual", "automation"}:
+            playback.automation_mode = automation_mode
         playback.show_name = payload.get("show_name", playback.show_name)
         playback.dj_name = payload.get("dj_name", playback.dj_name)
         playback.notes = payload.get("notes", playback.notes)
@@ -1618,6 +1621,7 @@ def playback_session():
         db.session.commit()
     return jsonify({
         "id": playback.id,
+        "automation_mode": playback.automation_mode,
         "show_name": playback.show_name,
         "dj_name": playback.dj_name,
         "notes": playback.notes,
@@ -1640,6 +1644,7 @@ def playback_session_attach():
         "status": "ok",
         "session": {
             "id": playback.id,
+            "automation_mode": playback.automation_mode,
             "show_name": playback.show_name,
             "dj_name": playback.dj_name,
             "notes": playback.notes,
