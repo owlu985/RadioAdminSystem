@@ -6,6 +6,21 @@
     <meta name="robots" content="noindex, nofollow">
     <title>Show Automator</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        .queue-item.dragging {
+            opacity: 0.5;
+        }
+        .queue-item.drop-target {
+            border: 2px dashed #0d6efd;
+        }
+        .queue-handle {
+            cursor: grab;
+        }
+        .queue-handle.is-disabled {
+            cursor: not-allowed;
+            opacity: 0.4;
+        }
+    </style>
 </head>
 <body>
 {% include '_nav.html' %}
@@ -15,7 +30,7 @@
             <h3 class="mb-0">Show Automator</h3>
             <div class="text-muted">DJ Tools &middot; Manual controls ready for on-air use.</div>
         </div>
-        <span class="badge bg-success">Manual Control Active</span>
+        <span class="badge bg-success" id="show-automator-mode">Manual Control Active</span>
     </div>
 
     <div class="alert alert-info">
@@ -27,34 +42,34 @@
             <div class="card h-100">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Now Playing</span>
-                    <span class="text-muted small">Deck A</span>
+                    <span class="text-muted small" id="now-playing-deck">Deck A</span>
                 </div>
-                <div class="card-body">
+                <div class="card-body" id="nowPlayingCard" data-item-type="music">
                     <div class="row g-3 align-items-center">
                         <div class="col-md-4 text-center">
-                            <img src="https://via.placeholder.com/240x240.png?text=Album+Art" alt="Album art" class="img-fluid rounded shadow-sm">
-                            <div class="mt-2 small text-muted">Live audio bed available</div>
+                            <img src="{{ url_for('static', filename='logo.png') }}" alt="Album art" class="img-fluid rounded shadow-sm" id="now-playing-art">
+                            <div class="mt-2 small text-muted" id="now-playing-note">Awaiting playback data</div>
                         </div>
                         <div class="col-md-8">
-                            <h4 class="mb-1">Midnight Drive</h4>
-                            <div class="text-muted">Artist: The Night Shift</div>
-                            <div class="text-muted">Album: City Lights &middot; 2023</div>
+                            <h4 class="mb-1" id="now-playing-title">Loading...</h4>
+                            <div class="text-muted" id="now-playing-artist">Artist: --</div>
+                            <div class="text-muted" id="now-playing-album">Album: --</div>
                             <div class="mt-3">
                                 <div class="d-flex justify-content-between">
                                     <span class="small text-muted">Playback Position</span>
-                                    <span class="small">01:42 / 04:10</span>
+                                    <span class="small" id="playback-position-label">--:-- / --:--</span>
                                 </div>
-                                <input type="range" class="form-range" value="42">
+                                <input type="range" class="form-range" value="0" min="0" max="0" id="playback-position-range">
                             </div>
                         </div>
                     </div>
                     <hr>
                     <div class="d-flex justify-content-between align-items-center mb-2">
                         <h5 class="mb-0">Live Queue</h5>
-                        <span class="text-muted small">Drag & drop planned</span>
+                        <span class="text-muted small">Drag & drop to reorder</span>
                     </div>
-                    <ul class="list-group">
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                    <ul class="list-group" id="showQueue">
+                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="imaging">
                             <div>
                                 <div class="fw-semibold">Station ID &mdash; Summer</div>
                                 <div class="small text-muted">Imaging &middot; :10</div>
@@ -65,7 +80,7 @@
                                 <button class="btn btn-outline-danger" type="button">Remove</button>
                             </div>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="psa">
                             <div>
                                 <div class="fw-semibold">Community PSA: Food Drive</div>
                                 <div class="small text-muted">PSA &middot; :30</div>
@@ -76,7 +91,7 @@
                                 <button class="btn btn-outline-danger" type="button">Remove</button>
                             </div>
                         </li>
-                        <li class="list-group-item d-flex justify-content-between align-items-center">
+                        <li class="list-group-item d-flex justify-content-between align-items-center" data-queue-item data-item-type="music">
                             <div>
                                 <div class="fw-semibold">Next Track: Golden Hour</div>
                                 <div class="small text-muted">Music &middot; 03:22</div>
@@ -95,27 +110,32 @@
             <div class="card mb-3">
                 <div class="card-header d-flex justify-content-between align-items-center">
                     <span>Deck Controls</span>
-                    <span class="text-muted small">Manual</span>
+                    <span class="text-muted small" id="deck-control-mode">Manual</span>
                 </div>
                 <div class="card-body">
+                    <audio id="showDeckAudio" class="w-100 mb-3" controls></audio>
                     <div class="btn-group w-100 mb-2" role="group" aria-label="Playback controls">
-                        <button class="btn btn-primary" type="button">Play</button>
-                        <button class="btn btn-outline-primary" type="button">Pause</button>
-                        <button class="btn btn-outline-secondary" type="button">Cue In</button>
-                        <button class="btn btn-outline-secondary" type="button">Cue Out</button>
+                        <button class="btn btn-primary" type="button" id="control-play">Play</button>
+                        <button class="btn btn-outline-primary" type="button" id="control-pause">Pause</button>
+                        <button class="btn btn-outline-secondary" type="button" id="control-cue-in">Cue In</button>
+                        <button class="btn btn-outline-secondary" type="button" id="control-cue-out">Cue Out</button>
                     </div>
                     <div class="btn-group w-100 mb-3" role="group" aria-label="Navigation controls">
-                        <button class="btn btn-outline-secondary" type="button">Previous</button>
-                        <button class="btn btn-outline-secondary" type="button">Fade</button>
-                        <button class="btn btn-outline-secondary" type="button">Next</button>
+                        <button class="btn btn-outline-secondary" type="button" id="control-previous">Previous</button>
+                        <button class="btn btn-outline-secondary" type="button" id="control-fade">Fade</button>
+                        <button class="btn btn-outline-secondary" type="button" id="control-next">Next</button>
                     </div>
                     <div class="mb-3">
                         <label class="form-label small text-muted">Fade Length (seconds)</label>
-                        <input type="range" class="form-range" min="0" max="10" value="3">
+                        <input type="range" class="form-range" min="0" max="10" value="3" id="control-fade-length">
                     </div>
                     <div>
                         <label class="form-label small text-muted">Output Level</label>
-                        <input type="range" class="form-range" min="0" max="100" value="80">
+                        <input type="range" class="form-range" min="0" max="100" value="80" id="control-output-level">
+                    </div>
+                    <div class="form-check mt-3">
+                        <input class="form-check-input" type="checkbox" id="showTop40Boost">
+                        <label class="form-check-label" for="showTop40Boost">Top-40 boost (+0.5 semitone on music)</label>
                     </div>
                 </div>
             </div>
@@ -123,12 +143,12 @@
                 <div class="card-header">Run Show Control</div>
                 <div class="card-body">
                     <div class="d-grid gap-2">
-                        <button class="btn btn-success" type="button">Start Show</button>
-                        <button class="btn btn-outline-primary" type="button">Insert PSA</button>
-                        <button class="btn btn-outline-primary" type="button">Insert Imaging</button>
-                        <button class="btn btn-outline-danger" type="button">Override Next Item</button>
+                        <button class="btn btn-success" type="button" id="control-start-show">Start Show</button>
+                        <button class="btn btn-outline-primary" type="button" id="control-insert-psa">Insert PSA</button>
+                        <button class="btn btn-outline-primary" type="button" id="control-insert-imaging">Insert Imaging</button>
+                        <button class="btn btn-outline-danger" type="button" id="control-override-next">Override Next Item</button>
                     </div>
-                    <div class="mt-3 small text-muted">Scheduler integration pending. Manual overrides will update the queue locally.</div>
+                    <div class="mt-3 small text-muted" id="run-control-note">Scheduler integration pending. Manual overrides will update the queue locally.</div>
                 </div>
             </div>
         </div>
@@ -150,6 +170,29 @@
             </ul>
             <div class="tab-content pt-3" id="libraryTabsContent">
                 <div class="tab-pane fade show active" id="music" role="tabpanel" aria-labelledby="music-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="musicSearch">Search</label>
+                            <input class="form-control" id="musicSearch" type="text" placeholder="Search tracks (use % for all)">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="musicFolder">Folder</label>
+                            <select class="form-select" id="musicFolder">
+                                <option value="">All folders</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="musicPerPage">Per page</label>
+                            <select class="form-select" id="musicPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="musicRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -161,26 +204,41 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Golden Hour</td>
-                                    <td>Solstice</td>
-                                    <td>Sunset Sessions</td>
-                                    <td>03:22</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Morning Tide</td>
-                                    <td>Harbor Lights</td>
-                                    <td>Coastal Dreams</td>
-                                    <td>04:05</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="musicTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="musicMeta">Ready to search the music library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Music pagination">
+                            <button class="btn btn-outline-secondary" id="musicPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="musicNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="psa" role="tabpanel" aria-labelledby="psa-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="psaSearch">Search</label>
+                            <input class="form-control" id="psaSearch" type="text" placeholder="Search PSA library">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="psaCategory">Category</label>
+                            <select class="form-select" id="psaCategory">
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="psaPerPage">Per page</label>
+                            <select class="form-select" id="psaPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="psaRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -191,24 +249,41 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Food Drive</td>
-                                    <td>Community</td>
-                                    <td>:30</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Blood Donation</td>
-                                    <td>Health</td>
-                                    <td>:20</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="psaTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="psaMeta">Loading PSA library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="PSA pagination">
+                            <button class="btn btn-outline-secondary" id="psaPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="psaNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
                 <div class="tab-pane fade" id="imaging" role="tabpanel" aria-labelledby="imaging-tab">
+                    <div class="row g-2 align-items-end mb-3">
+                        <div class="col-lg-5">
+                            <label class="form-label small text-muted" for="imagingSearch">Search</label>
+                            <input class="form-control" id="imagingSearch" type="text" placeholder="Search imaging library">
+                        </div>
+                        <div class="col-lg-3">
+                            <label class="form-label small text-muted" for="imagingCategory">Category</label>
+                            <select class="form-select" id="imagingCategory">
+                                <option value="">All categories</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2">
+                            <label class="form-label small text-muted" for="imagingPerPage">Per page</label>
+                            <select class="form-select" id="imagingPerPage">
+                                <option value="10">10</option>
+                                <option value="25" selected>25</option>
+                                <option value="50">50</option>
+                            </select>
+                        </div>
+                        <div class="col-lg-2 d-grid">
+                            <button class="btn btn-outline-secondary" id="imagingRefresh" type="button">Refresh</button>
+                        </div>
+                    </div>
                     <div class="table-responsive">
                         <table class="table table-sm align-middle">
                             <thead>
@@ -219,24 +294,19 @@
                                     <th></th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                <tr>
-                                    <td>Station ID - Summer</td>
-                                    <td>Branding</td>
-                                    <td>:10</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                                <tr>
-                                    <td>Show Intro - Night Mix</td>
-                                    <td>Show</td>
-                                    <td>:15</td>
-                                    <td><button class="btn btn-sm btn-outline-primary" type="button">Add to Queue</button></td>
-                                </tr>
-                            </tbody>
+                            <tbody id="imagingTableBody"></tbody>
                         </table>
+                    </div>
+                    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+                        <small class="text-muted" id="imagingMeta">Loading imaging library.</small>
+                        <div class="btn-group btn-group-sm" role="group" aria-label="Imaging pagination">
+                            <button class="btn btn-outline-secondary" id="imagingPrev" type="button">Prev</button>
+                            <button class="btn btn-outline-secondary" id="imagingNext" type="button">Next</button>
+                        </div>
                     </div>
                 </div>
             </div>
+            <div class="alert alert-secondary small mt-3 mb-0" id="queueStatus">Queue ready.</div>
         </div>
     </div>
 
@@ -256,24 +326,9 @@
                                     <th>Notes</th>
                                 </tr>
                             </thead>
-                            <tbody>
+                            <tbody id="queue-builder-body">
                                 <tr>
-                                    <td>Weather Update</td>
-                                    <td>Voice</td>
-                                    <td>00:45</td>
-                                    <td>Host live read</td>
-                                </tr>
-                                <tr>
-                                    <td>Community PSA: Food Drive</td>
-                                    <td>PSA</td>
-                                    <td>00:30</td>
-                                    <td>Auto insert ready</td>
-                                </tr>
-                                <tr>
-                                    <td>Station ID - Summer</td>
-                                    <td>Imaging</td>
-                                    <td>00:10</td>
-                                    <td>Scheduled sweep</td>
+                                    <td colspan="4" class="text-muted small">Queue builder syncing...</td>
                                 </tr>
                             </tbody>
                         </table>
@@ -373,6 +428,28 @@
     </div>
 </div>
 {% include '_footer.html' %}
+<script type="application/json" id="show-automator-bootstrap">
+    {{ {
+        "endpoints": {
+            "state": url_for("api.show_automator_state")
+        },
+        "station": {
+            "name": station_name,
+            "slogan": station_slogan
+        },
+        "user": {
+            "display_name": session.get("display_name"),
+            "email": session.get("user_email"),
+            "permissions": session_permissions
+        },
+        "config": {
+            "pollIntervalMs": 5000
+        },
+        "assets": {
+            "fallbackArt": url_for("static", filename="logo.png")
+        }
+    } | tojson }}
+</script>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
     const logFeedback = document.getElementById("logFeedback");
