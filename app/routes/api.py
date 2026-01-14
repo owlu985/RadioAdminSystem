@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from datetime import datetime
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort, send_file
 import os
 import shutil
@@ -40,7 +39,7 @@ from app.utils import (
     active_absence_for_show,
     next_show_occurrence,
 )
-from app.services.show_run_service import get_or_create_active_run
+from app.services.show_run_service import get_or_create_active_run, start_show_run, end_show_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
 from app.services import api_cache
@@ -135,6 +134,62 @@ def _serialize_now_playing(state: NowPlayingState | None) -> dict | None:
         "fade_out": state.fade_out,
         "cues": _deserialize_cues(state.cues),
         "updated_at": state.updated_at.isoformat(),
+    }
+
+
+def _parse_timestamp(value: str | int | float | None) -> datetime:
+    if value is None:
+        return datetime.utcnow()
+    if isinstance(value, (int, float)):
+        return datetime.utcfromtimestamp(value)
+    if isinstance(value, str):
+        try:
+            dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+            if dt.tzinfo:
+                return dt.astimezone(timezone.utc).replace(tzinfo=None)
+            return dt
+        except ValueError:
+            return datetime.utcnow()
+    return datetime.utcnow()
+
+
+def _split_dj_name(name: str | None) -> tuple[str, str]:
+    if not name:
+        return ("", "")
+    parts = [part for part in name.split() if part]
+    if len(parts) >= 2:
+        return parts[0], " ".join(parts[1:])
+    return parts[0], "DJ"
+
+
+def _resolve_show_metadata(payload: dict) -> dict:
+    show_name = (payload.get("show_name") or payload.get("show") or "").strip()
+    dj_first = (payload.get("dj_first_name") or "").strip()
+    dj_last = (payload.get("dj_last_name") or "").strip()
+    dj_name = (payload.get("dj_name") or "").strip()
+
+    if (not dj_first or not dj_last) and dj_name:
+        dj_first, dj_last = _split_dj_name(dj_name)
+
+    current_show = get_current_show()
+    if current_show:
+        if not show_name:
+            show_name = show_display_title(current_show)
+        if not dj_first or not dj_last:
+            dj_first, dj_last = show_primary_host(current_show)
+
+    if not show_name:
+        show_name = "Unscheduled Show"
+    if not dj_first:
+        dj_first = "Unknown"
+    if not dj_last:
+        dj_last = "DJ"
+
+    return {
+        "show_name": show_name,
+        "dj_first_name": dj_first,
+        "dj_last_name": dj_last,
+        "dj_name": f"{dj_first} {dj_last}".strip(),
     }
 
 
@@ -1649,6 +1704,7 @@ def playback_session():
         db.session.commit()
     return jsonify({
         "id": playback.id,
+        "show_run_id": playback.show_run_id,
         "automation_mode": playback.automation_mode,
         "show_name": playback.show_name,
         "dj_name": playback.dj_name,
@@ -1656,6 +1712,125 @@ def playback_session():
         "created_at": playback.created_at.isoformat(),
         "updated_at": playback.updated_at.isoformat(),
     })
+
+
+@api_bp.route("/playback/show/start", methods=["POST"])
+def playback_show_start():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    meta = _resolve_show_metadata(payload)
+    show_run = start_show_run(
+        dj_first_name=meta["dj_first_name"],
+        dj_last_name=meta["dj_last_name"],
+        show_name=meta["show_name"],
+    )
+    playback.show_run_id = show_run.id
+    playback.show_name = meta["show_name"]
+    playback.dj_name = meta["dj_name"]
+    playback.started_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    log_entry = LogEntry(
+        show_run_id=show_run.id,
+        timestamp=datetime.utcnow(),
+        entry_time=datetime.utcnow().time(),
+        entry_type="show",
+        title=meta["show_name"],
+        artist=meta["dj_name"],
+        message=f"Show started: {meta['show_name']}",
+    )
+    db.session.add(log_entry)
+    db.session.add(playback)
+    db.session.commit()
+    return jsonify({
+        "status": "ok",
+        "show_run_id": show_run.id,
+        "show_name": meta["show_name"],
+        "dj_name": meta["dj_name"],
+        "started_at": show_run.start_time.isoformat(),
+    })
+
+
+@api_bp.route("/playback/show/stop", methods=["POST"])
+def playback_show_stop():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    show_run_id = payload.get("show_run_id") or playback.show_run_id
+    if not show_run_id:
+        return jsonify({"status": "error", "message": "show_run_id required"}), 400
+    try:
+        show_run_id = int(show_run_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_show_run_id"}), 400
+    try:
+        show_run = end_show_run(show_run_id)
+    except ValueError:
+        return jsonify({"status": "error", "message": "show_run_not_found"}), 404
+    playback.ended_at = datetime.utcnow()
+    _touch_playback_session(playback)
+    log_entry = LogEntry(
+        show_run_id=show_run.id,
+        timestamp=datetime.utcnow(),
+        entry_time=datetime.utcnow().time(),
+        entry_type="show",
+        title=show_run.show_name,
+        artist=f"{show_run.dj_first_name} {show_run.dj_last_name}".strip(),
+        message=f"Show ended: {show_run.show_name}",
+    )
+    db.session.add(log_entry)
+    db.session.add(playback)
+    db.session.commit()
+    return jsonify({
+        "status": "ok",
+        "show_run_id": show_run.id,
+        "ended_at": show_run.end_time.isoformat() if show_run.end_time else None,
+    })
+
+
+@api_bp.route("/playback/log", methods=["POST"])
+def playback_log_entry():
+    playback = _get_playback_session()
+    payload = request.get_json(silent=True) or {}
+    show_run_id = payload.get("show_run_id") or playback.show_run_id
+    if not show_run_id:
+        return jsonify({"status": "error", "message": "show_run_id required"}), 400
+    try:
+        show_run_id = int(show_run_id)
+    except (TypeError, ValueError):
+        return jsonify({"status": "error", "message": "invalid_show_run_id"}), 400
+    timestamp = _parse_timestamp(payload.get("timestamp"))
+    entry_type = (payload.get("entry_type") or payload.get("type") or payload.get("kind") or "").strip() or None
+    title = payload.get("title")
+    artist = payload.get("artist")
+    duration = payload.get("duration")
+    event = payload.get("event") or "log"
+    reason = payload.get("reason")
+    message = payload.get("message")
+    if not message:
+        detail = f"{event}: {entry_type or 'item'}"
+        if title:
+            detail = f"{detail} - {title}"
+        message = detail
+    description_payload = {
+        "event": event,
+        "reason": reason,
+        "duration": duration,
+        "metadata": payload.get("metadata"),
+    }
+    if not any(value is not None for value in description_payload.values()):
+        description_payload = None
+    entry = LogEntry(
+        show_run_id=show_run_id,
+        timestamp=timestamp,
+        entry_time=timestamp.time(),
+        entry_type=entry_type,
+        title=title,
+        artist=artist,
+        message=message,
+        description=json.dumps(description_payload) if description_payload else None,
+    )
+    db.session.add(entry)
+    db.session.commit()
+    return jsonify({"status": "ok", "entry_id": entry.id})
 
 
 @api_bp.route("/playback/session/attach", methods=["POST"])
