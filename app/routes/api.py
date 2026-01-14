@@ -137,6 +137,48 @@ def _serialize_now_playing(state: NowPlayingState | None) -> dict | None:
     }
 
 
+def _coerce_float(value: object) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _extract_cues(metadata: dict | None) -> dict:
+    if not metadata:
+        return {}
+    cues = metadata.get("cues")
+    if isinstance(cues, dict):
+        return cues
+    return {k: metadata.get(k) for k in ["intro", "outro", "start_next"] if metadata.get(k) is not None}
+
+
+def _playback_timer_snapshot(state: NowPlayingState | None) -> dict | None:
+    if not state:
+        return None
+    metadata = _deserialize_metadata(state.metadata)
+    if isinstance(metadata, dict):
+        timers = metadata.get("timers")
+        if isinstance(timers, dict):
+            return timers
+    elapsed = None
+    if state.started_at:
+        elapsed = max(0.0, (datetime.utcnow() - state.started_at).total_seconds())
+    cues = _extract_cues(metadata if isinstance(metadata, dict) else None)
+    def remaining_for(cue_value: object) -> float | None:
+        cue = _coerce_float(cue_value)
+        if cue is None or elapsed is None:
+            return None
+        return max(0.0, cue - elapsed)
+    return {
+        "deck": metadata.get("deck") if isinstance(metadata, dict) else None,
+        "intro_remaining": remaining_for(cues.get("intro")),
+        "outro_remaining": remaining_for(cues.get("outro")),
+        "next_cue_remaining": remaining_for(cues.get("start_next")),
+        "elapsed": elapsed,
+    }
+
+
 def _get_playback_session() -> PlaybackSession:
     requested = request.headers.get("X-Playback-Session") or request.args.get("session_id")
     stored = session.get("playback_session_id")
@@ -1647,6 +1689,37 @@ def playback_session():
         "created_at": playback.created_at.isoformat(),
         "updated_at": playback.updated_at.isoformat(),
         "automation_paused": automation_paused,
+    })
+
+
+@api_bp.route("/playback/session/state", methods=["GET", "POST"])
+def playback_session_state():
+    playback = _get_playback_session()
+    now_playing = _now_playing_for(playback.id)
+    if request.method == "POST":
+        payload = request.get_json(silent=True) or {}
+        timers = payload.get("timers")
+        if not isinstance(timers, dict):
+            timers = {}
+        metadata = _deserialize_metadata(now_playing.metadata)
+        if not isinstance(metadata, dict):
+            metadata = {} if metadata is None else {"raw": metadata}
+        if timers:
+            metadata["timers"] = timers
+        deck = payload.get("deck")
+        if deck:
+            metadata["deck"] = deck
+        if metadata:
+            now_playing.metadata = json.dumps(metadata)
+        now_playing.updated_at = datetime.utcnow()
+        _touch_playback_session(playback)
+        db.session.add(now_playing)
+        db.session.commit()
+        return jsonify({"status": "ok", "timers": timers})
+    return jsonify({
+        "session_id": playback.id,
+        "now_playing": _serialize_now_playing(now_playing),
+        "timers": _playback_timer_snapshot(now_playing),
     })
 
 
