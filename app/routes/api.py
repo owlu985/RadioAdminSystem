@@ -74,6 +74,7 @@ from app.services.archivist_db import (
 )
 from app.services.library_index import get_library_index_status
 from sqlalchemy import func, inspect, text
+from sqlalchemy.exc import OperationalError
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
 import requests
@@ -237,7 +238,6 @@ def _ensure_playback_session_schema() -> None:
     inspector = inspect(db.engine)
     if "playback_session" not in inspector.get_table_names():
         return
-    existing = {col["name"] for col in inspector.get_columns("playback_session")}
     required = {
         "show_run_id": "INTEGER",
         "show_name": "VARCHAR(255)",
@@ -249,15 +249,41 @@ def _ensure_playback_session_schema() -> None:
         "created_at": "DATETIME",
         "updated_at": "DATETIME",
     }
-    missing = [name for name in required.keys() if name not in existing]
-    if not missing:
-        return
     if db.engine.dialect.name != "sqlite":
+        existing = {col["name"] for col in inspector.get_columns("playback_session")}
+        missing = [name for name in required.keys() if name not in existing]
+        if not missing:
+            return
         logger.warning("Missing playback_session columns but dialect is %s: %s", db.engine.dialect.name, missing)
         return
-    for name in missing:
-        db.session.execute(text(f"ALTER TABLE playback_session ADD COLUMN {name} {required[name]}"))
+    for name, column_type in required.items():
+        if _playback_session_has_column(name):
+            continue
+        try:
+            db.session.execute(text(f"ALTER TABLE playback_session ADD COLUMN {name} {column_type}"))
+        except OperationalError as exc:
+            if "duplicate column name" in str(exc).lower() or _playback_session_has_column(name):
+                db.session.rollback()
+                continue
+            db.session.rollback()
+            raise
     db.session.commit()
+
+
+def _playback_session_has_column(column_name: str) -> bool:
+    inspector = inspect(db.engine)
+    if "playback_session" not in inspector.get_table_names():
+        return False
+    try:
+        columns = {col["name"] for col in inspector.get_columns("playback_session")}
+    except Exception:  # noqa: BLE001
+        columns = set()
+    if column_name in columns:
+        return True
+    if db.engine.dialect.name != "sqlite":
+        return False
+    result = db.session.execute(text("PRAGMA table_info(playback_session)")).mappings().all()
+    return any(row.get("name") == column_name for row in result)
 
 
 def _queue_items(session_id: int) -> list[PlaybackQueueItem]:
