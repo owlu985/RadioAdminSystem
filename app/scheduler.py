@@ -11,6 +11,7 @@ from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
+from app.services.library_index import start_library_index_job
 from .utils import update_user_config, show_display_title, show_primary_host
 from datetime import date as date_cls
 import ffmpeg
@@ -40,6 +41,7 @@ def init_scheduler(app):
             schedule_icecast_analytics()
             schedule_settings_backup()
             schedule_radiodj_now_playing()
+            schedule_library_index_job()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -387,6 +389,25 @@ def schedule_radiodj_now_playing():
         logger.error(f"Error scheduling RadioDJ now-playing job: {e}")
 
 
+def schedule_library_index_job(run_now: bool = False):
+    if flask_app is None:
+        return
+    hours = flask_app.config.get("LIBRARY_INDEX_INTERVAL_HOURS", 6)
+    try:
+        scheduler.add_job(
+            run_library_index_job,
+            "interval",
+            hours=hours,
+            id="library_index_job",
+            replace_existing=True,
+        )
+        logger.info("Library index job scheduled.")
+        if run_now:
+            run_library_index_job()
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling library index job: {e}")
+
+
 def schedule_news_rotation():
     """Daily job to activate the news file for the current date if available."""
     if flask_app is None:
@@ -484,3 +505,10 @@ def run_radiodj_now_playing_job():
             _get_cached_radiodj_nowplaying(push_icecast=not show)
         except Exception as exc:  # noqa: BLE001
             logger.warning("RadioDJ now-playing update failed: %s", exc)
+
+
+def run_library_index_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        start_library_index_job()
