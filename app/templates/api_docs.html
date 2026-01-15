@@ -65,8 +65,8 @@ GET /api/psa/metadata?token=&lt;token&gt;
 PATCH /api/psa/metadata?token=&lt;token&gt;
 GET /api/psa/metadata/export?kind=psa|imaging|all
 POST /api/psa/metadata/import
-GET /psa/player</code></pre>
-            Paginated media library (PSA/music/assets/voice tracks) with categories, cues, and filters (<code>page</code>, <code>per_page</code>, <code>category</code>, <code>q</code>); the media player consumes this API.</li>
+</code></pre>
+            Paginated media library (PSA/music/assets/voice tracks) with categories, cues, and filters (<code>page</code>, <code>per_page</code>, <code>category</code>, <code>q</code>); used by the show automator queue.</li>
         <li><strong>Public AutoDJ control:</strong>
             <pre><code>GET  /dj/autodj
 POST /api/radiodj/autodj</code></pre>
@@ -159,7 +159,7 @@ GET      /logout</code></pre>
     <h4 class="mt-4">Full Endpoint Index</h4>
     <p class="text-muted">Quick list of all published endpoints (public first, then authenticated/admin). For details, see the sections above.</p>
     <ul>
-        <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/now/recent-tracks</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>, <code>/psa/player</code>.</li>
+        <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/now/recent-tracks</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>.</li>
         <li>Logging & reports: <code>/logs/view</code>, <code>/logs/download/csv</code>, <code>/logs/download/docx</code>, <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code>.</li>
         <li>Probes, runs, audits: <code>/api/probe</code>, <code>/api/probes/latest</code>, <code>/api/runs/&lt;id&gt;</code>, <code>/api/runs/&lt;id&gt;/logs</code>, <code>/api/audit/start</code>, <code>/api/audit/status/&lt;job_id&gt;</code>.</li>
         <li>Music library: <code>/api/music/search</code>, <code>/api/music/detail</code>, <code>/api/music/cover-image</code>, <code>/api/music/cover-art</code>, <code>/api/music/musicbrainz</code>, <code>/api/music/bulk-update</code>, <code>/api/music/scan/library</code>, <code>/api/music/cue</code>, <code>/api/music/saved-searches</code>, <code>/api/archivist/album-rip</code>, <code>/api/archivist/album-info</code>, archivist CSV import UI, <code>/music/</code> pages for search/detail/edit/cue.</li>

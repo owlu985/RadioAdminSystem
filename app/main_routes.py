@@ -466,11 +466,7 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
 
 @main_bp.route("/psa/player")
 def psa_player():
-    psa_root = _psa_library_root()
-    imaging_root = _imaging_library_root()
-    resp = make_response(render_template("show_automating_player.html", psa_root=psa_root, imaging_root=imaging_root))
-    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
-    return resp
+    return redirect(url_for("main.show_automator"))
 
 
 @main_bp.route("/dj/autodj")
