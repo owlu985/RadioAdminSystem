@@ -62,12 +62,34 @@
                 <div class="card-body library-pane">
                     <div id="musicBrowser">
                         <div class="mb-3">
-                            <div class="fw-semibold small text-uppercase text-muted">Artists</div>
-                            <div class="list-group list-group-flush" id="artistList"></div>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <div class="fw-semibold small text-uppercase text-muted">Browse</div>
+                                <div class="btn-group btn-group-sm" id="browseModeToggle" role="group" aria-label="Browse mode">
+                                    <button class="btn btn-outline-secondary active" data-browse="artist" type="button">Artist</button>
+                                    <button class="btn btn-outline-secondary" data-browse="genre" type="button">Genre</button>
+                                </div>
+                            </div>
+                            <input class="form-control form-control-sm" id="librarySearch" type="search" placeholder="Search artist, album, title, or genre">
                         </div>
-                        <div>
-                            <div class="fw-semibold small text-uppercase text-muted">Albums</div>
-                            <div class="list-group list-group-flush" id="albumList"></div>
+                        <div id="artistBrowser">
+                            <div class="mb-3">
+                                <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                <div class="list-group list-group-flush" id="artistList"></div>
+                            </div>
+                            <div>
+                                <div class="fw-semibold small text-uppercase text-muted">Albums</div>
+                                <div class="list-group list-group-flush" id="albumList"></div>
+                            </div>
+                        </div>
+                        <div id="genreBrowser" class="d-none">
+                            <div class="mb-3">
+                                <div class="fw-semibold small text-uppercase text-muted">Genres</div>
+                                <div class="list-group list-group-flush" id="genreList"></div>
+                            </div>
+                            <div>
+                                <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                <div class="list-group list-group-flush" id="genreArtistList"></div>
+                            </div>
                         </div>
                     </div>
                     <div id="psaBrowser" class="d-none">
@@ -196,12 +218,24 @@
 
 <script>
     const libraryData = {{ library_index | tojson }};
+    const normalizeText = (value) => (value ?? '').toString().toLowerCase();
     const state = {
         mode: 'music',
         artists: libraryData.music || [],
+        genres: libraryData.genres || [],
         psa: libraryData.psa_imaging || [],
+        musicBrowseMode: 'artist',
+        searchTerm: '',
+        artistIndex: new Map(),
+        genreIndex: new Map(),
+        artistSearch: new Map(),
+        albumSearch: new Map(),
+        genreSearch: new Map(),
+        genreArtistSearch: new Map(),
         selectedArtist: null,
         selectedAlbum: null,
+        selectedGenre: null,
+        selectedGenreArtist: null,
         selectedCategory: null,
         selectedItem: null,
         tracks: [],
@@ -212,6 +246,8 @@
 
     const artistList = document.getElementById('artistList');
     const albumList = document.getElementById('albumList');
+    const genreList = document.getElementById('genreList');
+    const genreArtistList = document.getElementById('genreArtistList');
     const psaCategoryList = document.getElementById('psaCategoryList');
     const psaItemList = document.getElementById('psaItemList');
     const trackTableBody = document.getElementById('trackTableBody');
@@ -219,6 +255,7 @@
     const listView = document.getElementById('listView');
     const selectionSummary = document.getElementById('selectionSummary');
     const sortLabel = document.getElementById('sortLabel');
+    const librarySearch = document.getElementById('librarySearch');
 
     const formFields = {
         artist: document.getElementById('metaArtist'),
@@ -235,6 +272,67 @@
         loop_in: document.getElementById('metaLoopIn'),
         loop_out: document.getElementById('metaLoopOut'),
         path: document.getElementById('metaPath')
+    };
+
+    const debounce = (callback, wait = 200) => {
+        let timeout;
+        return (...args) => {
+            window.clearTimeout(timeout);
+            timeout = window.setTimeout(() => callback(...args), wait);
+        };
+    };
+
+    const buildArtistCache = () => {
+        const artistIndex = new Map();
+        const artistSearch = new Map();
+        const albumSearch = new Map();
+        state.artists.forEach(artist => {
+            const albumSearchMap = new Map();
+            const artistParts = [artist.name];
+            (artist.albums || []).forEach(album => {
+                const albumParts = [album.name, album.genre, album.year];
+                (album.tracks || []).forEach(track => {
+                    albumParts.push(track.title, track.genre, track.artist, track.album);
+                });
+                const albumBlob = normalizeText(albumParts.join(' '));
+                albumSearchMap.set(album.name, albumBlob);
+                artistParts.push(albumBlob);
+            });
+            artistIndex.set(artist.name, { ...artist, albumSearchMap });
+            artistSearch.set(artist.name, normalizeText(artistParts.join(' ')));
+            albumSearch.set(artist.name, albumSearchMap);
+        });
+        state.artistIndex = artistIndex;
+        state.artistSearch = artistSearch;
+        state.albumSearch = albumSearch;
+    };
+
+    const buildGenreCache = () => {
+        const genreIndex = new Map();
+        const genreSearch = new Map();
+        const genreArtistSearch = new Map();
+        state.genres.forEach(genre => {
+            const artistSearchMap = new Map();
+            const genreParts = [genre.name];
+            (genre.tracks || []).forEach(track => {
+                const artistName = track.artist || 'Unknown Artist';
+                const artistBlob = artistSearchMap.get(artistName) || '';
+                const nextBlob = `${artistBlob} ${track.title || ''} ${track.album || ''} ${track.genre || ''}`.trim();
+                artistSearchMap.set(artistName, normalizeText(nextBlob));
+                genreParts.push(track.artist, track.album, track.title, track.genre);
+            });
+            genreIndex.set(genre.name, genre);
+            genreSearch.set(genre.name, normalizeText(genreParts.join(' ')));
+            genreArtistSearch.set(genre.name, artistSearchMap);
+        });
+        state.genreIndex = genreIndex;
+        state.genreSearch = genreSearch;
+        state.genreArtistSearch = genreArtistSearch;
+    };
+
+    const buildCaches = () => {
+        buildArtistCache();
+        buildGenreCache();
     };
 
     const setActiveListItem = (container, activeValue) => {
@@ -281,7 +379,13 @@
         gridView.innerHTML = '';
         if (!state.tracks.length) {
             trackTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No items selected.</td></tr>';
-            selectionSummary.textContent = 'Select an artist, album, or PSA collection.';
+            if (state.mode === 'psa') {
+                selectionSummary.textContent = 'Select a PSA collection.';
+            } else if (state.musicBrowseMode === 'genre') {
+                selectionSummary.textContent = 'Select a genre to view tracks.';
+            } else {
+                selectionSummary.textContent = 'Select an artist or album.';
+            }
             return;
         }
         selectionSummary.textContent = `${state.tracks.length} items shown`;
@@ -324,9 +428,36 @@
         });
     };
 
+    const matchesSearch = (blob) => {
+        if (!state.searchTerm) {
+            return true;
+        }
+        return (blob || '').includes(state.searchTerm);
+    };
+
+    const getFilteredArtists = () => state.artists.filter(artist => {
+        const blob = state.artistSearch.get(artist.name) || '';
+        return matchesSearch(blob);
+    });
+
+    const getFilteredGenres = () => state.genres.filter(genre => {
+        const blob = state.genreSearch.get(genre.name) || '';
+        return matchesSearch(blob);
+    });
+
     const renderArtists = () => {
         artistList.innerHTML = '';
-        state.artists.forEach(artist => {
+        const filteredArtists = getFilteredArtists();
+        if (!filteredArtists.length) {
+            artistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
+        }
+        if (state.selectedArtist && !filteredArtists.find(artist => artist.name === state.selectedArtist)) {
+            state.selectedArtist = null;
+            state.selectedAlbum = null;
+            state.tracks = [];
+            renderTracks();
+        }
+        filteredArtists.forEach(artist => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'list-group-item list-group-item-action';
@@ -351,7 +482,18 @@
             albumList.innerHTML = '<div class="text-muted small">Select an artist to view albums.</div>';
             return;
         }
-        artist.albums.forEach(album => {
+        const albumSearchMap = state.albumSearch.get(artist.name) || new Map();
+        const filteredAlbums = (artist.albums || []).filter(album => {
+            if (!state.searchTerm) {
+                return true;
+            }
+            return matchesSearch(albumSearchMap.get(album.name) || '');
+        });
+        if (!filteredAlbums.length) {
+            albumList.innerHTML = '<div class="text-muted small">No albums match the current search.</div>';
+            return;
+        }
+        filteredAlbums.forEach(album => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'list-group-item list-group-item-action';
@@ -364,6 +506,75 @@
                 renderTracks();
             });
             albumList.appendChild(btn);
+        });
+    };
+
+    const renderGenres = () => {
+        genreList.innerHTML = '';
+        const filteredGenres = getFilteredGenres();
+        if (!filteredGenres.length) {
+            genreList.innerHTML = '<div class="text-muted small">No genres match the current search.</div>';
+        }
+        if (state.selectedGenre && !filteredGenres.find(genre => genre.name === state.selectedGenre)) {
+            state.selectedGenre = null;
+            state.selectedGenreArtist = null;
+            state.tracks = [];
+            renderTracks();
+        }
+        filteredGenres.forEach(genre => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = genre.name;
+            btn.textContent = genre.name;
+            btn.addEventListener('click', () => {
+                state.selectedGenre = genre.name;
+                state.selectedGenreArtist = null;
+                setActiveListItem(genreList, genre.name);
+                renderGenreArtists();
+                state.tracks = genre.tracks || [];
+                renderTracks();
+            });
+            genreList.appendChild(btn);
+        });
+    };
+
+    const renderGenreArtists = () => {
+        genreArtistList.innerHTML = '';
+        const genre = state.genres.find(g => g.name === state.selectedGenre);
+        if (!genre) {
+            genreArtistList.innerHTML = '<div class="text-muted small">Select a genre to view artists.</div>';
+            return;
+        }
+        const artistSearchMap = state.genreArtistSearch.get(genre.name) || new Map();
+        const artists = (genre.artists || []).filter(name => {
+            if (!state.searchTerm) {
+                return true;
+            }
+            return matchesSearch(artistSearchMap.get(name) || '');
+        });
+        if (!artists.length) {
+            genreArtistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
+            return;
+        }
+        if (state.selectedGenreArtist && !artists.includes(state.selectedGenreArtist)) {
+            state.selectedGenreArtist = null;
+            state.tracks = genre.tracks || [];
+            renderTracks();
+        }
+        artists.forEach(name => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = name;
+            btn.textContent = name;
+            btn.addEventListener('click', () => {
+                state.selectedGenreArtist = name;
+                setActiveListItem(genreArtistList, name);
+                state.tracks = (genre.tracks || []).filter(track => track.artist === name);
+                renderTracks();
+            });
+            genreArtistList.appendChild(btn);
         });
     };
 
@@ -414,6 +625,29 @@
         renderTracks();
     };
 
+    const renderMusicLists = () => {
+        document.getElementById('artistBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'artist');
+        document.getElementById('genreBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'genre');
+        if (state.musicBrowseMode === 'artist') {
+            renderArtists();
+            renderAlbums();
+        } else {
+            renderGenres();
+            renderGenreArtists();
+        }
+    };
+
+    const setBrowseMode = (browseMode) => {
+        state.musicBrowseMode = browseMode;
+        state.selectedArtist = null;
+        state.selectedAlbum = null;
+        state.selectedGenre = null;
+        state.selectedGenreArtist = null;
+        state.tracks = [];
+        renderMusicLists();
+        renderTracks();
+    };
+
     const setMode = (mode) => {
         state.mode = mode;
         document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
@@ -421,12 +655,13 @@
         if (mode === 'music') {
             state.selectedCategory = null;
             state.tracks = [];
-            renderArtists();
-            renderAlbums();
+            renderMusicLists();
             renderTracks();
         } else {
             state.selectedArtist = null;
             state.selectedAlbum = null;
+            state.selectedGenre = null;
+            state.selectedGenreArtist = null;
             state.tracks = [];
             renderPsaCategories();
             renderPsaItems();
@@ -440,6 +675,19 @@
             setMode(tab.dataset.mode);
         });
     });
+
+    document.querySelectorAll('#browseModeToggle .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#browseModeToggle .btn').forEach(toggle => toggle.classList.remove('active'));
+            btn.classList.add('active');
+            setBrowseMode(btn.dataset.browse);
+        });
+    });
+
+    librarySearch.addEventListener('input', debounce(() => {
+        state.searchTerm = normalizeText(librarySearch.value);
+        renderMusicLists();
+    }, 250));
 
     document.getElementById('listToggle').addEventListener('click', () => {
         state.view = 'list';
@@ -480,8 +728,8 @@
         updateMetadataForm(state.selectedItem);
     });
 
-    renderArtists();
-    renderAlbums();
+    buildCaches();
+    renderMusicLists();
     renderTracks();
 </script>
 </body>
