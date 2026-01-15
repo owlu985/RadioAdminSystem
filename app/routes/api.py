@@ -8,7 +8,7 @@ import shutil
 import json
 import base64
 import io
-from typing import Optional, TypedDict
+from typing import Optional
 from urllib.parse import urlparse, quote
 from app.models import (
     ShowRun,
@@ -29,6 +29,8 @@ from app.models import (
     MarathonEvent,
     ArchivistRipResult,
     NowPlayingState,
+    PlaybackQueueItem,
+    PlaybackSession,
     db,
 )
 from app.utils import (
@@ -275,22 +277,6 @@ def _normalize_plan_payload(payload: dict | None) -> dict | None:
         data["cues"] = cues
     return data
 
-
-
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
-
-
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
 
 
 def _serialize_show_run(run: ShowRun) -> dict:
@@ -626,6 +612,9 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
+    override_enabled = bool(base.get("override_enabled")) if isinstance(base, dict) else _override_enabled()
+    if not override_enabled:
+        return jsonify(base or {"status": "off_air"})
     nowplaying_payload = _get_cached_radiodj_nowplaying()
     if nowplaying_payload:
         base = base or {}
