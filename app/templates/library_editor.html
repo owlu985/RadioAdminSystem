@@ -119,6 +119,11 @@
                         <div class="text-muted small" id="selectionSummary">Select an artist, album, or PSA collection.</div>
                         <div class="text-muted small">Sort by: <span id="sortLabel">Artist</span></div>
                     </div>
+                    <div class="btn-group btn-group-sm mb-2" id="trackFilter" role="group" aria-label="Track filters">
+                        <button class="btn btn-outline-secondary active" data-filter="all" type="button">All</button>
+                        <button class="btn btn-outline-secondary" data-filter="recent" type="button">Recent</button>
+                        <button class="btn btn-outline-secondary" data-filter="missing_cues" type="button">Missing Cues</button>
+                    </div>
                     <div class="table-responsive" id="listView">
                         <table class="table table-sm table-hover align-middle">
                             <thead>
@@ -239,6 +244,7 @@
         selectedCategory: null,
         selectedItem: null,
         tracks: [],
+        trackFilter: 'all',
         view: 'list',
         sortKey: 'artist',
         sortDir: 'asc'
@@ -256,6 +262,7 @@
     const selectionSummary = document.getElementById('selectionSummary');
     const sortLabel = document.getElementById('sortLabel');
     const librarySearch = document.getElementById('librarySearch');
+    const trackFilterGroup = document.getElementById('trackFilter');
 
     const formFields = {
         artist: document.getElementById('metaArtist'),
@@ -358,10 +365,10 @@
         formFields.path.value = item?.path || '';
     };
 
-    const sortTracks = () => {
+    const sortTracks = (tracks) => {
         const key = state.sortKey;
         const dir = state.sortDir === 'asc' ? 1 : -1;
-        state.tracks.sort((a, b) => {
+        tracks.sort((a, b) => {
             const aVal = (a[key] ?? '').toString().toLowerCase();
             const bVal = (b[key] ?? '').toString().toLowerCase();
             if (key === 'year') {
@@ -373,11 +380,27 @@
         });
     };
 
+    const applyTrackFilters = (tracks) => {
+        if (state.mode !== 'music' || state.trackFilter === 'all') {
+            return tracks;
+        }
+        if (state.trackFilter === 'recent') {
+            return tracks.filter(track => track.is_recent);
+        }
+        if (state.trackFilter === 'missing_cues') {
+            return tracks.filter(track => track.missing_cues);
+        }
+        return tracks;
+    };
+
     const renderTracks = () => {
-        sortTracks();
+        const baseTracks = state.tracks;
+        const filteredTracks = applyTrackFilters(baseTracks);
+        const sortedTracks = [...filteredTracks];
+        sortTracks(sortedTracks);
         trackTableBody.innerHTML = '';
         gridView.innerHTML = '';
-        if (!state.tracks.length) {
+        if (!baseTracks.length) {
             trackTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No items selected.</td></tr>';
             if (state.mode === 'psa') {
                 selectionSummary.textContent = 'Select a PSA collection.';
@@ -388,8 +411,15 @@
             }
             return;
         }
-        selectionSummary.textContent = `${state.tracks.length} items shown`;
-        state.tracks.forEach((track, idx) => {
+        if (!filteredTracks.length) {
+            trackTableBody.innerHTML = '<tr><td colspan="5" class="text-muted">No items match the current filter.</td></tr>';
+            selectionSummary.textContent = `0 of ${baseTracks.length} items shown`;
+            return;
+        }
+        selectionSummary.textContent = filteredTracks.length === baseTracks.length
+            ? `${filteredTracks.length} items shown`
+            : `${filteredTracks.length} of ${baseTracks.length} items shown`;
+        sortedTracks.forEach((track, idx) => {
             const row = document.createElement('tr');
             row.className = track.path === state.selectedItem?.path ? 'table-primary' : '';
             row.innerHTML = `
@@ -652,6 +682,7 @@
         state.mode = mode;
         document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
         document.getElementById('psaBrowser').classList.toggle('d-none', mode !== 'psa');
+        trackFilterGroup.classList.toggle('d-none', mode !== 'music');
         if (mode === 'music') {
             state.selectedCategory = null;
             state.tracks = [];
@@ -704,6 +735,15 @@
         document.getElementById('gridToggle').classList.add('active');
         document.getElementById('listToggle').classList.remove('active');
         renderTracks();
+    });
+
+    document.querySelectorAll('#trackFilter .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#trackFilter .btn').forEach(filterBtn => filterBtn.classList.remove('active'));
+            btn.classList.add('active');
+            state.trackFilter = btn.dataset.filter || 'all';
+            renderTracks();
+        });
     });
 
     document.querySelectorAll('.sort-header').forEach(header => {
