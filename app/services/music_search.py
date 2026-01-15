@@ -150,6 +150,31 @@ def _library_media_roots() -> List[Tuple[str, str]]:
 def build_library_editor_index() -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
+    recent_days = current_app.config.get("LIBRARY_EDITOR_RECENT_DAYS", 30)
+    recent_cutoff = time.time() - (recent_days * 86400)
+    cue_fields = (
+        "cue_in",
+        "intro",
+        "outro",
+        "cue_out",
+        "loop_in",
+        "loop_out",
+        "hook_in",
+        "hook_out",
+        "start_next",
+        "fade_in",
+        "fade_out",
+    )
+    paths = [entry.get("path") for entry in entries if entry.get("path")]
+    cues_by_path: Dict[str, Dict[str, float]] = {}
+    if paths:
+        for cue in MusicCue.query.filter(MusicCue.path.in_(paths)).all():
+            cue_payload = {
+                field: getattr(cue, field)
+                for field in cue_fields
+                if getattr(cue, field) is not None
+            }
+            cues_by_path[cue.path] = cue_payload
     artists_map: Dict[str, Dict[str, Dict]] = {}
     genres_map: Dict[str, Dict] = {}
     for entry in entries:
@@ -159,6 +184,8 @@ def build_library_editor_index() -> Dict:
         album = entry.get("album") or "Unknown Album"
         year = entry.get("year")
         genre = entry.get("genre") or "Unknown Genre"
+        cues = cues_by_path.get(path, {})
+        is_recent = (entry.get("mtime") or 0) >= recent_cutoff
         track_payload = {
             "title": title,
             "path": path,
@@ -168,6 +195,9 @@ def build_library_editor_index() -> Dict:
             "genre": genre,
             "track_num": entry.get("track_num"),
             "disc_num": entry.get("disc_num"),
+            "cues": cues,
+            "missing_cues": not bool(cues),
+            "is_recent": is_recent,
         }
         artist_bucket = artists_map.setdefault(artist, {})
         album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
