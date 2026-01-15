@@ -1,4 +1,233 @@
 (() => {
+const nowPlayingPanel = document.getElementById('nowPlayingPanel');
+const liveQueuePanel = document.getElementById('liveQueuePanel');
+const queueBuilderPanel = document.getElementById('queueBuilderPanel');
+const libraryNavigationPanel = document.getElementById('libraryNavigationPanel');
+const playbackPanelsEnabled = Boolean(
+    nowPlayingPanel && liveQueuePanel && queueBuilderPanel && libraryNavigationPanel
+);
+let playbackPanelFilter = 'all';
+let playbackPanelTimer = null;
+
+function escapeHtml(value) {
+    return String(value ?? '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function formatDuration(seconds) {
+    const total = Number(seconds);
+    if (Number.isNaN(total) || total <= 0) return '—';
+    const mins = Math.floor(total / 60).toString().padStart(2, '0');
+    const secs = Math.floor(total % 60).toString().padStart(2, '0');
+    return `${mins}:${secs}`;
+}
+
+function formatTime(isoString) {
+    if (!isoString) return '—';
+    const parsed = new Date(isoString);
+    if (Number.isNaN(parsed.getTime())) return '—';
+    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+}
+
+function renderNowPlaying(nowPlaying, session) {
+    if (!nowPlayingPanel) return;
+    if (!nowPlaying) {
+        nowPlayingPanel.innerHTML = '<div class="text-muted">Nothing playing right now.</div>';
+        return;
+    }
+    const title = escapeHtml(nowPlaying.title || 'Untitled');
+    const artist = escapeHtml(nowPlaying.artist || 'Unknown artist');
+    const kind = escapeHtml((nowPlaying.kind || nowPlaying.type || 'item').toUpperCase());
+    const status = escapeHtml((nowPlaying.status || 'playing').toUpperCase());
+    const showName = escapeHtml(session?.show_name || '—');
+    const djName = escapeHtml(session?.dj_name || '—');
+    const notes = session?.notes ? `<div class="text-muted small">Notes: ${escapeHtml(session.notes)}</div>` : '';
+
+    nowPlayingPanel.innerHTML = `
+        <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
+            <div>
+                <div class="fw-semibold">${title}</div>
+                <div class="text-muted small">${artist}</div>
+                <div class="text-muted small">Type: ${kind}</div>
+            </div>
+            <div class="text-end">
+                <div class="badge text-bg-primary">${status}</div>
+                <div class="text-muted small mt-1">Duration: ${formatDuration(nowPlaying.duration)}</div>
+                <div class="text-muted small">Started: ${formatTime(nowPlaying.started_at)}</div>
+            </div>
+        </div>
+        <div class="text-muted small mt-2">Show: ${showName} &middot; DJ: ${djName}</div>
+        ${notes}
+    `;
+}
+
+function renderLiveQueue(queueItems, nowPlaying) {
+    if (!liveQueuePanel) return;
+    if (!queueItems || !queueItems.length) {
+        liveQueuePanel.innerHTML = '<div class="text-muted">Queue empty.</div>';
+        return;
+    }
+    const list = document.createElement('ul');
+    list.className = 'list-group';
+    queueItems.forEach(item => {
+        const li = document.createElement('li');
+        const isCurrent = nowPlaying && nowPlaying.queue_item_id === item.id;
+        li.className = `list-group-item d-flex justify-content-between align-items-center${isCurrent ? ' list-group-item-info' : ''}`;
+        const title = escapeHtml(item.title || 'Untitled');
+        const artist = escapeHtml(item.artist || '');
+        const kind = escapeHtml(item.kind || item.type || 'item');
+        const meta = [
+            artist ? `Artist: ${artist}` : null,
+            `Type: ${kind}`,
+            `Len: ${formatDuration(item.duration)}`,
+        ].filter(Boolean).join(' · ');
+        li.innerHTML = `
+            <div>
+                <div class="fw-semibold">${title}${isCurrent ? ' <span class="badge text-bg-success ms-2">On Air</span>' : ''}</div>
+                <div class="text-muted small">${meta}</div>
+            </div>
+            <span class="text-muted small">#${item.position ?? '—'}</span>
+        `;
+        list.appendChild(li);
+    });
+    liveQueuePanel.innerHTML = '';
+    liveQueuePanel.appendChild(list);
+}
+
+function renderQueueBuilder(queueItems) {
+    if (!queueBuilderPanel) return;
+    if (!queueItems || !queueItems.length) {
+        queueBuilderPanel.innerHTML = '<div class="text-muted">No upcoming items in the playback queue.</div>';
+        return;
+    }
+    const rows = queueItems.map(item => {
+        const notes = item.metadata?.notes || item.metadata?.usage_rules || item.metadata?.raw || '—';
+        return `
+            <tr>
+                <td>${escapeHtml(item.title || 'Untitled')}</td>
+                <td>${escapeHtml(item.kind || item.type || 'item')}</td>
+                <td>${formatDuration(item.duration)}</td>
+                <td>${escapeHtml(notes)}</td>
+            </tr>
+        `;
+    }).join('');
+    queueBuilderPanel.innerHTML = `
+        <p class="text-muted small">Upcoming items staged in the playback queue.</p>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Item</th>
+                        <th>Type</th>
+                        <th>Length</th>
+                        <th>Notes</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
+    `;
+}
+
+function renderLibraryNavigation(queueItems, session) {
+    if (!libraryNavigationPanel) return;
+    const items = queueItems || [];
+    const counts = items.reduce((acc, item) => {
+        const kind = (item.kind || item.type || 'item').toLowerCase();
+        acc[kind] = (acc[kind] || 0) + 1;
+        return acc;
+    }, {});
+    const kinds = Object.keys(counts).sort();
+    if (playbackPanelFilter !== 'all' && !counts[playbackPanelFilter]) {
+        playbackPanelFilter = 'all';
+    }
+    const navButtons = ['all', ...kinds].map(kind => {
+        const label = kind === 'all' ? 'All' : kind.toUpperCase();
+        const count = kind === 'all' ? items.length : counts[kind];
+        const active = playbackPanelFilter === kind ? 'active' : '';
+        return `<button class="btn btn-sm btn-outline-primary ${active}" data-kind="${kind}">${label} (${count})</button>`;
+    }).join('');
+    const filtered = playbackPanelFilter === 'all'
+        ? items
+        : items.filter(item => (item.kind || item.type || 'item').toLowerCase() === playbackPanelFilter);
+    const rows = filtered.map(item => `
+        <tr>
+            <td>${escapeHtml(item.title || 'Untitled')}</td>
+            <td>${escapeHtml(item.artist || '—')}</td>
+            <td>${escapeHtml(item.kind || item.type || 'item')}</td>
+            <td>${formatDuration(item.duration)}</td>
+        </tr>
+    `).join('') || `<tr><td colspan="4" class="text-muted">No items in this view.</td></tr>`;
+    const showName = escapeHtml(session?.show_name || '—');
+    const djName = escapeHtml(session?.dj_name || '—');
+    libraryNavigationPanel.innerHTML = `
+        <div class="d-flex flex-wrap gap-2 mb-3">${navButtons}</div>
+        <div class="text-muted small mb-2">Session: ${showName} &middot; DJ: ${djName}</div>
+        <div class="table-responsive">
+            <table class="table table-sm align-middle">
+                <thead>
+                    <tr>
+                        <th>Title</th>
+                        <th>Artist</th>
+                        <th>Type</th>
+                        <th>Length</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    ${rows}
+                </tbody>
+            </table>
+        </div>
+    `;
+    libraryNavigationPanel.querySelectorAll('[data-kind]').forEach(btn => {
+        btn.addEventListener('click', () => {
+            playbackPanelFilter = btn.dataset.kind;
+            renderLibraryNavigation(queueItems, session);
+        });
+    });
+}
+
+async function loadPlaybackPanels() {
+    if (!playbackPanelsEnabled) return;
+    try {
+        const [sessionRes, queueRes] = await Promise.all([
+            fetch('/api/playback/session'),
+            fetch('/api/playback/queue'),
+        ]);
+        if (!sessionRes.ok || !queueRes.ok) {
+            throw new Error('Unable to load playback panels');
+        }
+        const session = await sessionRes.json();
+        const queueData = await queueRes.json();
+        renderNowPlaying(queueData.now_playing, session);
+        renderLiveQueue(queueData.queue || [], queueData.now_playing);
+        renderQueueBuilder(queueData.queue || []);
+        renderLibraryNavigation(queueData.queue || [], session);
+    } catch (err) {
+        if (nowPlayingPanel) nowPlayingPanel.innerHTML = '<div class="text-danger">Unable to load playback session.</div>';
+        if (liveQueuePanel) liveQueuePanel.innerHTML = '<div class="text-danger">Unable to load queue.</div>';
+        if (queueBuilderPanel) queueBuilderPanel.innerHTML = '<div class="text-danger">Unable to load queue builder.</div>';
+        if (libraryNavigationPanel) libraryNavigationPanel.innerHTML = '<div class="text-danger">Unable to load library view.</div>';
+    }
+}
+
+if (playbackPanelsEnabled) {
+    loadPlaybackPanels();
+    playbackPanelTimer = setInterval(loadPlaybackPanels, 5000);
+    window.addEventListener('beforeunload', () => {
+        if (playbackPanelTimer) {
+            clearInterval(playbackPanelTimer);
+            playbackPanelTimer = null;
+        }
+    });
+}
+
 let library = [];
 const psaList = document.getElementById('psaList');
 const queueList = document.getElementById('queueList');
@@ -93,6 +322,7 @@ const metadataPath = document.getElementById('metadataPath');
 const bulkDialog = document.getElementById('bulkDialog');
 const bulkKind = document.getElementById('bulkKind');
 const bulkStatus = document.getElementById('bulkStatus');
+const legacyPlayerEnabled = Boolean(queueList && psaList);
 
 function openDialog(dialog) {
     if (!dialog) return;
@@ -1051,6 +1281,10 @@ async function loadPSAs() {
     } catch (e) {
         psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
     }
+}
+
+if (!legacyPlayerEnabled) {
+    return;
 }
 loadPSAs();
 loadAutomationMode().then(() => ensureShowRun());
