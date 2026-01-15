@@ -309,6 +309,7 @@ let playbackSession = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
+let queueSyncInProgress = false;
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -416,12 +417,18 @@ function renderLibrary(filter = '') {
 
 function renderQueue() {
     queueList.innerHTML = '';
-    if (!queue.length) {
+    const displayItems = [];
+    if (currentItem) {
+        displayItems.push({ item: currentItem, isCurrent: true });
+    }
+    queue.forEach((item, idx) => displayItems.push({ item, isCurrent: false, idx }));
+    if (!displayItems.length) {
         queueList.innerHTML = '<li class="text-muted">Queue empty.</li>';
         resetTimers();
         return;
     }
-    queue.forEach((item, idx) => {
+    displayItems.forEach(entry => {
+        const item = entry.item;
         const li = document.createElement('li');
         const meta = [];
         if (item.duration) meta.push(`${item.duration}s`);
@@ -430,28 +437,32 @@ function renderQueue() {
         if (item.metadata && item.metadata.notes) meta.push(item.metadata.notes);
         const introMeta = item.cues && item.cues.intro ? ` (${item.cues.intro.toFixed(1)}s)` : '';
         const displayName = item.title || item.name;
+        const currentBadge = entry.isCurrent ? '<span class="badge text-bg-success ms-2">Now Playing</span>' : '';
         li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-            <div>${item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : ''}${item.name}${introMeta} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
-            <div class="d-flex gap-2">
+            <div>${item.kind === 'voicetrack' ? '<span class="badge text-bg-primary me-1">VT</span>' : ''}${displayName}${introMeta}${currentBadge} ${meta.length ? `<small class="text-muted">(${meta.join(' • ')})</small>` : ''}</div>
+            ${entry.isCurrent ? '' : `<div class="d-flex gap-2">
                 <button class="btn btn-sm btn-outline-secondary" data-cue>Edit</button>
                 <button class="btn btn-sm btn-outline-danger" data-remove>&times;</button>
-            </div>
+            </div>`}
         </div>`;
-        li.dataset.index = idx;
-        li.tabIndex = 0;
-        li.addEventListener('click', (ev) => {
-            if (!ev.target.dataset.remove) {
-                startFrom(idx, currentIdx, 'manual');
-            }
-        });
-        li.addEventListener('keydown', (ev) => {
-            if (ev.key === 'Enter') {
-                startFrom(idx, currentIdx, 'manual');
-            }
-        });
-        li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(idx); });
+        if (!entry.isCurrent) {
+            li.dataset.index = entry.idx;
+            li.tabIndex = 0;
+            li.addEventListener('click', (ev) => {
+                if (!ev.target.dataset.remove) {
+                    startFrom(entry.idx, currentIdx, 'manual');
+                }
+            });
+            li.addEventListener('keydown', (ev) => {
+                if (ev.key === 'Enter') {
+                    startFrom(entry.idx, currentIdx, 'manual');
+                }
+            });
+            li.querySelector('[data-remove]').addEventListener('click', (ev) => { ev.stopPropagation(); removeFromQueue(entry.idx); });
+        }
         queueList.appendChild(li);
     });
+    updateVTInsertOptions();
 }
 
 function updateAutomationModeUI() {
@@ -669,6 +680,168 @@ function automationKindFor(item) {
     return 'music';
 }
 
+function queueTypeFor(item) {
+    if (!item) return 'music';
+    if (item.stop) return 'stop';
+    const kind = (item.kind || '').toLowerCase();
+    if (['music', 'psa', 'imaging', 'voicetrack', 'stop'].includes(kind)) {
+        return kind;
+    }
+    if (kind === 'overlay') return 'voicetrack';
+    const category = (item.category || '').toLowerCase();
+    if (category.includes('voice')) return 'voicetrack';
+    if (category.includes('imaging')) return 'imaging';
+    if (category.includes('psa')) return 'psa';
+    return 'music';
+}
+
+function buildQueueMetadata(item) {
+    return {
+        url: item.url || null,
+        name: item.name || item.title || null,
+        category: item.category || null,
+        token: item.token || null,
+        loop: item.loop || null,
+        stop: Boolean(item.stop),
+        kind: item.kind || null,
+        metadata: item.metadata || null,
+    };
+}
+
+function buildLocalQueueItem(payload = {}) {
+    const metadata = payload.metadata || {};
+    const extra = metadata.metadata || {};
+    const kind = metadata.kind || payload.kind || payload.type || queueTypeFor(metadata);
+    return {
+        id: payload.id || payload.queue_item_id || null,
+        name: metadata.name || payload.title || 'Untitled',
+        title: payload.title || metadata.name || 'Untitled',
+        artist: payload.artist || metadata.artist || null,
+        duration: payload.duration || metadata.duration || null,
+        url: metadata.url || extra.url || null,
+        category: metadata.category || extra.category || null,
+        token: metadata.token || extra.token || null,
+        loop: metadata.loop ?? extra.loop ?? null,
+        stop: Boolean(metadata.stop || payload.kind === 'stop' || payload.type === 'stop'),
+        kind,
+        metadata: extra,
+        cues: payload.cues || metadata.cues || extra.cues || null,
+    };
+}
+
+async function syncNowPlaying(item, status = 'playing') {
+    const payload = { status };
+    if (item && item.id) {
+        payload.item_id = item.id;
+    } else if (item) {
+        payload.type = queueTypeFor(item);
+        payload.kind = item.kind || queueTypeFor(item);
+        payload.title = item.title || item.name || '';
+        payload.artist = item.artist || null;
+        payload.duration = item.duration || null;
+        payload.metadata = buildQueueMetadata(item);
+        payload.cues = item.cues || null;
+    }
+    try {
+        await fetch('/api/playback/now-playing', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+    } catch (err) {
+        // ignore
+    }
+}
+
+async function syncSkip() {
+    try {
+        await fetch('/api/playback/queue/skip', { method: 'POST' });
+    } catch (err) {
+        // ignore
+    }
+}
+
+async function enqueueQueueItem(item, position = null) {
+    const payload = {
+        type: queueTypeFor(item),
+        kind: item.kind || queueTypeFor(item),
+        title: item.title || item.name || 'Untitled',
+        artist: item.artist || null,
+        duration: item.duration || null,
+        metadata: buildQueueMetadata(item),
+        cues: item.cues || null,
+    };
+    if (position != null) payload.position = position;
+    try {
+        const res = await fetch('/api/playback/queue/enqueue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(payload),
+        });
+        const data = await res.json();
+        if (!res.ok || data.status !== 'ok' || !data.item) {
+            return null;
+        }
+        return buildLocalQueueItem(data.item);
+    } catch (err) {
+        return null;
+    }
+}
+
+async function dequeueQueueItem(item) {
+    if (!item || !item.id) return;
+    try {
+        await fetch('/api/playback/queue/dequeue', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: item.id }),
+        });
+    } catch (err) {
+        // ignore
+    }
+}
+
+async function moveQueueItem(item, position) {
+    if (!item || !item.id) return;
+    try {
+        await fetch('/api/playback/queue/move', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ item_id: item.id, position }),
+        });
+    } catch (err) {
+        // ignore
+    }
+}
+
+async function loadPlaybackQueue() {
+    if (queueSyncInProgress) return;
+    queueSyncInProgress = true;
+    try {
+        const res = await fetch('/api/playback/queue');
+        if (!res.ok) throw new Error('Unable to load queue');
+        const data = await res.json();
+        queue.length = 0;
+        (data.queue || []).forEach(item => {
+            queue.push(buildLocalQueueItem(item));
+        });
+        currentItem = data.now_playing ? buildLocalQueueItem(data.now_playing) : null;
+        renderQueue();
+        updateVTInsertOptions();
+        if (currentItem) {
+            previewCues(currentItem);
+        } else if (queue.length) {
+            previewCues(queue[0]);
+        } else {
+            resetTimers();
+        }
+    } catch (err) {
+        // ignore
+    } finally {
+        queueSyncInProgress = false;
+    }
+}
+
 function buildAutomationItem(item, durationOverride = null) {
     if (!item) return null;
     const cues = item.cues || {};
@@ -708,7 +881,7 @@ function buildAutomationPlanKey(plan, context) {
 
 function getAutomationQueueContext() {
     if (!currentItem) return null;
-    const remaining = queue.slice(1);
+    const remaining = queue.slice();
     const overlayItem = remaining.find(item => overlayEligible(item)) || null;
     const nextItem = remaining.find(item => !overlayEligible(item) && !item.stop) || null;
     const currentDuration = activePlayer().duration;
@@ -780,7 +953,7 @@ function scheduleAutomationPlan(plan, context) {
         automationFadeTimer = setTimeout(() => {
             if (automationMode !== 'automation') return;
             if (currentItem !== context.currentItem) return;
-            if (queue.length > 1) {
+            if (queue.length > 0) {
                 fadeAndNext('automation');
             } else {
                 fadeOutCurrent();
@@ -793,7 +966,8 @@ function playOverlayItem(item) {
     if (!item || !item.url) return;
     const idx = queue.indexOf(item);
     if (idx !== -1) {
-        queue.splice(idx, 1);
+        const [removed] = queue.splice(idx, 1);
+        dequeueQueueItem(removed);
         renderQueue();
     }
     overlayPlayer.src = item.url;
@@ -813,10 +987,8 @@ function fadeOutCurrent() {
             player.pause();
             player.volume = 1;
             player.removeAttribute('src');
-            if (queue.length && queue[0] === currentItem) {
-                queue.shift();
-            }
             currentItem = null;
+            syncNowPlaying(null, 'idle');
             resetTimers();
             renderQueue();
         }
@@ -848,38 +1020,51 @@ function previewCues(item) {
     if (!hasLoop) loopBetween.checked = false;
 }
 
-function stopAllAudio() {
+function stopAllAudio({ sync = true } = {}) {
     players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
     currentItem = null;
+    if (sync) {
+        syncNowPlaying(null, 'idle');
+    }
     resetTimers();
 }
 
-function addToQueue(item) {
-    queue.push(item);
-    logItemInsert(item);
-    if (queue.length === 1 && activePlayer().paused) {
+async function addToQueue(item) {
+    const queuedItem = await enqueueQueueItem(item, queue.length);
+    if (!queuedItem) return;
+    queue.push(queuedItem);
+    logItemInsert(queuedItem);
+    updateVTInsertOptions();
+    if (!currentItem && queue.length === 1 && activePlayer().paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
 }
 
-function insertToQueue(item, idx) {
+async function insertToQueue(item, idx) {
     const position = Math.max(0, Math.min(queue.length, idx));
-    queue.splice(position, 0, item);
-    logItemInsert(item);
-    if (position === 0 && activePlayer().paused) {
+    const queuedItem = await enqueueQueueItem(item, position);
+    if (!queuedItem) return;
+    queue.splice(position, 0, queuedItem);
+    logItemInsert(queuedItem);
+    updateVTInsertOptions();
+    if (!currentItem && position === 0 && activePlayer().paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
 }
 
-function removeFromQueue(idx) {
+async function removeFromQueue(idx) {
     if (idx < 0 || idx >= queue.length) return;
-    queue.splice(idx, 1);
+    const [removed] = queue.splice(idx, 1);
+    dequeueQueueItem(removed);
+    updateVTInsertOptions();
     renderQueue();
 }
 
-function addStopCue() { queue.push({ name: 'STOP', stop: true, kind: 'stop' }); renderQueue(); }
+function addStopCue() {
+    addToQueue({ name: 'STOP', title: 'STOP', stop: true, kind: 'stop' });
+}
 
 const TOP40_RATE = Math.pow(2, 0.5 / 12);
 const OVERLAY_KINDS = ['voicetrack', 'overlay'];
@@ -910,15 +1095,15 @@ function overlayEligible(item) {
     return item && OVERLAY_KINDS.includes(item.kind);
 }
 
-function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
+function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowPlayingState = true } = {}) {
     const item = queue[idx];
     if (!item) return;
     if (item.stop) {
-        queue.splice(0, idx + 1);
+        const removed = queue.splice(0, idx + 1);
+        removed.forEach(entry => dequeueQueueItem(entry));
         if (currentItem) {
             logItemEnd(currentItem, 'stop');
         }
-        shiftPastStops();
         stopAllAudio();
         renderQueue();
         if (queue.length) previewCues(queue[0]);
@@ -945,7 +1130,14 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     if (!hasLoop) loopBetween.checked = false;
     autoNextTriggered = false;
     prestartedIdx = null;
-    if (idx > 0) queue.splice(0, idx);
+    if (idx > 0) {
+        const removed = queue.splice(0, idx);
+        removed.forEach(entry => dequeueQueueItem(entry));
+    }
+    queue.shift();
+    if (syncNowPlayingState) {
+        syncNowPlaying(item, 'playing');
+    }
     player.src = item.url;
     player.volume = 1;
     applyPlaybackRate(player, item);
@@ -957,37 +1149,42 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
 
 function shiftPastStops() {
     while (queue.length && queue[0].stop) {
-        queue.shift();
+        const removed = queue.shift();
+        dequeueQueueItem(removed);
     }
 }
 
 function playNext(reason = 'skip') {
-    if (!queue.length) return;
+    if (!queue.length && !currentItem) return;
     if (currentItem) {
         logItemEnd(currentItem, reason);
     }
-    queue.shift();
-    shiftPastStops();
     stopFade();
-    stopAllAudio();
+    stopAllAudio({ sync: false });
     autoNextTriggered = false;
     prestartedIdx = null;
     if (queue.length) {
-        startFrom(0, currentIdx, 'auto');
+        syncSkip();
+        startFrom(0, currentIdx, 'auto', { syncNowPlayingState: false });
     } else {
+        syncNowPlaying(null, 'idle');
         renderQueue();
     }
 }
 
 function startNextWithOverlay(reason = 'auto') {
-    if (queue.length <= 1) {
+    if (queue.length <= 0) {
         fadeAndNext(reason);
+        return;
+    }
+    if (queue[0] && queue[0].stop) {
+        playNext(reason);
         return;
     }
 
     const current = activePlayer();
     const currentPlaying = currentItem;
-    const nextItem = queue[1];
+    const nextItem = queue[0];
 
     try {
         overlayPlayer.pause();
@@ -1005,7 +1202,6 @@ function startNextWithOverlay(reason = 'auto') {
     current.pause();
     current.removeAttribute('src');
 
-    queue.shift();
     shiftPastStops();
 
     const nextIdx = 1 - currentIdx;
@@ -1017,10 +1213,16 @@ function startNextWithOverlay(reason = 'auto') {
     nextPlayer.volume = 1;
     currentIdx = nextIdx;
     currentItem = nextItem;
+    queue.shift();
     prestartedIdx = null;
     autoNextTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
+    if (reason !== 'auto') {
+        syncSkip();
+    } else {
+        syncNowPlaying(nextItem, 'playing');
+    }
     if (currentPlaying) {
         logItemEnd(currentPlaying, reason);
     }
@@ -1030,13 +1232,13 @@ function startNextWithOverlay(reason = 'auto') {
 }
 
 function fadeAndNext(reason = 'auto') {
-    if (queue.length <= 1 || (queue[1] && queue[1].stop)) {
+    if (queue.length <= 0 || (queue[0] && queue[0].stop)) {
         playNext(reason);
         return;
     }
     const current = activePlayer();
     const nextIdx = 1 - currentIdx;
-    const nextItem = queue[1];
+    const nextItem = queue[0];
     const nextPlayerObj = players[nextIdx];
     const nextPlayer = nextPlayerObj.el;
     stopFade();
@@ -1045,6 +1247,11 @@ function fadeAndNext(reason = 'auto') {
     nextPlayer.volume = 1;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
+    if (reason !== 'auto') {
+        syncSkip();
+    } else {
+        syncNowPlaying(nextItem, 'playing');
+    }
     if (currentItem) {
         logItemEnd(currentItem, reason);
     }
@@ -1056,10 +1263,10 @@ function fadeAndNext(reason = 'auto') {
             current.pause();
             current.volume = 1;
             current.removeAttribute('src');
-            queue.shift();
             shiftPastStops();
             currentIdx = nextIdx;
             currentItem = nextItem;
+            queue.shift();
             prestartedIdx = null;
             applyPlaybackRate();
             startTimer();
@@ -1079,7 +1286,7 @@ function updateTimer() {
 
     const cues = currentItem && currentItem.cues ? currentItem.cues : {};
     let remaining = Math.max(0, player.duration - player.currentTime);
-    if (queue.length > 1 && cues.start_next) {
+    if (queue.length > 0 && cues.start_next) {
         remaining = Math.max(0, cues.start_next - player.currentTime);
     }
 
@@ -1127,7 +1334,7 @@ function updateTimer() {
         if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
             autoNextTriggered = true;
             resetTimers();
-            if (queue.length > 1) {
+            if (queue.length > 0) {
                 if (overlayEligible(currentItem)) {
                     startNextWithOverlay('auto');
                 } else {
@@ -1147,8 +1354,8 @@ function updateTimer() {
     }
 
     // Voice track smart start for next track intro/outro.
-    if (automationMode !== 'automation' && !prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 1) {
-        const nextItem = queue[1];
+    if (automationMode !== 'automation' && !prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 0) {
+        const nextItem = queue[0];
         const nextCues = nextItem.cues || {};
         const target = nextCues.intro || nextCues.outro;
         if (target && remaining <= target + 0.25) {
@@ -1174,7 +1381,6 @@ function handleEnded(idx) {
     if (currentItem) {
         logItemEnd(currentItem, 'ended');
     }
-    queue.shift();
     shiftPastStops();
     if (queue.length) {
         if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
@@ -1182,6 +1388,8 @@ function handleEnded(idx) {
             currentItem = queue[0];
             prestartedIdx = null;
             applyPlaybackRate();
+            queue.shift();
+            syncNowPlaying(currentItem, 'playing');
             logItemStart(currentItem, 'auto');
             startTimer();
             renderQueue();
@@ -1195,7 +1403,8 @@ function handleEnded(idx) {
 }
 
 document.getElementById('clearQueue').addEventListener('click', () => {
-    queue.length = 0;
+    const removed = queue.splice(0, queue.length);
+    removed.forEach(entry => dequeueQueueItem(entry));
     stopFade();
     stopAllAudio();
     renderQueue();
@@ -1287,6 +1496,7 @@ if (!legacyPlayerEnabled) {
     return;
 }
 loadPSAs();
+loadPlaybackQueue();
 loadAutomationMode().then(() => ensureShowRun());
 updateShowLogExport();
 
@@ -1341,6 +1551,9 @@ function updateVTInsertOptions() {
     const options = [];
     options.push({ value: 'next', label: 'Next up' });
     options.push({ value: 'end', label: 'End of queue' });
+    if (currentItem) {
+        options.push({ value: 'after-current', label: `After: ${currentItem.name}` });
+    }
     queue.forEach((item, idx) => {
         options.push({ value: `after-${idx}`, label: `After: ${item.name}` });
     });
@@ -1467,9 +1680,11 @@ document.getElementById('vtConfirm').addEventListener('click', () => {
     if (pendingVT) {
         const value = vtInsertPosition.value;
         if (value === 'next') {
-            insertToQueue(pendingVT, 1);
+            insertToQueue(pendingVT, 0);
         } else if (value === 'end') {
             addToQueue(pendingVT);
+        } else if (value === 'after-current') {
+            insertToQueue(pendingVT, 0);
         } else if (value.startsWith('after-')) {
             const idx = parseInt(value.replace('after-', ''), 10);
             insertToQueue(pendingVT, idx + 1);
