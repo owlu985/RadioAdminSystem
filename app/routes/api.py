@@ -8,7 +8,7 @@ import shutil
 import json
 import base64
 import io
-from typing import Optional, TypedDict
+from typing import Optional
 from urllib.parse import urlparse, quote
 from app.models import (
     ShowRun,
@@ -29,6 +29,8 @@ from app.models import (
     MarathonEvent,
     ArchivistRipResult,
     NowPlayingState,
+    PlaybackQueueItem,
+    PlaybackSession,
     db,
 )
 from app.utils import (
@@ -71,7 +73,7 @@ from app.services.archivist_db import (
     cleanup_album_tmp,
 )
 from app.services.library_index import get_library_index_status
-from sqlalchemy import func
+from sqlalchemy import func, inspect, text
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
 import requests
@@ -218,6 +220,7 @@ def _get_playback_session() -> PlaybackSession:
     if requested and not playback:
         abort(404, description="playback_session_not_found")
     if not playback:
+        _ensure_playback_session_schema()
         playback = PlaybackSession()
         db.session.add(playback)
         db.session.commit()
@@ -228,6 +231,33 @@ def _get_playback_session() -> PlaybackSession:
 def _touch_playback_session(playback: PlaybackSession) -> None:
     playback.updated_at = datetime.utcnow()
     db.session.add(playback)
+
+
+def _ensure_playback_session_schema() -> None:
+    inspector = inspect(db.engine)
+    if "playback_session" not in inspector.get_table_names():
+        return
+    existing = {col["name"] for col in inspector.get_columns("playback_session")}
+    required = {
+        "show_run_id": "INTEGER",
+        "show_name": "VARCHAR(255)",
+        "dj_name": "VARCHAR(255)",
+        "notes": "TEXT",
+        "started_at": "DATETIME",
+        "ended_at": "DATETIME",
+        "automation_mode": "VARCHAR(32)",
+        "created_at": "DATETIME",
+        "updated_at": "DATETIME",
+    }
+    missing = [name for name in required.keys() if name not in existing]
+    if not missing:
+        return
+    if db.engine.dialect.name != "sqlite":
+        logger.warning("Missing playback_session columns but dialect is %s: %s", db.engine.dialect.name, missing)
+        return
+    for name in missing:
+        db.session.execute(text(f"ALTER TABLE playback_session ADD COLUMN {name} {required[name]}"))
+    db.session.commit()
 
 
 def _queue_items(session_id: int) -> list[PlaybackQueueItem]:
@@ -275,22 +305,6 @@ def _normalize_plan_payload(payload: dict | None) -> dict | None:
         data["cues"] = cues
     return data
 
-
-
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
-
-
-class PlaybackQueueItem(TypedDict, total=False):
-    name: str
-    artist: str
-    album: str
-    duration: float
-    source: str
 
 
 def _serialize_show_run(run: ShowRun) -> dict:
@@ -626,6 +640,9 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
+    override_enabled = bool(base.get("override_enabled")) if isinstance(base, dict) else _override_enabled()
+    if not override_enabled:
+        return jsonify(base or {"status": "off_air"})
     nowplaying_payload = _get_cached_radiodj_nowplaying()
     if nowplaying_payload:
         base = base or {}
