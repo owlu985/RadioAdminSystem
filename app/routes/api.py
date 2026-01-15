@@ -70,6 +70,7 @@ from app.services.archivist_db import (
     delete_album_rip_upload,
     cleanup_album_tmp,
 )
+from app.services.library_index import get_library_index_status
 from sqlalchemy import func
 from app.logger import init_logger
 from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
@@ -1512,6 +1513,17 @@ def icecast_analytics():
     hours = request.args.get("hours", default=24, type=int)
     stats = recent_icecast_stats(hours=hours)
     return jsonify(stats)
+
+
+@api_bp.route("/library/index/status")
+def library_index_status():
+    status = get_library_index_status()
+    payload = {
+        "status": status.get("status"),
+        "progress": status.get("progress"),
+        "updated_at": status.get("updated_at"),
+    }
+    return jsonify(payload)
 
 
 @api_bp.route("/audit/start", methods=["POST"])
