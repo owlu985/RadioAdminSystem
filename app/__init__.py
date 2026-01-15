@@ -364,6 +364,53 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "now_playing_state" not in insp.get_table_names():
+                    conn.execute(text(
+                        """
+                        CREATE TABLE IF NOT EXISTS now_playing_state (
+                            id INTEGER PRIMARY KEY,
+                            session_id INTEGER,
+                            queue_item_id INTEGER,
+                            item_type VARCHAR(32),
+                            kind VARCHAR(32),
+                            title VARCHAR(255),
+                            artist VARCHAR(255),
+                            duration FLOAT,
+                            metadata TEXT,
+                            status VARCHAR(32),
+                            started_at DATETIME,
+                            cue_in FLOAT,
+                            cue_out FLOAT,
+                            fade_out FLOAT,
+                            cues TEXT,
+                            override_enabled BOOLEAN NOT NULL DEFAULT 0,
+                            updated_at DATETIME NOT NULL
+                        )
+                        """
+                    ))
+                else:
+                    now_playing_cols = {c["name"] for c in insp.get_columns("now_playing_state")}
+                    now_playing_additions = {
+                        "session_id": "INTEGER",
+                        "queue_item_id": "INTEGER",
+                        "item_type": "VARCHAR(32)",
+                        "kind": "VARCHAR(32)",
+                        "title": "VARCHAR(255)",
+                        "artist": "VARCHAR(255)",
+                        "duration": "FLOAT",
+                        "metadata": "TEXT",
+                        "status": "VARCHAR(32)",
+                        "started_at": "DATETIME",
+                        "cue_in": "FLOAT",
+                        "cue_out": "FLOAT",
+                        "fade_out": "FLOAT",
+                        "cues": "TEXT",
+                        "override_enabled": "BOOLEAN NOT NULL DEFAULT 0",
+                        "updated_at": "DATETIME",
+                    }
+                    for col, col_type in now_playing_additions.items():
+                        if col not in now_playing_cols:
+                            conn.execute(text(f"ALTER TABLE now_playing_state ADD COLUMN {col} {col_type}"))
                 if "marathon_event" not in insp.get_table_names():
                     conn.execute(text(
                         """
