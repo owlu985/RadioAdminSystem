@@ -151,20 +151,15 @@ def build_library_editor_index() -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
     artists_map: Dict[str, Dict[str, Dict]] = {}
+    genres_map: Dict[str, Dict] = {}
     for entry in entries:
         path = entry.get("path") or ""
         title = entry.get("title") or os.path.splitext(os.path.basename(path))[0]
         artist = entry.get("artist") or "Unknown Artist"
         album = entry.get("album") or "Unknown Album"
         year = entry.get("year")
-        genre = entry.get("genre")
-        artist_bucket = artists_map.setdefault(artist, {})
-        album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
-        if not album_bucket.get("year") and year:
-            album_bucket["year"] = year
-        if not album_bucket.get("genre") and genre:
-            album_bucket["genre"] = genre
-        album_bucket["tracks"].append({
+        genre = entry.get("genre") or "Unknown Genre"
+        track_payload = {
             "title": title,
             "path": path,
             "artist": artist,
@@ -173,7 +168,18 @@ def build_library_editor_index() -> Dict:
             "genre": genre,
             "track_num": entry.get("track_num"),
             "disc_num": entry.get("disc_num"),
-        })
+        }
+        artist_bucket = artists_map.setdefault(artist, {})
+        album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
+        if not album_bucket.get("year") and year:
+            album_bucket["year"] = year
+        if not album_bucket.get("genre") and genre:
+            album_bucket["genre"] = genre
+        album_bucket["tracks"].append(track_payload)
+
+        genre_bucket = genres_map.setdefault(genre, {"tracks": [], "artists": set()})
+        genre_bucket["tracks"].append(track_payload)
+        genre_bucket["artists"].add(artist)
 
     music_artists = []
     for artist_name in sorted(artists_map.keys(), key=lambda name: name.lower()):
@@ -196,6 +202,25 @@ def build_library_editor_index() -> Dict:
                 "tracks": tracks,
             })
         music_artists.append({"name": artist_name, "albums": albums_payload})
+
+    genres_payload = []
+    for genre_name in sorted(genres_map.keys(), key=lambda name: name.lower()):
+        genre_payload = genres_map[genre_name]
+        tracks = genre_payload.get("tracks", [])
+        tracks.sort(
+            key=lambda track: (
+                (track.get("artist") or "").lower(),
+                (track.get("album") or "").lower(),
+                track.get("disc_num") or 0,
+                track.get("track_num") or 0,
+                (track.get("title") or "").lower(),
+            )
+        )
+        genres_payload.append({
+            "name": genre_name,
+            "artists": sorted(genre_payload.get("artists", set()), key=lambda name: name.lower()),
+            "tracks": tracks,
+        })
 
     psa_imaging = []
     for label, root in _library_media_roots():
@@ -224,6 +249,7 @@ def build_library_editor_index() -> Dict:
 
     return {
         "music": music_artists,
+        "genres": genres_payload,
         "psa_imaging": psa_imaging,
         "generated_at": time.time(),
     }
