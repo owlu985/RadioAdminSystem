@@ -426,6 +426,7 @@ async function openMetadataEditor(item) {
 }
 
 function renderCategories(cats) {
+    if (!categoryFilter) return;
     const options = cats || [];
     categoryFilter.innerHTML = '<option value="">All categories</option>' + options.map(c => `<option value="${c}">${c}</option>`).join('');
 }
@@ -433,7 +434,7 @@ function renderCategories(cats) {
 function renderLibrary(filter = '') {
     psaList.innerHTML = '';
     const term = filter.toLowerCase();
-    const cat = categoryFilter.value;
+    const cat = categoryFilter ? categoryFilter.value : '';
     library.filter(item => {
         const title = (item.title || item.name || '').toLowerCase();
         return title.includes(term) && (!cat || item.category === cat);
@@ -1334,14 +1335,27 @@ function handleEnded(idx) {
     }
 }
 
-document.getElementById('clearQueue').addEventListener('click', () => {
+const clearQueueBtn = document.getElementById('clearQueue');
+const overlayPlayBtn = document.getElementById('overlayPlay');
+const overlayUrlInput = document.getElementById('overlayUrl');
+const toggleTalkupBtn = document.getElementById('toggleTalkup');
+const cueStepBackBtn = document.getElementById('cueStepBack');
+const cueStepForwardBtn = document.getElementById('cueStepForward');
+const cueToggleBtn = document.getElementById('cueToggle');
+const cueSetBtn = document.getElementById('cueSet');
+const cueRemoveBtn = document.getElementById('cueRemove');
+const cueSaveBtn = document.getElementById('cueSave');
+const vtConfirmBtn = document.getElementById('vtConfirm');
+const vtDeleteBtn = document.getElementById('vtDelete');
+
+if (clearQueueBtn) clearQueueBtn.addEventListener('click', () => {
     const removed = queue.splice(0, queue.length);
     removed.forEach(entry => dequeueQueueItem(entry));
     stopFade();
     stopAllAudio();
     renderQueue();
 });
-togglePauseBtn.addEventListener('click', () => {
+if (togglePauseBtn) togglePauseBtn.addEventListener('click', () => {
     const player = activePlayer();
     if (!currentItem || !player || !player.src) return;
     if (player.paused) {
@@ -1352,19 +1366,19 @@ togglePauseBtn.addEventListener('click', () => {
         togglePauseBtn.textContent = 'Play';
     }
 });
-playNextBtn.addEventListener('click', () => playNext('manual'));
-addStopBtn.addEventListener('click', addStopCue);
-fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
-document.getElementById('overlayPlay').addEventListener('click', () => {
-    const url = document.getElementById('overlayUrl').value.trim();
+if (playNextBtn) playNextBtn.addEventListener('click', () => playNext('manual'));
+if (addStopBtn) addStopBtn.addEventListener('click', addStopCue);
+if (fadeOutBtn) fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
+if (overlayPlayBtn && overlayUrlInput && overlayPlayer) overlayPlayBtn.addEventListener('click', () => {
+    const url = overlayUrlInput.value.trim();
     if (!url) return;
     overlayPlayer.src = url;
     overlayPlayer.play();
 });
-document.getElementById('toggleTalkup').addEventListener('click', () => {
+if (toggleTalkupBtn) toggleTalkupBtn.addEventListener('click', () => {
     talkUpMode = !talkUpMode;
-    document.getElementById('toggleTalkup').classList.toggle('btn-dark', talkUpMode);
-    document.getElementById('toggleTalkup').classList.toggle('btn-outline-dark', !talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-dark', talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-outline-dark', !talkUpMode);
     updateTalkOverlay(currentItem ? (currentItem.cues || {}) : null, activePlayer().currentTime || 0, activePlayer().duration || 0);
 });
 
@@ -1372,31 +1386,35 @@ modeToggleButtons.forEach(btn => {
     btn.addEventListener('click', () => setAutomationMode(btn.dataset.automationMode));
 });
 
-document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
-categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
-document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
-top40.addEventListener('change', () => {
+if (psaSearch) psaSearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
+if (categoryFilter) categoryFilter.addEventListener('change', () => renderLibrary(psaSearch ? psaSearch.value || '' : ''));
+const refreshPsaBtn = document.getElementById('refreshPsa');
+if (refreshPsaBtn) refreshPsaBtn.addEventListener('click', () => loadPSAs());
+if (top40) top40.addEventListener('change', () => {
     players.forEach((p) => {
         preservesPitchOff(p.el);
-        if (p.item) {
+        if (p.el && p.item) {
             p.el.playbackRate = computePlaybackRate(p.item);
         }
     });
 });
 
 players.forEach((p, idx) => {
+    if (!p.el) return;
     preservesPitchOff(p.el);
-    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
+    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); if (togglePauseBtn) togglePauseBtn.textContent = 'Pause'; } });
     p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
+    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); if (togglePauseBtn) togglePauseBtn.textContent = 'Play'; } });
     p.el.addEventListener('ended', () => handleEnded(idx));
 });
 
-overlayPlayer.addEventListener('ended', () => {
-    overlayPlayer.pause();
-    overlayPlayer.removeAttribute('src');
-    overlayPlayer.currentTime = 0;
-});
+if (overlayPlayer) {
+    overlayPlayer.addEventListener('ended', () => {
+        overlayPlayer.pause();
+        overlayPlayer.removeAttribute('src');
+        overlayPlayer.currentTime = 0;
+    });
+}
 
 async function loadPSAs() {
     try {
@@ -1404,7 +1422,7 @@ async function loadPSAs() {
             page: libraryPage,
             per_page: libraryPerPage,
         });
-        if (categoryFilter.value) params.set('category', categoryFilter.value);
+        if (categoryFilter && categoryFilter.value) params.set('category', categoryFilter.value);
         if (libraryQuery) params.set('q', libraryQuery);
         const res = await fetch(`/api/psa/library?${params.toString()}`);
         const data = await res.json();
@@ -1414,11 +1432,13 @@ async function loadPSAs() {
         renderLibrary();
         const start = libraryTotal ? ((data.page - 1) * data.per_page) + 1 : 0;
         const end = Math.min(libraryTotal, data.page * data.per_page);
-        libraryMeta.textContent = libraryTotal
-            ? `Showing ${start}-${end} of ${libraryTotal}`
-            : 'No items found.';
-        libraryPrev.disabled = data.page <= 1;
-        libraryNext.disabled = end >= libraryTotal;
+        if (libraryMeta) {
+            libraryMeta.textContent = libraryTotal
+                ? `Showing ${start}-${end} of ${libraryTotal}`
+                : 'No items found.';
+        }
+        if (libraryPrev) libraryPrev.disabled = data.page <= 1;
+        if (libraryNext) libraryNext.disabled = end >= libraryTotal;
     } catch (e) {
         psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
     }
@@ -1439,21 +1459,21 @@ window.addEventListener('beforeunload', () => {
     navigator.sendBeacon('/api/playback/show/stop', payload);
 });
 
-libraryPrev.addEventListener('click', async () => {
+if (libraryPrev) libraryPrev.addEventListener('click', async () => {
     if (libraryPage <= 1) return;
     libraryPage -= 1;
     await loadPSAs();
 });
-libraryNext.addEventListener('click', async () => {
+if (libraryNext) libraryNext.addEventListener('click', async () => {
     libraryPage += 1;
     await loadPSAs();
 });
-categoryFilter.addEventListener('change', async () => {
+if (categoryFilter) categoryFilter.addEventListener('change', async () => {
     libraryPage = 1;
     await loadPSAs();
 });
 let searchTimer = null;
-psaSearch.addEventListener('input', () => {
+if (psaSearch) psaSearch.addEventListener('input', () => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(async () => {
         libraryQuery = psaSearch.value.trim();
@@ -1476,6 +1496,7 @@ const vtHost = document.getElementById('vtHost');
 const vtNotes = document.getElementById('vtNotes');
 
 function vtDisplayMeta(text) {
+    if (!vtMeta) return;
     vtMeta.textContent = text;
 }
 
@@ -1495,9 +1516,9 @@ function updateVTInsertOptions() {
 
 function collectVTMeta() {
     return {
-        title: vtTitle.value.trim(),
-        host: vtHost.value.trim(),
-        notes: vtNotes.value.trim(),
+        title: vtTitle ? vtTitle.value.trim() : '',
+        host: vtHost ? vtHost.value.trim() : '',
+        notes: vtNotes ? vtNotes.value.trim() : '',
     };
 }
 
@@ -1565,8 +1586,8 @@ function updatePendingVTFromBlob(blob, duration = null) {
     vtDisplayMeta(`${title}${duration ? ` • ${duration.toFixed(1)}s` : ''}`);
 }
 
-vtImport.addEventListener('click', () => vtFile.click());
-vtFile.addEventListener('change', async (e) => {
+if (vtImport) vtImport.addEventListener('click', () => { if (vtFile) vtFile.click(); });
+if (vtFile) vtFile.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
@@ -1579,10 +1600,11 @@ vtFile.addEventListener('change', async (e) => {
 });
 
 [vtTitle, vtHost, vtNotes].forEach(field => {
+    if (!field) return;
     field.addEventListener('input', syncPendingVTMeta);
 });
 
-startRecBtn.addEventListener('click', async () => {
+if (startRecBtn) startRecBtn.addEventListener('click', async () => {
     if (recorder) return;
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1607,9 +1629,10 @@ startRecBtn.addEventListener('click', async () => {
         recorder = null;
     }
 });
-stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
+if (stopRecBtn) stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
 
-document.getElementById('vtConfirm').addEventListener('click', () => {
+if (vtConfirmBtn) vtConfirmBtn.addEventListener('click', () => {
+    if (!vtInsertPosition) return;
     if (pendingVT) {
         const value = vtInsertPosition.value;
         if (value === 'next') {
@@ -1628,7 +1651,7 @@ document.getElementById('vtConfirm').addEventListener('click', () => {
     document.getElementById('vtPending').classList.add('d-none');
     pendingVT = null;
 });
-document.getElementById('vtDelete').addEventListener('click', () => {
+if (vtDeleteBtn) vtDeleteBtn.addEventListener('click', () => {
     if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
     pendingVTUrl = null;
     pendingVTBlob = null;
@@ -1637,6 +1660,7 @@ document.getElementById('vtDelete').addEventListener('click', () => {
 });
 
 function updateTalkOverlay(cues, currentTime = 0, duration = 0) {
+    if (!talkOverlay || !talkOverlayIntro || !talkOverlayOutro) return;
     if (!talkUpMode || !cues) {
         talkOverlay.classList.add('d-none');
         return;
@@ -1752,21 +1776,22 @@ cueFields.forEach(field => {
 document.querySelectorAll('.cue-btn').forEach(btn => {
     btn.addEventListener('click', () => selectCueButton(btn.dataset.cue));
 });
-document.getElementById('cueStepBack').addEventListener('click', () => nudgeCue(-0.05));
-document.getElementById('cueStepForward').addEventListener('click', () => nudgeCue(0.05));
-document.getElementById('cueToggle').addEventListener('click', () => {
+if (cueStepBackBtn) cueStepBackBtn.addEventListener('click', () => nudgeCue(-0.05));
+if (cueStepForwardBtn) cueStepForwardBtn.addEventListener('click', () => nudgeCue(0.05));
+if (cueToggleBtn) cueToggleBtn.addEventListener('click', () => {
+    if (!cuePlayer) return;
     if (cuePlayer.paused) cuePlayer.play(); else cuePlayer.pause();
 });
-document.getElementById('cueSet').addEventListener('click', () => {
+if (cueSetBtn) cueSetBtn.addEventListener('click', () => {
     if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
     cueInputs[cueSelected].value = cuePlayer.currentTime.toFixed(2);
     updateCueMarkers();
 });
-document.getElementById('cueRemove').addEventListener('click', () => {
+if (cueRemoveBtn) cueRemoveBtn.addEventListener('click', () => {
     cueInputs[cueSelected].value = '';
     updateCueMarkers();
 });
-document.getElementById('cueSave').addEventListener('click', async () => {
+if (cueSaveBtn) cueSaveBtn.addEventListener('click', async () => {
     if (!cueItem || !cueItem.token) return;
     const payload = {};
     cueFields.forEach(field => {
@@ -1783,7 +1808,7 @@ document.getElementById('cueSave').addEventListener('click', async () => {
         if (data.status === 'ok') {
             cueItem.cues = data.cue || payload;
             renderQueue();
-            renderLibrary(document.getElementById('psaSearch').value || '');
+            renderLibrary(psaSearch ? psaSearch.value || '' : '');
         } else {
             alert('Unable to save cues.');
         }
@@ -1792,11 +1817,13 @@ document.getElementById('cueSave').addEventListener('click', async () => {
     }
 });
 
-cuePlayer.addEventListener('timeupdate', updateCueNeedle);
-cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+if (cuePlayer) {
+    cuePlayer.addEventListener('timeupdate', updateCueNeedle);
+    cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+}
 
-cueWave.addEventListener('mousedown', (e) => {
-    if (!cuePlayer.duration) return;
+if (cueWave) cueWave.addEventListener('mousedown', (e) => {
+    if (!cuePlayer || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
     const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
@@ -1804,14 +1831,15 @@ cueWave.addEventListener('mousedown', (e) => {
     updateCueNeedle();
 });
 
-cueMarkers.addEventListener('mousedown', (e) => {
+if (cueMarkers) cueMarkers.addEventListener('mousedown', (e) => {
     if (!e.target.dataset.cue) return;
     cueDragField = e.target.dataset.cue;
     cueDragNeedle = false;
 });
-cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
+if (cueNeedle) cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
 document.addEventListener('mouseup', () => { cueDragNeedle = false; cueDragField = null; });
 document.addEventListener('mousemove', (e) => {
+    if (!cuePlayer || !cueWave) return;
     if ((!cueDragNeedle && !cueDragField) || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
