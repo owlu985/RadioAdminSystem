@@ -163,6 +163,9 @@ const libraryNavState = {
     items: [],
     loading: false,
     error: null,
+    lastKey: null,
+    lastFetchedAt: 0,
+    pendingKey: null,
 };
 let libraryNavInitialized = false;
 let libraryNavElements = {};
@@ -364,82 +367,27 @@ function updateLibraryNavButtons() {
         btn.classList.toggle('btn-primary', active);
         btn.classList.toggle('btn-outline-primary', !active);
     });
-
-    if (libraryNavElements.searchInput) {
-        let searchTimer = null;
-        libraryNavElements.searchInput.addEventListener('input', (e) => {
-            if (searchTimer) clearTimeout(searchTimer);
-            searchTimer = setTimeout(() => {
-                libraryNavState.query = e.target.value.trim();
-                libraryNavState.page = 1;
-                fetchLibraryNav();
-            }, 250);
-        });
-    }
-
-    if (libraryNavElements.refreshBtn) {
-        libraryNavElements.refreshBtn.addEventListener('click', () => fetchLibraryNav({ refresh: true }));
-    }
-
-    if (libraryNavElements.prevBtn) {
-        libraryNavElements.prevBtn.addEventListener('click', () => {
-            if (libraryNavState.page <= 1) return;
-            libraryNavState.page -= 1;
-            fetchLibraryNav();
-        });
-    }
-    if (libraryNavElements.nextBtn) {
-        libraryNavElements.nextBtn.addEventListener('click', () => {
-            libraryNavState.page += 1;
-            fetchLibraryNav();
-        });
-    }
-
-    if (libraryNavElements.queue) {
-        libraryNavElements.queue.addEventListener('dragover', (ev) => {
-            if (!libraryNavDrag) return;
-            ev.preventDefault();
-            const target = ev.target.closest('li[data-queue-index]');
-            if (target) target.classList.add('drop-target');
-        });
-        libraryNavElements.queue.addEventListener('dragleave', (ev) => {
-            const target = ev.target.closest('li[data-queue-index]');
-            if (target) target.classList.remove('drop-target');
-        });
-        libraryNavElements.queue.addEventListener('drop', async (ev) => {
-            if (!libraryNavDrag) return;
-            ev.preventDefault();
-            const target = ev.target.closest('li[data-queue-index]');
-            const rect = target ? target.getBoundingClientRect() : null;
-            let dropIndex = queue.length;
-            if (target && rect) {
-                const idx = Number(target.dataset.queueIndex);
-                dropIndex = ev.clientY > rect.top + rect.height / 2 ? idx + 1 : idx;
-                target.classList.remove('drop-target');
-            }
-
-            if (libraryNavDrag.source === 'library') {
-                await insertLibraryItem(libraryNavDrag.item, dropIndex);
-            } else if (libraryNavDrag.source === 'queue') {
-                const fromIndex = libraryNavDrag.index;
-                if (fromIndex != null && fromIndex !== dropIndex) {
-                    const [moved] = queue.splice(fromIndex, 1);
-                    const normalizedIndex = dropIndex > fromIndex ? dropIndex - 1 : dropIndex;
-                    queue.splice(normalizedIndex, 0, moved);
-                    renderQueue();
-                }
-            }
-            libraryNavDrag = null;
-        });
-    }
-
-    libraryNavInitialized = true;
-    setLibraryNavMode(libraryNavState.mode);
 }
 
 async function fetchLibraryNav({ refresh = false } = {}) {
     if (!libraryNavInitialized) return;
+    const requestKey = [
+        libraryNavState.mode,
+        libraryNavState.query || '',
+        libraryNavState.page,
+        libraryNavState.perPage,
+    ].join('|');
+    const now = Date.now();
+    if (!refresh) {
+        if (libraryNavState.loading && libraryNavState.pendingKey === requestKey) {
+            return;
+        }
+        if (libraryNavState.lastKey === requestKey && now - libraryNavState.lastFetchedAt < 15000) {
+            return;
+        }
+    }
     libraryNavState.loading = true;
+    libraryNavState.pendingKey = requestKey;
     if (libraryNavElements.status) {
         libraryNavElements.status.textContent = 'Loading library…';
     }
@@ -470,12 +418,17 @@ async function fetchLibraryNav({ refresh = false } = {}) {
         libraryNavState.page = data.page || libraryNavState.page;
         libraryNavState.perPage = data.per_page || libraryNavState.perPage;
         libraryNavState.error = null;
+        libraryNavState.lastKey = requestKey;
+        libraryNavState.lastFetchedAt = now;
     } catch (err) {
         libraryNavState.items = [];
         libraryNavState.total = 0;
         libraryNavState.error = 'Unable to load library.';
     } finally {
         libraryNavState.loading = false;
+        if (libraryNavState.pendingKey === requestKey) {
+            libraryNavState.pendingKey = null;
+        }
     }
     renderLibraryResults();
 }
