@@ -143,16 +143,15 @@ function renderLibraryNavigation(queueItems, session) {
 
 function updatePlaybackPanels() {
     if (!playbackPanelsEnabled) return;
-    const session = playbackSession || {};
     const nowPlaying = currentItem ? { ...currentItem, queue_item_id: currentItem.id } : null;
     const upcoming = queue.map((item, idx) => ({ ...item, position: idx + 1 }));
     const snapshotQueue = currentItem
         ? [{ ...currentItem, position: 0 }, ...upcoming]
         : upcoming;
-    renderNowPlaying(nowPlaying, session);
+    renderNowPlaying(nowPlaying, null);
     renderLiveQueue(snapshotQueue, nowPlaying);
     renderQueueBuilder(snapshotQueue);
-    renderLibraryNavigation(queue, session);
+    renderLibraryNavigation(queue, null);
 }
 
 const libraryNavState = {
@@ -365,6 +364,77 @@ function updateLibraryNavButtons() {
         btn.classList.toggle('btn-primary', active);
         btn.classList.toggle('btn-outline-primary', !active);
     });
+
+    if (libraryNavElements.searchInput) {
+        let searchTimer = null;
+        libraryNavElements.searchInput.addEventListener('input', (e) => {
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                libraryNavState.query = e.target.value.trim();
+                libraryNavState.page = 1;
+                fetchLibraryNav();
+            }, 250);
+        });
+    }
+
+    if (libraryNavElements.refreshBtn) {
+        libraryNavElements.refreshBtn.addEventListener('click', () => fetchLibraryNav({ refresh: true }));
+    }
+
+    if (libraryNavElements.prevBtn) {
+        libraryNavElements.prevBtn.addEventListener('click', () => {
+            if (libraryNavState.page <= 1) return;
+            libraryNavState.page -= 1;
+            fetchLibraryNav();
+        });
+    }
+    if (libraryNavElements.nextBtn) {
+        libraryNavElements.nextBtn.addEventListener('click', () => {
+            libraryNavState.page += 1;
+            fetchLibraryNav();
+        });
+    }
+
+    if (libraryNavElements.queue) {
+        libraryNavElements.queue.addEventListener('dragover', (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.add('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('dragleave', (ev) => {
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.remove('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('drop', async (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            const rect = target ? target.getBoundingClientRect() : null;
+            let dropIndex = queue.length;
+            if (target && rect) {
+                const idx = Number(target.dataset.queueIndex);
+                dropIndex = ev.clientY > rect.top + rect.height / 2 ? idx + 1 : idx;
+                target.classList.remove('drop-target');
+            }
+
+            if (libraryNavDrag.source === 'library') {
+                await insertLibraryItem(libraryNavDrag.item, dropIndex);
+            } else if (libraryNavDrag.source === 'queue') {
+                const fromIndex = libraryNavDrag.index;
+                if (fromIndex != null && fromIndex !== dropIndex) {
+                    const [moved] = queue.splice(fromIndex, 1);
+                    const normalizedIndex = dropIndex > fromIndex ? dropIndex - 1 : dropIndex;
+                    queue.splice(normalizedIndex, 0, moved);
+                    renderQueue();
+                }
+            }
+            libraryNavDrag = null;
+        });
+    }
+
+    libraryNavInitialized = true;
+    setLibraryNavMode(libraryNavState.mode);
 }
 
 async function fetchLibraryNav({ refresh = false } = {}) {
@@ -520,15 +590,8 @@ async function insertLibraryItem(payload, position) {
 }
 
 let library = [];
-const psaList = document.getElementById('psaList');
 const queueList = document.getElementById('queueList');
 const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
-const categoryFilter = document.getElementById('categoryFilter');
-const libraryMeta = document.getElementById('libraryMeta');
-const libraryPrev = document.getElementById('libraryPrev');
-const libraryNext = document.getElementById('libraryNext');
-const psaSearch = document.getElementById('psaSearch');
-const metadataKinds = new Set(['psa', 'imaging']);
 const top40 = document.getElementById('top40');
 const loopBetween = document.getElementById('loopBetween');
 const togglePauseBtn = document.getElementById('togglePause');
@@ -543,6 +606,17 @@ const outroBadge = document.getElementById('outroBadge');
 const talkOverlay = document.getElementById('talkOverlay');
 const talkOverlayIntro = document.getElementById('talkOverlayIntro');
 const talkOverlayOutro = document.getElementById('talkOverlayOutro');
+const startRecBtn = document.getElementById('startRecord');
+const stopRecBtn = document.getElementById('stopRecord');
+const vtFile = document.getElementById('vtFile');
+const vtImport = document.getElementById('vtImport');
+const vtMeta = document.getElementById('vtMeta');
+const vtWaveCanvas = document.getElementById('vtWaveCanvas');
+const vtWaveInner = document.getElementById('vtWaveInner');
+const vtInsertPosition = document.getElementById('vtInsertPosition');
+const vtTitle = document.getElementById('vtTitle');
+const vtHost = document.getElementById('vtHost');
+const vtNotes = document.getElementById('vtNotes');
 const queue = [];
 const players = [
     { el: document.getElementById('psaAudioA'), item: null },
@@ -694,7 +768,7 @@ const metadataPath = document.getElementById('metadataPath');
 const bulkDialog = document.getElementById('bulkDialog');
 const bulkKind = document.getElementById('bulkKind');
 const bulkStatus = document.getElementById('bulkStatus');
-const legacyPlayerEnabled = Boolean(queueList && psaList);
+const legacyPlayerEnabled = Boolean(queueList);
 
 function openDialog(dialog) {
     if (!dialog) return;
@@ -736,55 +810,6 @@ async function openMetadataEditor(item) {
         }
     }
     openDialog(metadataDialog);
-}
-
-function renderCategories(cats) {
-    if (!categoryFilter) return;
-    const options = cats || [];
-    categoryFilter.innerHTML = '<option value="">All categories</option>' + options.map(c => `<option value="${c}">${c}</option>`).join('');
-}
-
-function renderLibrary(filter = '') {
-    psaList.innerHTML = '';
-    const term = filter.toLowerCase();
-    const cat = categoryFilter ? categoryFilter.value : '';
-    library.filter(item => {
-        const title = (item.title || item.name || '').toLowerCase();
-        return title.includes(term) && (!cat || item.category === cat);
-    }).forEach(item => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item';
-        const meta = [];
-        if (item.duration) meta.push(`${item.duration}s`);
-        if (item.loop) meta.push('loop');
-        if (item.category) meta.push(item.category);
-        if (item.expires_on) meta.push(`expires ${item.expires_on}`);
-        const displayName = item.title || item.name;
-        const subtitle = item.title ? `<small class="text-muted">${item.name}</small><br>` : '';
-        const usage = item.usage_rules ? `<small class="text-muted">Usage: ${item.usage_rules}</small><br>` : '';
-        li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-            <div>
-                <strong>${displayName}</strong><br>
-                ${subtitle}
-                ${usage}
-                ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
-            </div>
-            <div class="d-flex gap-2 align-items-center">
-                <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
-                <button class="btn btn-sm btn-outline-secondary" data-cue>Cues</button>
-                ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
-            </div>
-        </div>`;
-        li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
-        li.querySelector('[data-cue]').addEventListener('click', () => selectCueItem(item));
-        psaList.appendChild(li);
-    });
-    if (!psaList.children.length) {
-        const li = document.createElement('li');
-        li.className = 'list-group-item text-muted';
-        li.textContent = 'No items found.';
-        psaList.appendChild(li);
-    }
 }
 
 function renderQueue() {
@@ -881,10 +906,7 @@ async function ensureShowRun() {
     if (!enablePlaybackLogging) return null;
     if (activeShowRunId) return activeShowRunId;
     if (showRunStartPromise) return showRunStartPromise;
-    const payload = {
-        show_name: playbackSession?.show_name || undefined,
-        dj_name: playbackSession?.dj_name || undefined,
-    };
+    const payload = {};
     showRunStartPromise = fetch('/api/playback/show/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1733,10 +1755,6 @@ modeToggleButtons.forEach(btn => {
     btn.addEventListener('click', () => setAutomationMode(btn.dataset.automationMode));
 });
 
-if (psaSearch) psaSearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
-if (categoryFilter) categoryFilter.addEventListener('change', () => renderLibrary(psaSearch ? psaSearch.value || '' : ''));
-const refreshPsaBtn = document.getElementById('refreshPsa');
-if (refreshPsaBtn) refreshPsaBtn.addEventListener('click', () => loadPSAs());
 if (top40) top40.addEventListener('change', () => {
     players.forEach((p) => {
         preservesPitchOff(p.el);
@@ -1761,38 +1779,9 @@ if (overlayPlayer) {
     });
 }
 
-async function loadPSAs() {
-    try {
-        const params = new URLSearchParams({
-            page: libraryPage,
-            per_page: libraryPerPage,
-        });
-        if (categoryFilter && categoryFilter.value) params.set('category', categoryFilter.value);
-        if (libraryQuery) params.set('q', libraryQuery);
-        const res = await fetch(`/api/psa/library?${params.toString()}`);
-        const data = await res.json();
-        library = data.items || [];
-        libraryTotal = data.total || 0;
-        renderCategories(data.categories || []);
-        renderLibrary();
-        const start = libraryTotal ? ((data.page - 1) * data.per_page) + 1 : 0;
-        const end = Math.min(libraryTotal, data.page * data.per_page);
-        if (libraryMeta) {
-            libraryMeta.textContent = libraryTotal
-                ? `Showing ${start}-${end} of ${libraryTotal}`
-                : 'No items found.';
-        }
-        if (libraryPrev) libraryPrev.disabled = data.page <= 1;
-        if (libraryNext) libraryNext.disabled = end >= libraryTotal;
-    } catch (e) {
-        psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
-    }
-}
-
 if (!legacyPlayerEnabled) {
     return;
 }
-loadPSAs();
 loadPlaybackQueue();
 loadAutomationMode();
 updateShowLogExport();
@@ -1804,41 +1793,6 @@ window.addEventListener('beforeunload', () => {
     navigator.sendBeacon('/api/playback/show/stop', payload);
 });
 
-if (libraryPrev) libraryPrev.addEventListener('click', async () => {
-    if (libraryPage <= 1) return;
-    libraryPage -= 1;
-    await loadPSAs();
-});
-if (libraryNext) libraryNext.addEventListener('click', async () => {
-    libraryPage += 1;
-    await loadPSAs();
-});
-if (categoryFilter) categoryFilter.addEventListener('change', async () => {
-    libraryPage = 1;
-    await loadPSAs();
-});
-let searchTimer = null;
-if (psaSearch) psaSearch.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(async () => {
-        libraryQuery = psaSearch.value.trim();
-        libraryPage = 1;
-        await loadPSAs();
-    }, 250);
-});
-
-// Voice track recording
-const startRecBtn = document.getElementById('startRecord');
-const stopRecBtn = document.getElementById('stopRecord');
-const vtFile = document.getElementById('vtFile');
-const vtImport = document.getElementById('vtImport');
-const vtMeta = document.getElementById('vtMeta');
-const vtWaveCanvas = document.getElementById('vtWaveCanvas');
-const vtWaveInner = document.getElementById('vtWaveInner');
-const vtInsertPosition = document.getElementById('vtInsertPosition');
-const vtTitle = document.getElementById('vtTitle');
-const vtHost = document.getElementById('vtHost');
-const vtNotes = document.getElementById('vtNotes');
 
 function vtDisplayMeta(text) {
     if (!vtMeta) return;
@@ -2153,7 +2107,6 @@ if (cueSaveBtn) cueSaveBtn.addEventListener('click', async () => {
         if (data.status === 'ok') {
             cueItem.cues = data.cue || payload;
             renderQueue();
-            renderLibrary(psaSearch ? psaSearch.value || '' : '');
         } else {
             alert('Unable to save cues.');
         }

@@ -85,48 +85,14 @@
     </div>
 
     <div class="row g-3 mb-4">
-        <div class="col-lg-7">
-            <div class="card h-100">
+        <div class="col-12">
+            <div class="card">
                 <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Now Playing</span>
-                    <span class="text-muted small">Deck A</span>
-                </div>
-                <div class="card-body">
-                    <div id="nowPlayingPanel" class="mb-3 text-muted">Loading now playing...</div>
-                    <hr>
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <h5 class="mb-0">Live Queue</h5>
-                        <span class="text-muted small">Loaded from playback queue</span>
-                    </div>
-                    <div id="liveQueuePanel" class="text-muted">Loading queue...</div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-5">
-            <div class="card h-100">
-                <div class="card-header">Queue Builder</div>
-                <div class="card-body">
-                    <div id="queueBuilderPanel" class="text-muted">Loading upcoming items...</div>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mb-4">
-        <div class="card-header">Library Navigation</div>
-        <div class="card-body">
-            <div id="libraryNavigationPanel" class="text-muted">Loading library view...</div>
-        </div>
-    </div>
-
-    <div class="row g-3 mb-4">
-        <div class="col-lg-8">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Playback Controls</span>
+                    <span>Now Playing & Playback Controls</span>
                     <span class="badge text-bg-secondary player-timer" id="timerTop">00:00.00</span>
                 </div>
                 <div class="card-body">
+                    <div id="nowPlayingPanel" class="mb-3 text-muted">Loading now playing...</div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                         <button class="btn btn-primary" id="togglePause">Play</button>
                         <button class="btn btn-outline-secondary" id="playNext">Next</button>
@@ -141,15 +107,15 @@
                             <input class="form-check-input" type="checkbox" id="loopBetween" disabled>
                             <label class="form-check-label" for="loopBetween">Loop Between Cues</label>
                         </div>
+                        <div class="ms-auto">
+                            <span class="badge rounded-pill text-bg-success" data-automation-mode="manual">Manual</span>
+                            <span class="badge rounded-pill text-bg-light border" data-automation-mode="automation">Automation</span>
+                        </div>
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                         <span class="badge text-bg-light text-dark player-timer" id="timer">00:00.00</span>
                         <span class="badge text-bg-light text-dark" id="introBadge">Intro: 0.0s</span>
                         <span class="badge text-bg-light text-dark" id="outroBadge">Outro: 0.0s</span>
-                        <div class="ms-auto">
-                            <span class="badge rounded-pill text-bg-success" data-automation-mode="manual">Manual</span>
-                            <span class="badge rounded-pill text-bg-light border" data-automation-mode="automation">Automation</span>
-                        </div>
                     </div>
                     <div class="position-relative">
                         <div id="talkOverlay" class="talk-overlay d-none">
@@ -160,6 +126,21 @@
                             </div>
                         </div>
                         <ul class="list-group" id="queueList"></ul>
+                    </div>
+                    <div class="mt-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h5 class="mb-0">Live Queue</h5>
+                            <span class="text-muted small">Local queue snapshot</span>
+                        </div>
+                        <div id="liveQueuePanel" class="text-muted">Loading queue...</div>
+                    </div>
+                    <div class="mt-3">
+                        <div class="card border-0">
+                            <div class="card-header bg-transparent px-0">Queue Builder</div>
+                            <div class="card-body px-0">
+                                <div id="queueBuilderPanel" class="text-muted">Loading upcoming items...</div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="card-footer d-flex flex-wrap align-items-center gap-2">
@@ -172,23 +153,12 @@
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card h-100">
-                <div class="card-header">PSA / Imaging Library</div>
-                <div class="card-body">
-                    <div class="d-flex flex-wrap gap-2 mb-2">
-                        <input class="form-control form-control-sm" id="psaSearch" placeholder="Search PSA/Imaging">
-                        <select class="form-select form-select-sm" id="categoryFilter"></select>
-                        <button class="btn btn-outline-secondary btn-sm" id="refreshPsa">Refresh</button>
-                    </div>
-                    <div class="small text-muted mb-2" id="libraryMeta">Click refresh to load.</div>
-                    <ul class="list-group mb-2" id="psaList"></ul>
-                    <div class="d-flex justify-content-between">
-                        <button class="btn btn-outline-secondary btn-sm" id="libraryPrev">Prev</button>
-                        <button class="btn btn-outline-secondary btn-sm" id="libraryNext">Next</button>
-                    </div>
-                </div>
-            </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Library Navigation</div>
+        <div class="card-body">
+            <div id="libraryNavigationPanel" class="text-muted">Loading library view...</div>
         </div>
     </div>
 
