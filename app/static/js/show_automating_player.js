@@ -3,6 +3,7 @@ const nowPlayingPanel = document.getElementById('nowPlayingPanel');
 const liveQueuePanel = document.getElementById('liveQueuePanel');
 const queueBuilderPanel = document.getElementById('queueBuilderPanel');
 const libraryNavigationPanel = document.getElementById('libraryNavigationPanel');
+let playbackSession = null;
 const playbackPanelsEnabled = Boolean(
     nowPlayingPanel && liveQueuePanel && queueBuilderPanel && libraryNavigationPanel
 );
@@ -193,39 +194,18 @@ function renderLibraryNavigation(queueItems, session) {
     });
 }
 
-async function loadPlaybackPanels() {
+function updatePlaybackPanels() {
     if (!playbackPanelsEnabled) return;
-    try {
-        const [sessionRes, queueRes] = await Promise.all([
-            fetch('/api/playback/session'),
-            fetch('/api/playback/queue'),
-        ]);
-        if (!sessionRes.ok || !queueRes.ok) {
-            throw new Error('Unable to load playback panels');
-        }
-        const session = await sessionRes.json();
-        const queueData = await queueRes.json();
-        renderNowPlaying(queueData.now_playing, session);
-        renderLiveQueue(queueData.queue || [], queueData.now_playing);
-        renderQueueBuilder(queueData.queue || []);
-        renderLibraryNavigation(queueData.queue || [], session);
-    } catch (err) {
-        if (nowPlayingPanel) nowPlayingPanel.innerHTML = '<div class="text-danger">Unable to load playback session.</div>';
-        if (liveQueuePanel) liveQueuePanel.innerHTML = '<div class="text-danger">Unable to load queue.</div>';
-        if (queueBuilderPanel) queueBuilderPanel.innerHTML = '<div class="text-danger">Unable to load queue builder.</div>';
-        if (libraryNavigationPanel) libraryNavigationPanel.innerHTML = '<div class="text-danger">Unable to load library view.</div>';
-    }
-}
-
-if (playbackPanelsEnabled) {
-    loadPlaybackPanels();
-    playbackPanelTimer = setInterval(loadPlaybackPanels, 5000);
-    window.addEventListener('beforeunload', () => {
-        if (playbackPanelTimer) {
-            clearInterval(playbackPanelTimer);
-            playbackPanelTimer = null;
-        }
-    });
+    const session = playbackSession || {};
+    const nowPlaying = currentItem ? { ...currentItem, queue_item_id: currentItem.id } : null;
+    const upcoming = queue.map((item, idx) => ({ ...item, position: idx + 1 }));
+    const snapshotQueue = currentItem
+        ? [{ ...currentItem, position: 0 }, ...upcoming]
+        : upcoming;
+    renderNowPlaying(nowPlaying, session);
+    renderLiveQueue(snapshotQueue, nowPlaying);
+    renderQueueBuilder(snapshotQueue);
+    renderLibraryNavigation(snapshotQueue, session);
 }
 
 let library = [];
@@ -305,11 +285,89 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
-let playbackSession = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
-let queueSyncInProgress = false;
+const QUEUE_STORAGE_KEY = 'show_automator_queue_v1';
+const AUTOMATION_STORAGE_KEY = 'show_automator_automation_v1';
+const enablePlaybackLogging = false;
+let localQueueId = 1;
+
+if (playbackPanelsEnabled) {
+    updatePlaybackPanels();
+    playbackPanelTimer = setInterval(updatePlaybackPanels, 5000);
+    window.addEventListener('beforeunload', () => {
+        if (playbackPanelTimer) {
+            clearInterval(playbackPanelTimer);
+            playbackPanelTimer = null;
+        }
+    });
+}
+
+function nextQueueId() {
+    const nextId = localQueueId;
+    localQueueId += 1;
+    return nextId;
+}
+
+function normalizeQueueItem(source = {}, { keepId = false } = {}) {
+    const cues = source.cues || source.metadata?.cues || null;
+    const metadata = source.metadata || {};
+    const kind = source.kind || source.type || metadata.kind || queueTypeFor(source);
+    const id = keepId && source.id ? source.id : nextQueueId();
+    const sourceId = keepId ? source.source_id : (source.source_id || source.id || null);
+    return {
+        id,
+        source_id: sourceId,
+        name: source.name || source.title || metadata.name || 'Untitled',
+        title: source.title || source.name || metadata.name || 'Untitled',
+        artist: source.artist || metadata.artist || null,
+        duration: source.duration || metadata.duration || null,
+        url: source.url || metadata.url || null,
+        category: source.category || metadata.category || null,
+        token: source.token || metadata.token || null,
+        loop: source.loop ?? metadata.loop ?? null,
+        stop: Boolean(source.stop || kind === 'stop'),
+        kind,
+        metadata: metadata.metadata || metadata || null,
+        cues,
+        started_at: source.started_at || null,
+    };
+}
+
+function persistQueueState() {
+    try {
+        const payload = {
+            queue: queue.map(item => normalizeQueueItem(item, { keepId: true })),
+            currentItem: currentItem ? normalizeQueueItem(currentItem, { keepId: true }) : null,
+            saved_at: new Date().toISOString(),
+        };
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+        // ignore storage errors
+    }
+    updatePlaybackPanels();
+}
+
+function loadQueueState() {
+    try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        if (!raw) return;
+        const payload = JSON.parse(raw);
+        queue.length = 0;
+        if (payload.currentItem) {
+            queue.push(normalizeQueueItem(payload.currentItem, { keepId: true }));
+        }
+        (payload.queue || []).forEach(item => {
+            queue.push(normalizeQueueItem(item, { keepId: true }));
+        });
+        currentItem = null;
+        const maxId = queue.reduce((max, item) => Math.max(max, item.id || 0), 0);
+        localQueueId = Math.max(1, maxId + 1);
+    } catch (err) {
+        // ignore invalid storage
+    }
+}
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -368,6 +426,7 @@ async function openMetadataEditor(item) {
 }
 
 function renderCategories(cats) {
+    if (!categoryFilter) return;
     const options = cats || [];
     categoryFilter.innerHTML = '<option value="">All categories</option>' + options.map(c => `<option value="${c}">${c}</option>`).join('');
 }
@@ -375,7 +434,7 @@ function renderCategories(cats) {
 function renderLibrary(filter = '') {
     psaList.innerHTML = '';
     const term = filter.toLowerCase();
-    const cat = categoryFilter.value;
+    const cat = categoryFilter ? categoryFilter.value : '';
     library.filter(item => {
         const title = (item.title || item.name || '').toLowerCase();
         return title.includes(term) && (!cat || item.category === cat);
@@ -463,6 +522,7 @@ function renderQueue() {
         queueList.appendChild(li);
     });
     updateVTInsertOptions();
+    persistQueueState();
 }
 
 function updateAutomationModeUI() {
@@ -482,6 +542,12 @@ function updateAutomationModeUI() {
 
 function updateShowLogExport() {
     if (!showLogExport) return;
+    if (!enablePlaybackLogging) {
+        showLogExport.classList.add('disabled');
+        showLogExport.setAttribute('aria-disabled', 'true');
+        showLogExport.href = '#';
+        return;
+    }
     if (!activeLogSheetId) {
         showLogExport.classList.add('disabled');
         showLogExport.setAttribute('aria-disabled', 'true');
@@ -494,6 +560,7 @@ function updateShowLogExport() {
 }
 
 async function ensureShowRun() {
+    if (!enablePlaybackLogging) return null;
     if (activeShowRunId) return activeShowRunId;
     if (showRunStartPromise) return showRunStartPromise;
     const payload = {
@@ -532,6 +599,7 @@ function buildLogPayload(event, item, extra = {}) {
 }
 
 async function logPlaybackEvent(event, item, extra = {}) {
+    if (!enablePlaybackLogging) return;
     if (!item) return;
     await ensureShowRun();
     if (!activeShowRunId) return;
@@ -573,6 +641,11 @@ function logItemInsert(item, reason = 'manual') {
     logPlaybackEvent('insert', item, { reason });
 }
 
+function markItemStarted(item) {
+    if (!item) return;
+    item.started_at = new Date().toISOString();
+}
+
 function resetTimers() {
     const text = '00:00.00';
     timerEls.forEach(el => {
@@ -595,40 +668,28 @@ function resetTimers() {
 
 async function loadAutomationMode() {
     try {
-        const res = await fetch('/api/playback/session');
-        const data = await res.json();
-        if (res.ok && data.automation_mode) {
-            automationMode = data.automation_mode;
+        const stored = localStorage.getItem(AUTOMATION_STORAGE_KEY);
+        if (stored) {
+            const data = JSON.parse(stored);
+            if (data && data.mode) {
+                automationMode = data.mode;
+            }
         }
-        playbackSession = data;
-        if (data.show_run_id) {
-            activeShowRunId = data.show_run_id;
-        }
-        if (data.log_sheet_id) {
-            activeLogSheetId = data.log_sheet_id;
-        }
-        updateShowLogExport();
     } catch (err) {
         // ignore
     }
+    playbackSession = playbackSession || {};
     updateAutomationModeUI();
     toggleAutomationPolling();
 }
 
 async function setAutomationMode(mode) {
     if (!['manual', 'automation'].includes(mode)) return;
+    automationMode = mode;
     try {
-        const res = await fetch('/api/playback/session', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({automation_mode: mode})
-        });
-        const data = await res.json();
-        if (res.ok) {
-            automationMode = data.automation_mode || mode;
-        }
+        localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify({ mode }));
     } catch (err) {
-        automationMode = mode;
+        // ignore
     }
     updateAutomationModeUI();
     toggleAutomationPolling();
@@ -695,150 +756,36 @@ function queueTypeFor(item) {
     return 'music';
 }
 
-function buildQueueMetadata(item) {
-    return {
-        url: item.url || null,
-        name: item.name || item.title || null,
-        category: item.category || null,
-        token: item.token || null,
-        loop: item.loop || null,
-        stop: Boolean(item.stop),
-        kind: item.kind || null,
-        metadata: item.metadata || null,
-    };
-}
-
-function buildLocalQueueItem(payload = {}) {
-    const metadata = payload.metadata || {};
-    const extra = metadata.metadata || {};
-    const kind = metadata.kind || payload.kind || payload.type || queueTypeFor(metadata);
-    return {
-        id: payload.id || payload.queue_item_id || null,
-        name: metadata.name || payload.title || 'Untitled',
-        title: payload.title || metadata.name || 'Untitled',
-        artist: payload.artist || metadata.artist || null,
-        duration: payload.duration || metadata.duration || null,
-        url: metadata.url || extra.url || null,
-        category: metadata.category || extra.category || null,
-        token: metadata.token || extra.token || null,
-        loop: metadata.loop ?? extra.loop ?? null,
-        stop: Boolean(metadata.stop || payload.kind === 'stop' || payload.type === 'stop'),
-        kind,
-        metadata: extra,
-        cues: payload.cues || metadata.cues || extra.cues || null,
-    };
-}
-
-async function syncNowPlaying(item, status = 'playing') {
-    const payload = { status };
-    if (item && item.id) {
-        payload.item_id = item.id;
-    } else if (item) {
-        payload.type = queueTypeFor(item);
-        payload.kind = item.kind || queueTypeFor(item);
-        payload.title = item.title || item.name || '';
-        payload.artist = item.artist || null;
-        payload.duration = item.duration || null;
-        payload.metadata = buildQueueMetadata(item);
-        payload.cues = item.cues || null;
-    }
-    try {
-        await fetch('/api/playback/now-playing', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-    } catch (err) {
-        // ignore
-    }
-}
-
-async function syncSkip() {
-    try {
-        await fetch('/api/playback/queue/skip', { method: 'POST' });
-    } catch (err) {
-        // ignore
-    }
-}
-
 async function enqueueQueueItem(item, position = null) {
-    const payload = {
-        type: queueTypeFor(item),
-        kind: item.kind || queueTypeFor(item),
-        title: item.title || item.name || 'Untitled',
-        artist: item.artist || null,
-        duration: item.duration || null,
-        metadata: buildQueueMetadata(item),
-        cues: item.cues || null,
-    };
-    if (position != null) payload.position = position;
-    try {
-        const res = await fetch('/api/playback/queue/enqueue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok || data.status !== 'ok' || !data.item) {
-            return null;
-        }
-        return buildLocalQueueItem(data.item);
-    } catch (err) {
-        return null;
+    const queuedItem = normalizeQueueItem(item);
+    if (position != null) {
+        queue.splice(position, 0, queuedItem);
+    } else {
+        queue.push(queuedItem);
     }
+    return queuedItem;
 }
 
-async function dequeueQueueItem(item) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/dequeue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id }),
-        });
-    } catch (err) {
-        // ignore
-    }
+async function dequeueQueueItem() {
+    // local-only queue; state is updated by callers
 }
 
 async function moveQueueItem(item, position) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id, position }),
-        });
-    } catch (err) {
-        // ignore
-    }
+    if (!item) return;
+    const idx = queue.indexOf(item);
+    if (idx === -1) return;
+    queue.splice(idx, 1);
+    queue.splice(position, 0, item);
 }
 
-async function loadPlaybackQueue() {
-    if (queueSyncInProgress) return;
-    queueSyncInProgress = true;
-    try {
-        const res = await fetch('/api/playback/queue');
-        if (!res.ok) throw new Error('Unable to load queue');
-        const data = await res.json();
-        queue.length = 0;
-        (data.queue || []).forEach(item => {
-            queue.push(buildLocalQueueItem(item));
-        });
-        currentItem = data.now_playing ? buildLocalQueueItem(data.now_playing) : null;
-        renderQueue();
-        updateVTInsertOptions();
-        if (currentItem) {
-            previewCues(currentItem);
-        } else if (queue.length) {
-            previewCues(queue[0]);
-        } else {
-            resetTimers();
-        }
-    } catch (err) {
-        // ignore
-    } finally {
-        queueSyncInProgress = false;
+function loadPlaybackQueue() {
+    loadQueueState();
+    renderQueue();
+    updateVTInsertOptions();
+    if (queue.length) {
+        previewCues(queue[0]);
+    } else {
+        resetTimers();
     }
 }
 
@@ -988,9 +935,9 @@ function fadeOutCurrent() {
             player.volume = 1;
             player.removeAttribute('src');
             currentItem = null;
-            syncNowPlaying(null, 'idle');
             resetTimers();
             renderQueue();
+            persistQueueState();
         }
     }, 80);
 }
@@ -1023,16 +970,15 @@ function previewCues(item) {
 function stopAllAudio({ sync = true } = {}) {
     players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
     currentItem = null;
-    if (sync) {
-        syncNowPlaying(null, 'idle');
-    }
     resetTimers();
+    if (sync) {
+        persistQueueState();
+    }
 }
 
 async function addToQueue(item) {
     const queuedItem = await enqueueQueueItem(item, queue.length);
     if (!queuedItem) return;
-    queue.push(queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
     if (!currentItem && queue.length === 1 && activePlayer().paused) {
@@ -1045,7 +991,6 @@ async function insertToQueue(item, idx) {
     const position = Math.max(0, Math.min(queue.length, idx));
     const queuedItem = await enqueueQueueItem(item, position);
     if (!queuedItem) return;
-    queue.splice(position, 0, queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
     if (!currentItem && position === 0 && activePlayer().paused) {
@@ -1095,7 +1040,7 @@ function overlayEligible(item) {
     return item && OVERLAY_KINDS.includes(item.kind);
 }
 
-function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowPlayingState = true } = {}) {
+function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     const item = queue[idx];
     if (!item) return;
     if (item.stop) {
@@ -1124,6 +1069,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
     currentIdx = preferredIdx;
     currentItem = item;
     playerObj.item = item;
+    markItemStarted(item);
     const cues = item.cues || {};
     const hasLoop = cues.loop_in != null && cues.loop_out != null;
     loopBetween.disabled = !hasLoop;
@@ -1135,9 +1081,6 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
         removed.forEach(entry => dequeueQueueItem(entry));
     }
     queue.shift();
-    if (syncNowPlayingState) {
-        syncNowPlaying(item, 'playing');
-    }
     player.src = item.url;
     player.volume = 1;
     applyPlaybackRate(player, item);
@@ -1164,10 +1107,8 @@ function playNext(reason = 'skip') {
     autoNextTriggered = false;
     prestartedIdx = null;
     if (queue.length) {
-        syncSkip();
-        startFrom(0, currentIdx, 'auto', { syncNowPlayingState: false });
+        startFrom(0, currentIdx, 'auto');
     } else {
-        syncNowPlaying(null, 'idle');
         renderQueue();
     }
 }
@@ -1213,16 +1154,12 @@ function startNextWithOverlay(reason = 'auto') {
     nextPlayer.volume = 1;
     currentIdx = nextIdx;
     currentItem = nextItem;
+    markItemStarted(nextItem);
     queue.shift();
     prestartedIdx = null;
     autoNextTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentPlaying) {
         logItemEnd(currentPlaying, reason);
     }
@@ -1247,11 +1184,6 @@ function fadeAndNext(reason = 'auto') {
     nextPlayer.volume = 1;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentItem) {
         logItemEnd(currentItem, reason);
     }
@@ -1266,6 +1198,7 @@ function fadeAndNext(reason = 'auto') {
             shiftPastStops();
             currentIdx = nextIdx;
             currentItem = nextItem;
+            markItemStarted(nextItem);
             queue.shift();
             prestartedIdx = null;
             applyPlaybackRate();
@@ -1386,10 +1319,10 @@ function handleEnded(idx) {
         if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
             currentIdx = prestartedIdx;
             currentItem = queue[0];
+            markItemStarted(currentItem);
             prestartedIdx = null;
             applyPlaybackRate();
             queue.shift();
-            syncNowPlaying(currentItem, 'playing');
             logItemStart(currentItem, 'auto');
             startTimer();
             renderQueue();
@@ -1402,14 +1335,27 @@ function handleEnded(idx) {
     }
 }
 
-document.getElementById('clearQueue').addEventListener('click', () => {
+const clearQueueBtn = document.getElementById('clearQueue');
+const overlayPlayBtn = document.getElementById('overlayPlay');
+const overlayUrlInput = document.getElementById('overlayUrl');
+const toggleTalkupBtn = document.getElementById('toggleTalkup');
+const cueStepBackBtn = document.getElementById('cueStepBack');
+const cueStepForwardBtn = document.getElementById('cueStepForward');
+const cueToggleBtn = document.getElementById('cueToggle');
+const cueSetBtn = document.getElementById('cueSet');
+const cueRemoveBtn = document.getElementById('cueRemove');
+const cueSaveBtn = document.getElementById('cueSave');
+const vtConfirmBtn = document.getElementById('vtConfirm');
+const vtDeleteBtn = document.getElementById('vtDelete');
+
+if (clearQueueBtn) clearQueueBtn.addEventListener('click', () => {
     const removed = queue.splice(0, queue.length);
     removed.forEach(entry => dequeueQueueItem(entry));
     stopFade();
     stopAllAudio();
     renderQueue();
 });
-togglePauseBtn.addEventListener('click', () => {
+if (togglePauseBtn) togglePauseBtn.addEventListener('click', () => {
     const player = activePlayer();
     if (!currentItem || !player || !player.src) return;
     if (player.paused) {
@@ -1420,19 +1366,19 @@ togglePauseBtn.addEventListener('click', () => {
         togglePauseBtn.textContent = 'Play';
     }
 });
-playNextBtn.addEventListener('click', () => playNext('manual'));
-addStopBtn.addEventListener('click', addStopCue);
-fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
-document.getElementById('overlayPlay').addEventListener('click', () => {
-    const url = document.getElementById('overlayUrl').value.trim();
+if (playNextBtn) playNextBtn.addEventListener('click', () => playNext('manual'));
+if (addStopBtn) addStopBtn.addEventListener('click', addStopCue);
+if (fadeOutBtn) fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
+if (overlayPlayBtn && overlayUrlInput && overlayPlayer) overlayPlayBtn.addEventListener('click', () => {
+    const url = overlayUrlInput.value.trim();
     if (!url) return;
     overlayPlayer.src = url;
     overlayPlayer.play();
 });
-document.getElementById('toggleTalkup').addEventListener('click', () => {
+if (toggleTalkupBtn) toggleTalkupBtn.addEventListener('click', () => {
     talkUpMode = !talkUpMode;
-    document.getElementById('toggleTalkup').classList.toggle('btn-dark', talkUpMode);
-    document.getElementById('toggleTalkup').classList.toggle('btn-outline-dark', !talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-dark', talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-outline-dark', !talkUpMode);
     updateTalkOverlay(currentItem ? (currentItem.cues || {}) : null, activePlayer().currentTime || 0, activePlayer().duration || 0);
 });
 
@@ -1440,31 +1386,35 @@ modeToggleButtons.forEach(btn => {
     btn.addEventListener('click', () => setAutomationMode(btn.dataset.automationMode));
 });
 
-document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
-categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
-document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
-top40.addEventListener('change', () => {
+if (psaSearch) psaSearch.addEventListener('input', (e) => renderLibrary(e.target.value || ''));
+if (categoryFilter) categoryFilter.addEventListener('change', () => renderLibrary(psaSearch ? psaSearch.value || '' : ''));
+const refreshPsaBtn = document.getElementById('refreshPsa');
+if (refreshPsaBtn) refreshPsaBtn.addEventListener('click', () => loadPSAs());
+if (top40) top40.addEventListener('change', () => {
     players.forEach((p) => {
         preservesPitchOff(p.el);
-        if (p.item) {
+        if (p.el && p.item) {
             p.el.playbackRate = computePlaybackRate(p.item);
         }
     });
 });
 
 players.forEach((p, idx) => {
+    if (!p.el) return;
     preservesPitchOff(p.el);
-    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
+    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); if (togglePauseBtn) togglePauseBtn.textContent = 'Pause'; } });
     p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
+    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); if (togglePauseBtn) togglePauseBtn.textContent = 'Play'; } });
     p.el.addEventListener('ended', () => handleEnded(idx));
 });
 
-overlayPlayer.addEventListener('ended', () => {
-    overlayPlayer.pause();
-    overlayPlayer.removeAttribute('src');
-    overlayPlayer.currentTime = 0;
-});
+if (overlayPlayer) {
+    overlayPlayer.addEventListener('ended', () => {
+        overlayPlayer.pause();
+        overlayPlayer.removeAttribute('src');
+        overlayPlayer.currentTime = 0;
+    });
+}
 
 async function loadPSAs() {
     try {
@@ -1472,7 +1422,7 @@ async function loadPSAs() {
             page: libraryPage,
             per_page: libraryPerPage,
         });
-        if (categoryFilter.value) params.set('category', categoryFilter.value);
+        if (categoryFilter && categoryFilter.value) params.set('category', categoryFilter.value);
         if (libraryQuery) params.set('q', libraryQuery);
         const res = await fetch(`/api/psa/library?${params.toString()}`);
         const data = await res.json();
@@ -1482,11 +1432,13 @@ async function loadPSAs() {
         renderLibrary();
         const start = libraryTotal ? ((data.page - 1) * data.per_page) + 1 : 0;
         const end = Math.min(libraryTotal, data.page * data.per_page);
-        libraryMeta.textContent = libraryTotal
-            ? `Showing ${start}-${end} of ${libraryTotal}`
-            : 'No items found.';
-        libraryPrev.disabled = data.page <= 1;
-        libraryNext.disabled = end >= libraryTotal;
+        if (libraryMeta) {
+            libraryMeta.textContent = libraryTotal
+                ? `Showing ${start}-${end} of ${libraryTotal}`
+                : 'No items found.';
+        }
+        if (libraryPrev) libraryPrev.disabled = data.page <= 1;
+        if (libraryNext) libraryNext.disabled = end >= libraryTotal;
     } catch (e) {
         psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
     }
@@ -1497,30 +1449,31 @@ if (!legacyPlayerEnabled) {
 }
 loadPSAs();
 loadPlaybackQueue();
-loadAutomationMode().then(() => ensureShowRun());
+loadAutomationMode();
 updateShowLogExport();
 
 window.addEventListener('beforeunload', () => {
+    if (!enablePlaybackLogging) return;
     if (!activeShowRunId) return;
     const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
     navigator.sendBeacon('/api/playback/show/stop', payload);
 });
 
-libraryPrev.addEventListener('click', async () => {
+if (libraryPrev) libraryPrev.addEventListener('click', async () => {
     if (libraryPage <= 1) return;
     libraryPage -= 1;
     await loadPSAs();
 });
-libraryNext.addEventListener('click', async () => {
+if (libraryNext) libraryNext.addEventListener('click', async () => {
     libraryPage += 1;
     await loadPSAs();
 });
-categoryFilter.addEventListener('change', async () => {
+if (categoryFilter) categoryFilter.addEventListener('change', async () => {
     libraryPage = 1;
     await loadPSAs();
 });
 let searchTimer = null;
-psaSearch.addEventListener('input', () => {
+if (psaSearch) psaSearch.addEventListener('input', () => {
     if (searchTimer) clearTimeout(searchTimer);
     searchTimer = setTimeout(async () => {
         libraryQuery = psaSearch.value.trim();
@@ -1543,6 +1496,7 @@ const vtHost = document.getElementById('vtHost');
 const vtNotes = document.getElementById('vtNotes');
 
 function vtDisplayMeta(text) {
+    if (!vtMeta) return;
     vtMeta.textContent = text;
 }
 
@@ -1562,9 +1516,9 @@ function updateVTInsertOptions() {
 
 function collectVTMeta() {
     return {
-        title: vtTitle.value.trim(),
-        host: vtHost.value.trim(),
-        notes: vtNotes.value.trim(),
+        title: vtTitle ? vtTitle.value.trim() : '',
+        host: vtHost ? vtHost.value.trim() : '',
+        notes: vtNotes ? vtNotes.value.trim() : '',
     };
 }
 
@@ -1632,8 +1586,8 @@ function updatePendingVTFromBlob(blob, duration = null) {
     vtDisplayMeta(`${title}${duration ? ` • ${duration.toFixed(1)}s` : ''}`);
 }
 
-vtImport.addEventListener('click', () => vtFile.click());
-vtFile.addEventListener('change', async (e) => {
+if (vtImport) vtImport.addEventListener('click', () => { if (vtFile) vtFile.click(); });
+if (vtFile) vtFile.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
@@ -1646,10 +1600,11 @@ vtFile.addEventListener('change', async (e) => {
 });
 
 [vtTitle, vtHost, vtNotes].forEach(field => {
+    if (!field) return;
     field.addEventListener('input', syncPendingVTMeta);
 });
 
-startRecBtn.addEventListener('click', async () => {
+if (startRecBtn) startRecBtn.addEventListener('click', async () => {
     if (recorder) return;
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1674,9 +1629,10 @@ startRecBtn.addEventListener('click', async () => {
         recorder = null;
     }
 });
-stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
+if (stopRecBtn) stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
 
-document.getElementById('vtConfirm').addEventListener('click', () => {
+if (vtConfirmBtn) vtConfirmBtn.addEventListener('click', () => {
+    if (!vtInsertPosition) return;
     if (pendingVT) {
         const value = vtInsertPosition.value;
         if (value === 'next') {
@@ -1695,7 +1651,7 @@ document.getElementById('vtConfirm').addEventListener('click', () => {
     document.getElementById('vtPending').classList.add('d-none');
     pendingVT = null;
 });
-document.getElementById('vtDelete').addEventListener('click', () => {
+if (vtDeleteBtn) vtDeleteBtn.addEventListener('click', () => {
     if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
     pendingVTUrl = null;
     pendingVTBlob = null;
@@ -1704,6 +1660,7 @@ document.getElementById('vtDelete').addEventListener('click', () => {
 });
 
 function updateTalkOverlay(cues, currentTime = 0, duration = 0) {
+    if (!talkOverlay || !talkOverlayIntro || !talkOverlayOutro) return;
     if (!talkUpMode || !cues) {
         talkOverlay.classList.add('d-none');
         return;
@@ -1819,21 +1776,22 @@ cueFields.forEach(field => {
 document.querySelectorAll('.cue-btn').forEach(btn => {
     btn.addEventListener('click', () => selectCueButton(btn.dataset.cue));
 });
-document.getElementById('cueStepBack').addEventListener('click', () => nudgeCue(-0.05));
-document.getElementById('cueStepForward').addEventListener('click', () => nudgeCue(0.05));
-document.getElementById('cueToggle').addEventListener('click', () => {
+if (cueStepBackBtn) cueStepBackBtn.addEventListener('click', () => nudgeCue(-0.05));
+if (cueStepForwardBtn) cueStepForwardBtn.addEventListener('click', () => nudgeCue(0.05));
+if (cueToggleBtn) cueToggleBtn.addEventListener('click', () => {
+    if (!cuePlayer) return;
     if (cuePlayer.paused) cuePlayer.play(); else cuePlayer.pause();
 });
-document.getElementById('cueSet').addEventListener('click', () => {
+if (cueSetBtn) cueSetBtn.addEventListener('click', () => {
     if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
     cueInputs[cueSelected].value = cuePlayer.currentTime.toFixed(2);
     updateCueMarkers();
 });
-document.getElementById('cueRemove').addEventListener('click', () => {
+if (cueRemoveBtn) cueRemoveBtn.addEventListener('click', () => {
     cueInputs[cueSelected].value = '';
     updateCueMarkers();
 });
-document.getElementById('cueSave').addEventListener('click', async () => {
+if (cueSaveBtn) cueSaveBtn.addEventListener('click', async () => {
     if (!cueItem || !cueItem.token) return;
     const payload = {};
     cueFields.forEach(field => {
@@ -1850,7 +1808,7 @@ document.getElementById('cueSave').addEventListener('click', async () => {
         if (data.status === 'ok') {
             cueItem.cues = data.cue || payload;
             renderQueue();
-            renderLibrary(document.getElementById('psaSearch').value || '');
+            renderLibrary(psaSearch ? psaSearch.value || '' : '');
         } else {
             alert('Unable to save cues.');
         }
@@ -1859,11 +1817,13 @@ document.getElementById('cueSave').addEventListener('click', async () => {
     }
 });
 
-cuePlayer.addEventListener('timeupdate', updateCueNeedle);
-cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+if (cuePlayer) {
+    cuePlayer.addEventListener('timeupdate', updateCueNeedle);
+    cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+}
 
-cueWave.addEventListener('mousedown', (e) => {
-    if (!cuePlayer.duration) return;
+if (cueWave) cueWave.addEventListener('mousedown', (e) => {
+    if (!cuePlayer || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
     const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
@@ -1871,14 +1831,15 @@ cueWave.addEventListener('mousedown', (e) => {
     updateCueNeedle();
 });
 
-cueMarkers.addEventListener('mousedown', (e) => {
+if (cueMarkers) cueMarkers.addEventListener('mousedown', (e) => {
     if (!e.target.dataset.cue) return;
     cueDragField = e.target.dataset.cue;
     cueDragNeedle = false;
 });
-cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
+if (cueNeedle) cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
 document.addEventListener('mouseup', () => { cueDragNeedle = false; cueDragField = null; });
 document.addEventListener('mousemove', (e) => {
+    if (!cuePlayer || !cueWave) return;
     if ((!cueDragNeedle && !cueDragField) || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
