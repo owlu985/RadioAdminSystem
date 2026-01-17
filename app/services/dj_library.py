@@ -135,18 +135,30 @@ def _fetch_spotify_playlist(playlist_url: str) -> Dict:
     playlist_id = _spotify_playlist_id(playlist_url)
     if not playlist_id:
         return {"error": "Unable to detect a Spotify playlist ID from that link."}
-    api_url = f"https://open.spotify.com/playlist/{playlist_id}?__a=1&__d=discovery"
     headers = {"User-Agent": "Mozilla/5.0"}
+    token_url = "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
     try:
-        resp = requests.get(api_url, headers=headers, timeout=15)
-        resp.raise_for_status()
-    except requests.RequestException:
-        return {"error": "Unable to fetch playlist details from Spotify."}
+        token_resp = requests.get(token_url, headers=headers, timeout=15)
+        token_resp.raise_for_status()
+        token_data = token_resp.json()
+    except (requests.RequestException, ValueError):
+        return {"error": "Unable to fetch Spotify access token."}
 
+    access_token = token_data.get("accessToken")
+    if not access_token:
+        return {"error": "Spotify access token missing."}
+
+    api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
     try:
+        resp = requests.get(
+            api_url,
+            headers={**headers, "Authorization": f"Bearer {access_token}"},
+            timeout=15,
+        )
+        resp.raise_for_status()
         data = resp.json()
-    except ValueError:
-        return {"error": "Spotify playlist response was not JSON."}
+    except (requests.RequestException, ValueError):
+        return {"error": "Unable to fetch playlist details from Spotify."}
 
     tracks_block = data.get("tracks") or {}
     items = tracks_block.get("items") or []
