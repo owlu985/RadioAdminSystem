@@ -208,17 +208,6 @@ function updatePlaybackPanels() {
     renderLibraryNavigation(snapshotQueue, session);
 }
 
-if (playbackPanelsEnabled) {
-    updatePlaybackPanels();
-    playbackPanelTimer = setInterval(updatePlaybackPanels, 5000);
-    window.addEventListener('beforeunload', () => {
-        if (playbackPanelTimer) {
-            clearInterval(playbackPanelTimer);
-            playbackPanelTimer = null;
-        }
-    });
-}
-
 let library = [];
 const psaList = document.getElementById('psaList');
 const queueList = document.getElementById('queueList');
@@ -303,6 +292,17 @@ const QUEUE_STORAGE_KEY = 'show_automator_queue_v1';
 const AUTOMATION_STORAGE_KEY = 'show_automator_automation_v1';
 const enablePlaybackLogging = false;
 let localQueueId = 1;
+
+if (playbackPanelsEnabled) {
+    updatePlaybackPanels();
+    playbackPanelTimer = setInterval(updatePlaybackPanels, 5000);
+    window.addEventListener('beforeunload', () => {
+        if (playbackPanelTimer) {
+            clearInterval(playbackPanelTimer);
+            playbackPanelTimer = null;
+        }
+    });
+}
 
 function nextQueueId() {
     const nextId = localQueueId;
