@@ -137,61 +137,8 @@ function renderQueueBuilder(queueItems) {
 }
 
 function renderLibraryNavigation(queueItems, session) {
-    if (!libraryNavigationPanel) return;
-    const items = queueItems || [];
-    const counts = items.reduce((acc, item) => {
-        const kind = (item.kind || item.type || 'item').toLowerCase();
-        acc[kind] = (acc[kind] || 0) + 1;
-        return acc;
-    }, {});
-    const kinds = Object.keys(counts).sort();
-    if (playbackPanelFilter !== 'all' && !counts[playbackPanelFilter]) {
-        playbackPanelFilter = 'all';
-    }
-    const navButtons = ['all', ...kinds].map(kind => {
-        const label = kind === 'all' ? 'All' : kind.toUpperCase();
-        const count = kind === 'all' ? items.length : counts[kind];
-        const active = playbackPanelFilter === kind ? 'active' : '';
-        return `<button class="btn btn-sm btn-outline-primary ${active}" data-kind="${kind}">${label} (${count})</button>`;
-    }).join('');
-    const filtered = playbackPanelFilter === 'all'
-        ? items
-        : items.filter(item => (item.kind || item.type || 'item').toLowerCase() === playbackPanelFilter);
-    const rows = filtered.map(item => `
-        <tr>
-            <td>${escapeHtml(item.title || 'Untitled')}</td>
-            <td>${escapeHtml(item.artist || '—')}</td>
-            <td>${escapeHtml(item.kind || item.type || 'item')}</td>
-            <td>${formatDuration(item.duration)}</td>
-        </tr>
-    `).join('') || `<tr><td colspan="4" class="text-muted">No items in this view.</td></tr>`;
-    const showName = escapeHtml(session?.show_name || '—');
-    const djName = escapeHtml(session?.dj_name || '—');
-    libraryNavigationPanel.innerHTML = `
-        <div class="d-flex flex-wrap gap-2 mb-3">${navButtons}</div>
-        <div class="text-muted small mb-2">Session: ${showName} &middot; DJ: ${djName}</div>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Artist</th>
-                        <th>Type</th>
-                        <th>Length</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
-        </div>
-    `;
-    libraryNavigationPanel.querySelectorAll('[data-kind]').forEach(btn => {
-        btn.addEventListener('click', () => {
-            playbackPanelFilter = btn.dataset.kind;
-            renderLibraryNavigation(queueItems, session);
-        });
-    });
+    ensureLibraryNavigation();
+    updateLibraryQueueList(queueItems || []);
 }
 
 function updatePlaybackPanels() {
@@ -205,7 +152,371 @@ function updatePlaybackPanels() {
     renderNowPlaying(nowPlaying, session);
     renderLiveQueue(snapshotQueue, nowPlaying);
     renderQueueBuilder(snapshotQueue);
-    renderLibraryNavigation(snapshotQueue, session);
+    renderLibraryNavigation(queue, session);
+}
+
+const libraryNavState = {
+    mode: 'music',
+    query: '',
+    page: 1,
+    perPage: 20,
+    total: 0,
+    items: [],
+    loading: false,
+    error: null,
+};
+let libraryNavInitialized = false;
+let libraryNavElements = {};
+let libraryNavDrag = null;
+
+function base64UrlEncode(value) {
+    const encoded = btoa(unescape(encodeURIComponent(value)));
+    return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+}
+
+function buildLibraryQueuePayload(item, mode) {
+    if (mode === 'music') {
+        const title = item.title || item.path || 'Untitled';
+        const token = item.path ? base64UrlEncode(item.path) : null;
+        return {
+            title,
+            name: title,
+            artist: item.artist || null,
+            duration: item.duration_seconds || null,
+            url: token ? `/media/file/${token}` : null,
+            category: item.genre || 'Music',
+            kind: 'music',
+            metadata: {
+                album: item.album || null,
+                genre: item.genre || null,
+                year: item.year || null,
+                folder: item.folder || null,
+                path: item.path || null,
+            },
+        };
+    }
+    return {
+        title: item.title || item.name || 'Untitled',
+        name: item.name || item.title || 'Untitled',
+        artist: item.artist || null,
+        duration: item.duration || null,
+        url: item.url || null,
+        category: item.category || null,
+        token: item.token || null,
+        loop: item.loop || null,
+        kind: item.kind || mode,
+        metadata: {
+            usage_rules: item.usage_rules || null,
+            library_category: item.library_category || null,
+        },
+        cues: item.cues || null,
+    };
+}
+
+function libraryItemDescription(item, mode) {
+    if (mode === 'music') {
+        const parts = [item.artist, item.album, item.genre].filter(Boolean);
+        return parts.join(' • ') || 'Music track';
+    }
+    const parts = [item.category, item.usage_rules].filter(Boolean);
+    return parts.join(' • ') || mode.toUpperCase();
+}
+
+function ensureLibraryNavigation() {
+    if (!libraryNavigationPanel || libraryNavInitialized) return;
+    libraryNavigationPanel.innerHTML = `
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Library types">
+                <button class="btn btn-outline-primary" data-library-mode="music">Music</button>
+                <button class="btn btn-outline-primary" data-library-mode="psa">PSA</button>
+                <button class="btn btn-outline-primary" data-library-mode="imaging">Imaging</button>
+            </div>
+            <div class="input-group input-group-sm" style="max-width: 320px;">
+                <span class="input-group-text">Search</span>
+                <input type="text" class="form-control" id="libraryNavSearch" placeholder="Title, artist, or filename">
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" id="libraryNavRefresh">Refresh</button>
+            <span class="text-muted small" id="libraryNavMeta"></span>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="border rounded p-2 bg-body-tertiary">
+                    <div id="libraryNavStatus" class="text-muted small mb-2">Loading library…</div>
+                    <ul class="list-group list-group-flush" id="libraryNavResults"></ul>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="libraryNavPrev">Prev</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="libraryNavNext">Next</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Queue Builder</strong>
+                    <span class="text-muted small">Drag items here</span>
+                </div>
+                <ul class="list-group" id="libraryNavQueue"></ul>
+            </div>
+        </div>
+    `;
+
+    libraryNavElements = {
+        modeButtons: Array.from(libraryNavigationPanel.querySelectorAll('[data-library-mode]')),
+        searchInput: libraryNavigationPanel.querySelector('#libraryNavSearch'),
+        refreshBtn: libraryNavigationPanel.querySelector('#libraryNavRefresh'),
+        meta: libraryNavigationPanel.querySelector('#libraryNavMeta'),
+        status: libraryNavigationPanel.querySelector('#libraryNavStatus'),
+        results: libraryNavigationPanel.querySelector('#libraryNavResults'),
+        prevBtn: libraryNavigationPanel.querySelector('#libraryNavPrev'),
+        nextBtn: libraryNavigationPanel.querySelector('#libraryNavNext'),
+        queue: libraryNavigationPanel.querySelector('#libraryNavQueue'),
+    };
+
+    libraryNavElements.modeButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            setLibraryNavMode(btn.dataset.libraryMode);
+        });
+    });
+
+    if (libraryNavElements.searchInput) {
+        let searchTimer = null;
+        libraryNavElements.searchInput.addEventListener('input', (e) => {
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                libraryNavState.query = e.target.value.trim();
+                libraryNavState.page = 1;
+                fetchLibraryNav();
+            }, 250);
+        });
+    }
+
+    if (libraryNavElements.refreshBtn) {
+        libraryNavElements.refreshBtn.addEventListener('click', () => fetchLibraryNav({ refresh: true }));
+    }
+
+    if (libraryNavElements.prevBtn) {
+        libraryNavElements.prevBtn.addEventListener('click', () => {
+            if (libraryNavState.page <= 1) return;
+            libraryNavState.page -= 1;
+            fetchLibraryNav();
+        });
+    }
+    if (libraryNavElements.nextBtn) {
+        libraryNavElements.nextBtn.addEventListener('click', () => {
+            libraryNavState.page += 1;
+            fetchLibraryNav();
+        });
+    }
+
+    if (libraryNavElements.queue) {
+        libraryNavElements.queue.addEventListener('dragover', (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.add('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('dragleave', (ev) => {
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.remove('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('drop', async (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            const rect = target ? target.getBoundingClientRect() : null;
+            let dropIndex = queue.length;
+            if (target && rect) {
+                const idx = Number(target.dataset.queueIndex);
+                dropIndex = ev.clientY > rect.top + rect.height / 2 ? idx + 1 : idx;
+                target.classList.remove('drop-target');
+            }
+
+            if (libraryNavDrag.source === 'library') {
+                await insertLibraryItem(libraryNavDrag.item, dropIndex);
+            } else if (libraryNavDrag.source === 'queue') {
+                const fromIndex = libraryNavDrag.index;
+                if (fromIndex != null && fromIndex !== dropIndex) {
+                    const [moved] = queue.splice(fromIndex, 1);
+                    const normalizedIndex = dropIndex > fromIndex ? dropIndex - 1 : dropIndex;
+                    queue.splice(normalizedIndex, 0, moved);
+                    renderQueue();
+                }
+            }
+            libraryNavDrag = null;
+        });
+    }
+
+    libraryNavInitialized = true;
+    setLibraryNavMode(libraryNavState.mode);
+}
+
+function setLibraryNavMode(mode) {
+    if (!mode) return;
+    libraryNavState.mode = mode;
+    libraryNavState.page = 1;
+    fetchLibraryNav();
+    updateLibraryNavButtons();
+}
+
+function updateLibraryNavButtons() {
+    if (!libraryNavElements.modeButtons) return;
+    libraryNavElements.modeButtons.forEach(btn => {
+        const active = btn.dataset.libraryMode === libraryNavState.mode;
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('btn-primary', active);
+        btn.classList.toggle('btn-outline-primary', !active);
+    });
+}
+
+async function fetchLibraryNav({ refresh = false } = {}) {
+    if (!libraryNavInitialized) return;
+    libraryNavState.loading = true;
+    if (libraryNavElements.status) {
+        libraryNavElements.status.textContent = 'Loading library…';
+    }
+    const mode = libraryNavState.mode;
+    try {
+        let data = null;
+        if (mode === 'music') {
+            const params = new URLSearchParams({
+                q: libraryNavState.query || '%',
+                page: libraryNavState.page,
+                per_page: libraryNavState.perPage,
+            });
+            if (refresh) params.set('refresh', '1');
+            const res = await fetch(`/api/music/search?${params.toString()}`);
+            data = await res.json();
+        } else {
+            const params = new URLSearchParams({
+                page: libraryNavState.page,
+                per_page: libraryNavState.perPage,
+                kind: mode,
+            });
+            if (libraryNavState.query) params.set('q', libraryNavState.query);
+            const res = await fetch(`/api/psa/library?${params.toString()}`);
+            data = await res.json();
+        }
+        libraryNavState.items = data.items || [];
+        libraryNavState.total = data.total || 0;
+        libraryNavState.page = data.page || libraryNavState.page;
+        libraryNavState.perPage = data.per_page || libraryNavState.perPage;
+        libraryNavState.error = null;
+    } catch (err) {
+        libraryNavState.items = [];
+        libraryNavState.total = 0;
+        libraryNavState.error = 'Unable to load library.';
+    } finally {
+        libraryNavState.loading = false;
+    }
+    renderLibraryResults();
+}
+
+function renderLibraryResults() {
+    if (!libraryNavInitialized) return;
+    if (!libraryNavElements.results) return;
+    libraryNavElements.results.innerHTML = '';
+
+    if (libraryNavState.error) {
+        libraryNavElements.results.innerHTML = `<li class="list-group-item text-danger">${libraryNavState.error}</li>`;
+    } else if (!libraryNavState.items.length) {
+        libraryNavElements.results.innerHTML = '<li class="list-group-item text-muted">No items found.</li>';
+    } else {
+        libraryNavState.items.forEach((item, idx) => {
+            const payload = buildLibraryQueuePayload(item, libraryNavState.mode);
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-start gap-2';
+            li.draggable = Boolean(payload.url);
+            li.dataset.libraryIndex = idx;
+            li.innerHTML = `
+                <div>
+                    <div class="fw-semibold">${escapeHtml(payload.title || payload.name || 'Untitled')}</div>
+                    <div class="small text-muted">${escapeHtml(libraryItemDescription(item, libraryNavState.mode))}</div>
+                    <div class="small text-muted">${escapeHtml((payload.kind || '').toUpperCase())} · ${formatDuration(payload.duration)}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" ${payload.url ? '' : 'disabled'}>Add</button>
+            `;
+            if (payload.url) {
+                li.addEventListener('dragstart', (ev) => {
+                    libraryNavDrag = { source: 'library', item: payload };
+                    ev.dataTransfer.effectAllowed = 'copy';
+                });
+            }
+            const addBtn = li.querySelector('button');
+            if (addBtn && payload.url) {
+                addBtn.addEventListener('click', async () => {
+                    await insertLibraryItem(payload, null);
+                });
+            }
+            libraryNavElements.results.appendChild(li);
+        });
+    }
+
+    const total = libraryNavState.total || 0;
+    const start = total ? ((libraryNavState.page - 1) * libraryNavState.perPage) + 1 : 0;
+    const end = Math.min(total, libraryNavState.page * libraryNavState.perPage);
+    if (libraryNavElements.meta) {
+        libraryNavElements.meta.textContent = total
+            ? `Showing ${start}-${end} of ${total}`
+            : 'No library items loaded.';
+    }
+    if (libraryNavElements.prevBtn) {
+        libraryNavElements.prevBtn.disabled = libraryNavState.page <= 1;
+    }
+    if (libraryNavElements.nextBtn) {
+        libraryNavElements.nextBtn.disabled = end >= total;
+    }
+    if (libraryNavElements.status) {
+        libraryNavElements.status.textContent = libraryNavState.loading ? 'Loading library…' : '';
+    }
+    updateLibraryNavButtons();
+}
+
+function updateLibraryQueueList(queueItems) {
+    if (!libraryNavInitialized || !libraryNavElements.queue) return;
+    libraryNavElements.queue.innerHTML = '';
+    if (!queueItems.length) {
+        libraryNavElements.queue.innerHTML = '<li class="list-group-item text-muted">Drop items here to build the queue.</li>';
+        return;
+    }
+    queueItems.forEach((item, idx) => {
+        const li = document.createElement('li');
+        const isCurrent = currentItem && item.id === currentItem.id;
+        li.className = `list-group-item d-flex justify-content-between align-items-start gap-2${isCurrent ? ' list-group-item-info' : ''}`;
+        li.dataset.queueIndex = idx;
+        li.draggable = !isCurrent;
+        li.innerHTML = `
+            <div>
+                <div class="fw-semibold">${escapeHtml(item.title || item.name || 'Untitled')}${isCurrent ? ' <span class="badge text-bg-success ms-2">Now</span>' : ''}</div>
+                <div class="small text-muted">${escapeHtml((item.kind || '').toUpperCase())} · ${formatDuration(item.duration)}</div>
+            </div>
+            ${isCurrent ? '' : '<button class="btn btn-sm btn-outline-danger">Remove</button>'}
+        `;
+        if (!isCurrent) {
+            li.addEventListener('dragstart', (ev) => {
+                libraryNavDrag = { source: 'queue', index: idx };
+                ev.dataTransfer.effectAllowed = 'move';
+            });
+            const removeBtn = li.querySelector('button');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    removeFromQueue(idx);
+                });
+            }
+        }
+        libraryNavElements.queue.appendChild(li);
+    });
+}
+
+async function insertLibraryItem(payload, position) {
+    if (!payload || !payload.url) return;
+    const queuedItem = await enqueueQueueItem(payload, position);
+    if (!queuedItem) return;
+    logItemInsert(queuedItem);
+    updateVTInsertOptions();
+    const player = activePlayer();
+    if (!currentItem && queue.length === 1 && player && player.paused) {
+        startFrom(0, currentIdx, 'auto');
+    }
+    renderQueue();
 }
 
 let library = [];
@@ -475,6 +786,11 @@ function renderLibrary(filter = '') {
 }
 
 function renderQueue() {
+    if (!queueList) {
+        persistQueueState();
+        updatePlaybackPanels();
+        return;
+    }
     queueList.innerHTML = '';
     const displayItems = [];
     if (currentItem) {
@@ -981,7 +1297,8 @@ async function addToQueue(item) {
     if (!queuedItem) return;
     logItemInsert(queuedItem);
     updateVTInsertOptions();
-    if (!currentItem && queue.length === 1 && activePlayer().paused) {
+    const player = activePlayer();
+    if (!currentItem && queue.length === 1 && player && player.paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
@@ -993,7 +1310,8 @@ async function insertToQueue(item, idx) {
     if (!queuedItem) return;
     logItemInsert(queuedItem);
     updateVTInsertOptions();
-    if (!currentItem && position === 0 && activePlayer().paused) {
+    const player = activePlayer();
+    if (!currentItem && position === 0 && player && player.paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
