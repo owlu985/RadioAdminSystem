@@ -3,6 +3,7 @@ const nowPlayingPanel = document.getElementById('nowPlayingPanel');
 const liveQueuePanel = document.getElementById('liveQueuePanel');
 const queueBuilderPanel = document.getElementById('queueBuilderPanel');
 const libraryNavigationPanel = document.getElementById('libraryNavigationPanel');
+let playbackSession = null;
 const playbackPanelsEnabled = Boolean(
     nowPlayingPanel && liveQueuePanel && queueBuilderPanel && libraryNavigationPanel
 );
@@ -193,39 +194,18 @@ function renderLibraryNavigation(queueItems, session) {
     });
 }
 
-async function loadPlaybackPanels() {
+function updatePlaybackPanels() {
     if (!playbackPanelsEnabled) return;
-    try {
-        const [sessionRes, queueRes] = await Promise.all([
-            fetch('/api/playback/session'),
-            fetch('/api/playback/queue'),
-        ]);
-        if (!sessionRes.ok || !queueRes.ok) {
-            throw new Error('Unable to load playback panels');
-        }
-        const session = await sessionRes.json();
-        const queueData = await queueRes.json();
-        renderNowPlaying(queueData.now_playing, session);
-        renderLiveQueue(queueData.queue || [], queueData.now_playing);
-        renderQueueBuilder(queueData.queue || []);
-        renderLibraryNavigation(queueData.queue || [], session);
-    } catch (err) {
-        if (nowPlayingPanel) nowPlayingPanel.innerHTML = '<div class="text-danger">Unable to load playback session.</div>';
-        if (liveQueuePanel) liveQueuePanel.innerHTML = '<div class="text-danger">Unable to load queue.</div>';
-        if (queueBuilderPanel) queueBuilderPanel.innerHTML = '<div class="text-danger">Unable to load queue builder.</div>';
-        if (libraryNavigationPanel) libraryNavigationPanel.innerHTML = '<div class="text-danger">Unable to load library view.</div>';
-    }
-}
-
-if (playbackPanelsEnabled) {
-    loadPlaybackPanels();
-    playbackPanelTimer = setInterval(loadPlaybackPanels, 5000);
-    window.addEventListener('beforeunload', () => {
-        if (playbackPanelTimer) {
-            clearInterval(playbackPanelTimer);
-            playbackPanelTimer = null;
-        }
-    });
+    const session = playbackSession || {};
+    const nowPlaying = currentItem ? { ...currentItem, queue_item_id: currentItem.id } : null;
+    const upcoming = queue.map((item, idx) => ({ ...item, position: idx + 1 }));
+    const snapshotQueue = currentItem
+        ? [{ ...currentItem, position: 0 }, ...upcoming]
+        : upcoming;
+    renderNowPlaying(nowPlaying, session);
+    renderLiveQueue(snapshotQueue, nowPlaying);
+    renderQueueBuilder(snapshotQueue);
+    renderLibraryNavigation(snapshotQueue, session);
 }
 
 let library = [];
@@ -305,11 +285,89 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
-let playbackSession = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
-let queueSyncInProgress = false;
+const QUEUE_STORAGE_KEY = 'show_automator_queue_v1';
+const AUTOMATION_STORAGE_KEY = 'show_automator_automation_v1';
+const enablePlaybackLogging = false;
+let localQueueId = 1;
+
+if (playbackPanelsEnabled) {
+    updatePlaybackPanels();
+    playbackPanelTimer = setInterval(updatePlaybackPanels, 5000);
+    window.addEventListener('beforeunload', () => {
+        if (playbackPanelTimer) {
+            clearInterval(playbackPanelTimer);
+            playbackPanelTimer = null;
+        }
+    });
+}
+
+function nextQueueId() {
+    const nextId = localQueueId;
+    localQueueId += 1;
+    return nextId;
+}
+
+function normalizeQueueItem(source = {}, { keepId = false } = {}) {
+    const cues = source.cues || source.metadata?.cues || null;
+    const metadata = source.metadata || {};
+    const kind = source.kind || source.type || metadata.kind || queueTypeFor(source);
+    const id = keepId && source.id ? source.id : nextQueueId();
+    const sourceId = keepId ? source.source_id : (source.source_id || source.id || null);
+    return {
+        id,
+        source_id: sourceId,
+        name: source.name || source.title || metadata.name || 'Untitled',
+        title: source.title || source.name || metadata.name || 'Untitled',
+        artist: source.artist || metadata.artist || null,
+        duration: source.duration || metadata.duration || null,
+        url: source.url || metadata.url || null,
+        category: source.category || metadata.category || null,
+        token: source.token || metadata.token || null,
+        loop: source.loop ?? metadata.loop ?? null,
+        stop: Boolean(source.stop || kind === 'stop'),
+        kind,
+        metadata: metadata.metadata || metadata || null,
+        cues,
+        started_at: source.started_at || null,
+    };
+}
+
+function persistQueueState() {
+    try {
+        const payload = {
+            queue: queue.map(item => normalizeQueueItem(item, { keepId: true })),
+            currentItem: currentItem ? normalizeQueueItem(currentItem, { keepId: true }) : null,
+            saved_at: new Date().toISOString(),
+        };
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+        // ignore storage errors
+    }
+    updatePlaybackPanels();
+}
+
+function loadQueueState() {
+    try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        if (!raw) return;
+        const payload = JSON.parse(raw);
+        queue.length = 0;
+        if (payload.currentItem) {
+            queue.push(normalizeQueueItem(payload.currentItem, { keepId: true }));
+        }
+        (payload.queue || []).forEach(item => {
+            queue.push(normalizeQueueItem(item, { keepId: true }));
+        });
+        currentItem = null;
+        const maxId = queue.reduce((max, item) => Math.max(max, item.id || 0), 0);
+        localQueueId = Math.max(1, maxId + 1);
+    } catch (err) {
+        // ignore invalid storage
+    }
+}
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -463,6 +521,7 @@ function renderQueue() {
         queueList.appendChild(li);
     });
     updateVTInsertOptions();
+    persistQueueState();
 }
 
 function updateAutomationModeUI() {
@@ -482,6 +541,12 @@ function updateAutomationModeUI() {
 
 function updateShowLogExport() {
     if (!showLogExport) return;
+    if (!enablePlaybackLogging) {
+        showLogExport.classList.add('disabled');
+        showLogExport.setAttribute('aria-disabled', 'true');
+        showLogExport.href = '#';
+        return;
+    }
     if (!activeLogSheetId) {
         showLogExport.classList.add('disabled');
         showLogExport.setAttribute('aria-disabled', 'true');
@@ -494,6 +559,7 @@ function updateShowLogExport() {
 }
 
 async function ensureShowRun() {
+    if (!enablePlaybackLogging) return null;
     if (activeShowRunId) return activeShowRunId;
     if (showRunStartPromise) return showRunStartPromise;
     const payload = {
@@ -532,6 +598,7 @@ function buildLogPayload(event, item, extra = {}) {
 }
 
 async function logPlaybackEvent(event, item, extra = {}) {
+    if (!enablePlaybackLogging) return;
     if (!item) return;
     await ensureShowRun();
     if (!activeShowRunId) return;
@@ -573,6 +640,11 @@ function logItemInsert(item, reason = 'manual') {
     logPlaybackEvent('insert', item, { reason });
 }
 
+function markItemStarted(item) {
+    if (!item) return;
+    item.started_at = new Date().toISOString();
+}
+
 function resetTimers() {
     const text = '00:00.00';
     timerEls.forEach(el => {
@@ -595,40 +667,28 @@ function resetTimers() {
 
 async function loadAutomationMode() {
     try {
-        const res = await fetch('/api/playback/session');
-        const data = await res.json();
-        if (res.ok && data.automation_mode) {
-            automationMode = data.automation_mode;
+        const stored = localStorage.getItem(AUTOMATION_STORAGE_KEY);
+        if (stored) {
+            const data = JSON.parse(stored);
+            if (data && data.mode) {
+                automationMode = data.mode;
+            }
         }
-        playbackSession = data;
-        if (data.show_run_id) {
-            activeShowRunId = data.show_run_id;
-        }
-        if (data.log_sheet_id) {
-            activeLogSheetId = data.log_sheet_id;
-        }
-        updateShowLogExport();
     } catch (err) {
         // ignore
     }
+    playbackSession = playbackSession || {};
     updateAutomationModeUI();
     toggleAutomationPolling();
 }
 
 async function setAutomationMode(mode) {
     if (!['manual', 'automation'].includes(mode)) return;
+    automationMode = mode;
     try {
-        const res = await fetch('/api/playback/session', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({automation_mode: mode})
-        });
-        const data = await res.json();
-        if (res.ok) {
-            automationMode = data.automation_mode || mode;
-        }
+        localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify({ mode }));
     } catch (err) {
-        automationMode = mode;
+        // ignore
     }
     updateAutomationModeUI();
     toggleAutomationPolling();
@@ -695,150 +755,36 @@ function queueTypeFor(item) {
     return 'music';
 }
 
-function buildQueueMetadata(item) {
-    return {
-        url: item.url || null,
-        name: item.name || item.title || null,
-        category: item.category || null,
-        token: item.token || null,
-        loop: item.loop || null,
-        stop: Boolean(item.stop),
-        kind: item.kind || null,
-        metadata: item.metadata || null,
-    };
-}
-
-function buildLocalQueueItem(payload = {}) {
-    const metadata = payload.metadata || {};
-    const extra = metadata.metadata || {};
-    const kind = metadata.kind || payload.kind || payload.type || queueTypeFor(metadata);
-    return {
-        id: payload.id || payload.queue_item_id || null,
-        name: metadata.name || payload.title || 'Untitled',
-        title: payload.title || metadata.name || 'Untitled',
-        artist: payload.artist || metadata.artist || null,
-        duration: payload.duration || metadata.duration || null,
-        url: metadata.url || extra.url || null,
-        category: metadata.category || extra.category || null,
-        token: metadata.token || extra.token || null,
-        loop: metadata.loop ?? extra.loop ?? null,
-        stop: Boolean(metadata.stop || payload.kind === 'stop' || payload.type === 'stop'),
-        kind,
-        metadata: extra,
-        cues: payload.cues || metadata.cues || extra.cues || null,
-    };
-}
-
-async function syncNowPlaying(item, status = 'playing') {
-    const payload = { status };
-    if (item && item.id) {
-        payload.item_id = item.id;
-    } else if (item) {
-        payload.type = queueTypeFor(item);
-        payload.kind = item.kind || queueTypeFor(item);
-        payload.title = item.title || item.name || '';
-        payload.artist = item.artist || null;
-        payload.duration = item.duration || null;
-        payload.metadata = buildQueueMetadata(item);
-        payload.cues = item.cues || null;
-    }
-    try {
-        await fetch('/api/playback/now-playing', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-    } catch (err) {
-        // ignore
-    }
-}
-
-async function syncSkip() {
-    try {
-        await fetch('/api/playback/queue/skip', { method: 'POST' });
-    } catch (err) {
-        // ignore
-    }
-}
-
 async function enqueueQueueItem(item, position = null) {
-    const payload = {
-        type: queueTypeFor(item),
-        kind: item.kind || queueTypeFor(item),
-        title: item.title || item.name || 'Untitled',
-        artist: item.artist || null,
-        duration: item.duration || null,
-        metadata: buildQueueMetadata(item),
-        cues: item.cues || null,
-    };
-    if (position != null) payload.position = position;
-    try {
-        const res = await fetch('/api/playback/queue/enqueue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok || data.status !== 'ok' || !data.item) {
-            return null;
-        }
-        return buildLocalQueueItem(data.item);
-    } catch (err) {
-        return null;
+    const queuedItem = normalizeQueueItem(item);
+    if (position != null) {
+        queue.splice(position, 0, queuedItem);
+    } else {
+        queue.push(queuedItem);
     }
+    return queuedItem;
 }
 
-async function dequeueQueueItem(item) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/dequeue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id }),
-        });
-    } catch (err) {
-        // ignore
-    }
+async function dequeueQueueItem() {
+    // local-only queue; state is updated by callers
 }
 
 async function moveQueueItem(item, position) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id, position }),
-        });
-    } catch (err) {
-        // ignore
-    }
+    if (!item) return;
+    const idx = queue.indexOf(item);
+    if (idx === -1) return;
+    queue.splice(idx, 1);
+    queue.splice(position, 0, item);
 }
 
-async function loadPlaybackQueue() {
-    if (queueSyncInProgress) return;
-    queueSyncInProgress = true;
-    try {
-        const res = await fetch('/api/playback/queue');
-        if (!res.ok) throw new Error('Unable to load queue');
-        const data = await res.json();
-        queue.length = 0;
-        (data.queue || []).forEach(item => {
-            queue.push(buildLocalQueueItem(item));
-        });
-        currentItem = data.now_playing ? buildLocalQueueItem(data.now_playing) : null;
-        renderQueue();
-        updateVTInsertOptions();
-        if (currentItem) {
-            previewCues(currentItem);
-        } else if (queue.length) {
-            previewCues(queue[0]);
-        } else {
-            resetTimers();
-        }
-    } catch (err) {
-        // ignore
-    } finally {
-        queueSyncInProgress = false;
+function loadPlaybackQueue() {
+    loadQueueState();
+    renderQueue();
+    updateVTInsertOptions();
+    if (queue.length) {
+        previewCues(queue[0]);
+    } else {
+        resetTimers();
     }
 }
 
@@ -988,9 +934,9 @@ function fadeOutCurrent() {
             player.volume = 1;
             player.removeAttribute('src');
             currentItem = null;
-            syncNowPlaying(null, 'idle');
             resetTimers();
             renderQueue();
+            persistQueueState();
         }
     }, 80);
 }
@@ -1023,16 +969,15 @@ function previewCues(item) {
 function stopAllAudio({ sync = true } = {}) {
     players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
     currentItem = null;
-    if (sync) {
-        syncNowPlaying(null, 'idle');
-    }
     resetTimers();
+    if (sync) {
+        persistQueueState();
+    }
 }
 
 async function addToQueue(item) {
     const queuedItem = await enqueueQueueItem(item, queue.length);
     if (!queuedItem) return;
-    queue.push(queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
     if (!currentItem && queue.length === 1 && activePlayer().paused) {
@@ -1045,7 +990,6 @@ async function insertToQueue(item, idx) {
     const position = Math.max(0, Math.min(queue.length, idx));
     const queuedItem = await enqueueQueueItem(item, position);
     if (!queuedItem) return;
-    queue.splice(position, 0, queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
     if (!currentItem && position === 0 && activePlayer().paused) {
@@ -1095,7 +1039,7 @@ function overlayEligible(item) {
     return item && OVERLAY_KINDS.includes(item.kind);
 }
 
-function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowPlayingState = true } = {}) {
+function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     const item = queue[idx];
     if (!item) return;
     if (item.stop) {
@@ -1124,6 +1068,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
     currentIdx = preferredIdx;
     currentItem = item;
     playerObj.item = item;
+    markItemStarted(item);
     const cues = item.cues || {};
     const hasLoop = cues.loop_in != null && cues.loop_out != null;
     loopBetween.disabled = !hasLoop;
@@ -1135,9 +1080,6 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
         removed.forEach(entry => dequeueQueueItem(entry));
     }
     queue.shift();
-    if (syncNowPlayingState) {
-        syncNowPlaying(item, 'playing');
-    }
     player.src = item.url;
     player.volume = 1;
     applyPlaybackRate(player, item);
@@ -1164,10 +1106,8 @@ function playNext(reason = 'skip') {
     autoNextTriggered = false;
     prestartedIdx = null;
     if (queue.length) {
-        syncSkip();
-        startFrom(0, currentIdx, 'auto', { syncNowPlayingState: false });
+        startFrom(0, currentIdx, 'auto');
     } else {
-        syncNowPlaying(null, 'idle');
         renderQueue();
     }
 }
@@ -1213,16 +1153,12 @@ function startNextWithOverlay(reason = 'auto') {
     nextPlayer.volume = 1;
     currentIdx = nextIdx;
     currentItem = nextItem;
+    markItemStarted(nextItem);
     queue.shift();
     prestartedIdx = null;
     autoNextTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentPlaying) {
         logItemEnd(currentPlaying, reason);
     }
@@ -1247,11 +1183,6 @@ function fadeAndNext(reason = 'auto') {
     nextPlayer.volume = 1;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentItem) {
         logItemEnd(currentItem, reason);
     }
@@ -1266,6 +1197,7 @@ function fadeAndNext(reason = 'auto') {
             shiftPastStops();
             currentIdx = nextIdx;
             currentItem = nextItem;
+            markItemStarted(nextItem);
             queue.shift();
             prestartedIdx = null;
             applyPlaybackRate();
@@ -1386,10 +1318,10 @@ function handleEnded(idx) {
         if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
             currentIdx = prestartedIdx;
             currentItem = queue[0];
+            markItemStarted(currentItem);
             prestartedIdx = null;
             applyPlaybackRate();
             queue.shift();
-            syncNowPlaying(currentItem, 'playing');
             logItemStart(currentItem, 'auto');
             startTimer();
             renderQueue();
@@ -1497,10 +1429,11 @@ if (!legacyPlayerEnabled) {
 }
 loadPSAs();
 loadPlaybackQueue();
-loadAutomationMode().then(() => ensureShowRun());
+loadAutomationMode();
 updateShowLogExport();
 
 window.addEventListener('beforeunload', () => {
+    if (!enablePlaybackLogging) return;
     if (!activeShowRunId) return;
     const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
     navigator.sendBeacon('/api/playback/show/stop', payload);
