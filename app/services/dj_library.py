@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import difflib
+import json
 import os
 import re
 from datetime import datetime
@@ -183,37 +184,106 @@ def _match_score(query: str, candidate: str) -> float:
     return difflib.SequenceMatcher(None, query, candidate).ratio()
 
 
-def match_spotify_playlist(playlist_payload: Dict) -> Dict:
-    if playlist_payload.get("error"):
-        return playlist_payload
-    tracks = playlist_payload.get("tracks") or []
+def parse_text_playlist(text: str) -> List[Dict]:
+    entries = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        if " - " in line:
+            artist, title = line.split(" - ", 1)
+        elif " – " in line:
+            artist, title = line.split(" – ", 1)
+        else:
+            artist, title = "", line
+        entries.append({"artist": artist.strip(), "title": title.strip()})
+    return entries
+
+
+def _extract_youtube_titles(initial_data: Dict) -> List[str]:
+    titles = []
+    tabs = (
+        initial_data.get("contents", {})
+        .get("twoColumnBrowseResultsRenderer", {})
+        .get("tabs", [])
+    )
+    for tab in tabs:
+        content = tab.get("tabRenderer", {}).get("content", {})
+        section_list = content.get("sectionListRenderer", {}).get("contents", [])
+        for section in section_list:
+            item_section = section.get("itemSectionRenderer", {}).get("contents", [])
+            for item in item_section:
+                playlist = item.get("playlistVideoListRenderer", {})
+                for video in playlist.get("contents", []):
+                    renderer = video.get("playlistVideoRenderer", {})
+                    runs = renderer.get("title", {}).get("runs", [])
+                    if runs and runs[0].get("text"):
+                        titles.append(runs[0]["text"])
+    return titles
+
+
+def _fetch_youtube_playlist(playlist_url: str) -> Dict:
+    parsed = urlparse(playlist_url)
+    if "youtube.com" not in parsed.netloc and "youtu.be" not in parsed.netloc:
+        return {"error": "Please provide a YouTube playlist URL."}
+    if "list=" not in playlist_url:
+        return {"error": "YouTube playlist URL is missing the list parameter."}
+
+    headers = {"User-Agent": "Mozilla/5.0"}
+    try:
+        resp = requests.get(playlist_url, headers=headers, timeout=15)
+        resp.raise_for_status()
+    except requests.RequestException:
+        return {"error": "Unable to fetch YouTube playlist details."}
+
+    match = re.search(r"ytInitialData\\s*=\\s*(\\{.*?\\});", resp.text, re.DOTALL)
+    if not match:
+        return {"error": "Unable to parse YouTube playlist response."}
+    try:
+        initial_data = json.loads(match.group(1))
+    except ValueError:
+        return {"error": "Unable to decode YouTube playlist response."}
+
+    titles = _extract_youtube_titles(initial_data)
+    if not titles:
+        return {"error": "YouTube playlist contained no tracks."}
+    entries = []
+    for title in titles:
+        parsed_entries = parse_text_playlist(title)
+        if parsed_entries:
+            entries.append(parsed_entries[0])
+    return {"name": "YouTube Playlist", "entries": entries}
+
+
+def _match_playlist_entries(name: str, entries: List[Dict], source_url: Optional[str] = None) -> Dict:
     index = get_music_index()
-    entries = list(index.get("files", {}).values())
     library_tracks = []
-    for entry in entries:
+    for entry in list(index.get("files", {}).values()):
         payload = _build_track_payload(entry)
         key = _normalize(f"{payload['title']} {payload['artist']}")
         library_tracks.append({**payload, "key": key})
 
     matches = []
     missing = []
-    for track in tracks:
-        title = track.get("title") or ""
-        artists = track.get("artists") or []
-        artist = ", ".join(artists) if artists else ""
-        spotify_key = _normalize(f"{title} {artist}")
+    for entry in entries:
+        title = entry.get("title") or ""
+        artist = entry.get("artist") or ""
+        if not title:
+            continue
+        query_key = _normalize(f"{title} {artist}".strip())
         best = None
         best_score = 0.0
         for candidate in library_tracks:
-            score = _match_score(spotify_key, candidate.get("key") or "")
+            score = _match_score(query_key, candidate.get("key") or "")
             if score > best_score:
                 best_score = score
                 best = candidate
-        if best and best_score >= 0.6:
+        threshold = 0.55 if artist else 0.45
+        if best and best_score >= threshold:
             matches.append(
                 {
-                    "spotify_title": title,
-                    "spotify_artist": artist,
+                    "input_title": title,
+                    "input_artist": artist,
                     "album": best.get("album"),
                     "library_title": best.get("title"),
                     "library_artist": best.get("artist"),
@@ -222,25 +292,35 @@ def match_spotify_playlist(playlist_payload: Dict) -> Dict:
                 }
             )
         else:
-            missing.append({"spotify_title": title, "spotify_artist": artist})
+            missing.append({"input_title": title, "input_artist": artist})
 
-    playlist_text = render_playlist_text(
-        playlist_payload.get("name") or "Spotify Playlist",
-        playlist_payload.get("id"),
-        matches,
-        missing,
-    )
+    playlist_text = render_playlist_text(name, source_url, matches, missing)
     return {
-        "name": playlist_payload.get("name") or "Spotify Playlist",
+        "name": name,
         "matches": matches,
         "missing": missing,
         "playlist_text": playlist_text,
     }
 
 
+def match_text_playlist(name: str, text: str) -> Dict:
+    entries = parse_text_playlist(text)
+    if not entries:
+        return {"error": "No tracks were found in the provided text."}
+    return _match_playlist_entries(name, entries)
+
+
+def match_youtube_playlist(playlist_url: str) -> Dict:
+    payload = _fetch_youtube_playlist(playlist_url)
+    if payload.get("error"):
+        return payload
+    entries = payload.get("entries") or []
+    return _match_playlist_entries(payload.get("name") or "YouTube Playlist", entries, playlist_url)
+
+
 def render_playlist_text(
     name: str,
-    playlist_id: Optional[str],
+    source_url: Optional[str],
     matches: List[Dict],
     missing: List[Dict],
 ) -> str:
@@ -249,8 +329,8 @@ def render_playlist_text(
         f"# Name: {name}",
         f"# Generated: {datetime.utcnow().isoformat()}Z",
     ]
-    if playlist_id:
-        header.append(f"# Spotify Playlist: https://open.spotify.com/playlist/{playlist_id}")
+    if source_url:
+        header.append(f"# Source: {source_url}")
     header.append("# Fields: path\ttitle\tartist\talbum")
     lines = []
     for match in matches:
@@ -258,8 +338,8 @@ def render_playlist_text(
         line = "\t".join(
             [
                 path,
-                match.get("library_title") or "",
-                match.get("library_artist") or "",
+                match.get("library_title") or match.get("title") or "",
+                match.get("library_artist") or match.get("artist") or "",
                 match.get("album") or "",
             ]
         )
@@ -267,7 +347,7 @@ def render_playlist_text(
     if missing:
         lines.append("# Missing tracks:")
         for track in missing:
-            title = track.get("spotify_title") or ""
-            artist = track.get("spotify_artist") or ""
+            title = track.get("input_title") or track.get("title") or ""
+            artist = track.get("input_artist") or track.get("artist") or ""
             lines.append(f"# - {title} :: {artist}")
     return "\n".join(header + lines) + "\n"

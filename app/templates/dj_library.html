@@ -82,18 +82,32 @@
     </div>
 
     <div class="card mb-4">
-        <div class="card-header">Spotify playlist conversion</div>
+        <div class="card-header">Playlist import & conversion</div>
         <div class="card-body">
-            <p class="text-muted">Paste a Spotify playlist link to match tracks against the RAMS library. Matches are approximate and list missing tracks.</p>
-            <div class="row g-2 align-items-center">
-                <div class="col-md-8">
-                    <input type="url" class="form-control" id="spotifyUrl" placeholder="https://open.spotify.com/playlist/...">
+            <p class="text-muted">
+                Paste a text list (Artist - Title) or upload a .txt file to match tracks against the RAMS library.
+                If you have a Spotify or YouTube playlist, use TuneMyMusic to export a text file first:
+                <a href="https://www.tunemymusic.com/transfer/spotify-to-file" target="_blank" rel="noopener">Spotify → file</a>
+                or
+                <a href="https://www.tunemymusic.com/transfer/youtube-to-file" target="_blank" rel="noopener">YouTube → file</a>.
+            </p>
+            <div class="row g-3">
+                <div class="col-lg-7">
+                    <label class="form-label">Paste playlist text (Artist - Title)</label>
+                    <textarea class="form-control font-monospace" id="playlistInput" rows="8" placeholder="Artist - Title"></textarea>
+                    <div class="d-flex flex-wrap gap-2 mt-2">
+                        <input type="file" class="form-control form-control-sm" id="playlistFile" accept=".txt">
+                        <button class="btn btn-primary btn-sm" id="playlistConvert" type="button">Convert Text Playlist</button>
+                    </div>
+                    <div id="playlistStatus" class="text-muted small mt-2"></div>
                 </div>
-                <div class="col-md-4 text-md-end">
-                    <button class="btn btn-primary" id="spotifyConvert" type="button">Convert Playlist</button>
+                <div class="col-lg-5">
+                    <label class="form-label">YouTube playlist URL</label>
+                    <input type="url" class="form-control" id="youtubeUrl" placeholder="https://www.youtube.com/playlist?list=...">
+                    <button class="btn btn-outline-primary btn-sm mt-2" id="youtubeConvert" type="button">Convert YouTube Playlist</button>
+                    <div id="youtubeStatus" class="text-muted small mt-2"></div>
                 </div>
             </div>
-            <div id="spotifyStatus" class="text-muted small mt-2"></div>
             <div class="row g-3 mt-3">
                 <div class="col-lg-7">
                     <h6>Matched tracks</h6>
@@ -101,12 +115,12 @@
                         <table class="table table-sm align-middle">
                             <thead>
                                 <tr>
-                                    <th>Spotify</th>
+                                    <th>Input</th>
                                     <th>RAMS Match</th>
                                     <th>Score</th>
                                 </tr>
                             </thead>
-                            <tbody id="spotifyMatches">
+                            <tbody id="playlistMatches">
                                 <tr><td colspan="3" class="text-muted">No playlist loaded yet.</td></tr>
                             </tbody>
                         </table>
@@ -114,7 +128,7 @@
                 </div>
                 <div class="col-lg-5">
                     <h6>Missing tracks</h6>
-                    <ul class="list-group list-group-flush small" id="spotifyMissing">
+                    <ul class="list-group list-group-flush small" id="playlistMissing">
                         <li class="list-group-item text-muted">No missing tracks reported yet.</li>
                     </ul>
                 </div>

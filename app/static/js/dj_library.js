@@ -14,11 +14,15 @@ const artistFilter = document.getElementById('artistFilter');
 const genreList = document.getElementById('genreList');
 const genreDetail = document.getElementById('genreDetail');
 const genreFilter = document.getElementById('genreFilter');
-const spotifyUrl = document.getElementById('spotifyUrl');
-const spotifyConvert = document.getElementById('spotifyConvert');
-const spotifyStatus = document.getElementById('spotifyStatus');
-const spotifyMatches = document.getElementById('spotifyMatches');
-const spotifyMissing = document.getElementById('spotifyMissing');
+const playlistInput = document.getElementById('playlistInput');
+const playlistFile = document.getElementById('playlistFile');
+const playlistConvert = document.getElementById('playlistConvert');
+const playlistStatus = document.getElementById('playlistStatus');
+const playlistMatches = document.getElementById('playlistMatches');
+const playlistMissing = document.getElementById('playlistMissing');
+const youtubeUrl = document.getElementById('youtubeUrl');
+const youtubeConvert = document.getElementById('youtubeConvert');
+const youtubeStatus = document.getElementById('youtubeStatus');
 const playlistText = document.getElementById('playlistText');
 const playlistSave = document.getElementById('playlistSave');
 const playlistSaveStatus = document.getElementById('playlistSaveStatus');
@@ -204,49 +208,85 @@ async function performSearch() {
     }
 }
 
-async function convertSpotify() {
-    const url = (spotifyUrl.value || '').trim();
-    spotifyStatus.textContent = '';
-    if (!url) {
-        spotifyStatus.textContent = 'Please enter a Spotify playlist URL.';
+function renderPlaylistResults(data) {
+    const matches = data.matches || [];
+    const missing = data.missing || [];
+    playlistMatches.innerHTML = matches.length ? matches.map(item => `
+        <tr>
+            <td>${escapeHtml(item.input_title || '')}<div class="text-muted small">${escapeHtml(item.input_artist || '')}</div></td>
+            <td>${escapeHtml(item.library_title)}<div class="text-muted small">${escapeHtml(item.library_artist)}</div></td>
+            <td>${escapeHtml(item.score)}</td>
+        </tr>
+    `).join('') : '<tr><td colspan="3" class="text-muted">No matches found.</td></tr>';
+    playlistMissing.innerHTML = missing.length ? missing.map(item => `
+        <li class="list-group-item">${escapeHtml(item.input_title || '')} <span class="text-muted">— ${escapeHtml(item.input_artist || '')}</span></li>
+    `).join('') : '<li class="list-group-item text-muted">No missing tracks.</li>';
+    playlistText.value = data.playlist_text || '';
+    playlistSaveStatus.textContent = '';
+    playlistSave.dataset.playlistName = data.name || 'playlist';
+}
+
+async function convertTextPlaylist() {
+    const text = (playlistInput.value || '').trim();
+    playlistStatus.textContent = '';
+    if (!text) {
+        playlistStatus.textContent = 'Paste some playlist text first.';
         return;
     }
-    spotifyConvert.disabled = true;
-    spotifyStatus.textContent = 'Fetching playlist...';
+    playlistConvert.disabled = true;
+    playlistStatus.textContent = 'Matching tracks...';
     try {
-        const res = await fetch('/dj/library/spotify', {
+        const res = await fetch('/dj/library/import', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({ text, name: 'Imported Playlist' })
+        });
+        const data = await res.json();
+        if (!res.ok || data.error) {
+            playlistStatus.textContent = data.error || 'Unable to convert playlist.';
+            playlistMatches.innerHTML = '<tr><td colspan="3" class="text-muted">No matches.</td></tr>';
+            playlistMissing.innerHTML = '<li class="list-group-item text-muted">No missing tracks reported yet.</li>';
+            playlistText.value = '';
+            return;
+        }
+        playlistStatus.textContent = `Playlist "${data.name}" loaded.`;
+        renderPlaylistResults(data);
+    } catch (err) {
+        playlistStatus.textContent = 'Unable to reach playlist conversion service.';
+    } finally {
+        playlistConvert.disabled = false;
+    }
+}
+
+async function convertYoutubePlaylist() {
+    const url = (youtubeUrl.value || '').trim();
+    youtubeStatus.textContent = '';
+    if (!url) {
+        youtubeStatus.textContent = 'Please enter a YouTube playlist URL.';
+        return;
+    }
+    youtubeConvert.disabled = true;
+    youtubeStatus.textContent = 'Fetching YouTube playlist...';
+    try {
+        const res = await fetch('/dj/library/youtube', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ playlist_url: url })
         });
         const data = await res.json();
         if (!res.ok || data.error) {
-            spotifyStatus.textContent = data.error || 'Unable to convert playlist.';
-            spotifyMatches.innerHTML = '<tr><td colspan="3" class="text-muted">No matches.</td></tr>';
-            spotifyMissing.innerHTML = '<li class="list-group-item text-muted">No missing tracks reported yet.</li>';
+            youtubeStatus.textContent = data.error || 'Unable to convert YouTube playlist.';
+            playlistMatches.innerHTML = '<tr><td colspan="3" class="text-muted">No matches.</td></tr>';
+            playlistMissing.innerHTML = '<li class="list-group-item text-muted">No missing tracks reported yet.</li>';
             playlistText.value = '';
             return;
         }
-        spotifyStatus.textContent = `Playlist "${data.name}" loaded.`;
-        const matches = data.matches || [];
-        const missing = data.missing || [];
-        spotifyMatches.innerHTML = matches.length ? matches.map(item => `
-            <tr>
-                <td>${escapeHtml(item.spotify_title)}<div class="text-muted small">${escapeHtml(item.spotify_artist)}</div></td>
-                <td>${escapeHtml(item.library_title)}<div class="text-muted small">${escapeHtml(item.library_artist)}</div></td>
-                <td>${escapeHtml(item.score)}</td>
-            </tr>
-        `).join('') : '<tr><td colspan="3" class="text-muted">No matches found.</td></tr>';
-        spotifyMissing.innerHTML = missing.length ? missing.map(item => `
-            <li class="list-group-item">${escapeHtml(item.spotify_title)} <span class="text-muted">— ${escapeHtml(item.spotify_artist)}</span></li>
-        `).join('') : '<li class="list-group-item text-muted">No missing tracks.</li>';
-        playlistText.value = data.playlist_text || '';
-        playlistSaveStatus.textContent = '';
-        playlistSave.dataset.playlistName = data.name || 'spotify_playlist';
+        youtubeStatus.textContent = `Playlist "${data.name}" loaded.`;
+        renderPlaylistResults(data);
     } catch (err) {
-        spotifyStatus.textContent = 'Unable to reach Spotify conversion service.';
+        youtubeStatus.textContent = 'Unable to reach YouTube conversion service.';
     } finally {
-        spotifyConvert.disabled = false;
+        youtubeConvert.disabled = false;
     }
 }
 
@@ -256,7 +296,7 @@ async function savePlaylist() {
         playlistSaveStatus.textContent = 'No playlist content to save yet.';
         return;
     }
-    const name = playlistSave.dataset.playlistName || 'spotify_playlist';
+    const name = playlistSave.dataset.playlistName || 'playlist';
     playlistSave.disabled = true;
     playlistSaveStatus.textContent = 'Saving playlist file...';
     try {
@@ -287,7 +327,18 @@ searchInput.addEventListener('input', () => {
 
 artistFilter.addEventListener('input', renderArtistList);
 genreFilter.addEventListener('input', renderGenreList);
-spotifyConvert.addEventListener('click', convertSpotify);
+playlistConvert.addEventListener('click', convertTextPlaylist);
+youtubeConvert.addEventListener('click', convertYoutubePlaylist);
 playlistSave.addEventListener('click', savePlaylist);
+
+playlistFile.addEventListener('change', () => {
+    const file = playlistFile.files && playlistFile.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+        playlistInput.value = String(reader.result || '');
+    };
+    reader.readAsText(file);
+});
 
 loadLibraryIndex();

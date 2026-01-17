@@ -75,8 +75,8 @@ from app.services.music_search import (
 from app.services.dj_library import (
     build_dj_library_index,
     search_dj_library,
-    match_spotify_playlist,
-    _fetch_spotify_playlist,
+    match_text_playlist,
+    match_youtube_playlist,
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
@@ -520,14 +520,23 @@ def _dj_playlist_export_dir() -> str:
     return export_dir
 
 
-@main_bp.route("/dj/library/spotify", methods=["POST"])
-def dj_library_spotify():
+@main_bp.route("/dj/library/import", methods=["POST"])
+def dj_library_import_text():
+    payload = request.get_json(silent=True) or {}
+    text = (payload.get("text") or "").strip()
+    name = (payload.get("name") or "Imported Playlist").strip() or "Imported Playlist"
+    matched = match_text_playlist(name, text)
+    status = 200 if not matched.get("error") else 400
+    return jsonify(matched), status
+
+
+@main_bp.route("/dj/library/youtube", methods=["POST"])
+def dj_library_youtube():
     payload = request.get_json(silent=True) or {}
     playlist_url = (payload.get("playlist_url") or "").strip()
     if not playlist_url:
-        return jsonify({"error": "Please provide a Spotify playlist URL."}), 400
-    spotify_payload = _fetch_spotify_playlist(playlist_url)
-    matched = match_spotify_playlist(spotify_payload)
+        return jsonify({"error": "Please provide a YouTube playlist URL."}), 400
+    matched = match_youtube_playlist(playlist_url)
     status = 200 if not matched.get("error") else 400
     return jsonify(matched), status
 
