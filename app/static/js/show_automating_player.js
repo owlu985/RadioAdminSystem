@@ -3,6 +3,7 @@ const nowPlayingPanel = document.getElementById('nowPlayingPanel');
 const liveQueuePanel = document.getElementById('liveQueuePanel');
 const queueBuilderPanel = document.getElementById('queueBuilderPanel');
 const libraryNavigationPanel = document.getElementById('libraryNavigationPanel');
+let playbackSession = null;
 const playbackPanelsEnabled = Boolean(
     nowPlayingPanel && liveQueuePanel && queueBuilderPanel && libraryNavigationPanel
 );
@@ -295,7 +296,6 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
-let playbackSession = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
