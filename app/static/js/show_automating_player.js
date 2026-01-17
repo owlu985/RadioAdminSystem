@@ -3,6 +3,7 @@ const nowPlayingPanel = document.getElementById('nowPlayingPanel');
 const liveQueuePanel = document.getElementById('liveQueuePanel');
 const queueBuilderPanel = document.getElementById('queueBuilderPanel');
 const libraryNavigationPanel = document.getElementById('libraryNavigationPanel');
+let playbackSession = null;
 const playbackPanelsEnabled = Boolean(
     nowPlayingPanel && liveQueuePanel && queueBuilderPanel && libraryNavigationPanel
 );
@@ -970,6 +971,7 @@ async function loadAutomationMode() {
     } catch (err) {
         // ignore
     }
+    playbackSession = playbackSession || {};
     updateAutomationModeUI();
     toggleAutomationPolling();
 }
