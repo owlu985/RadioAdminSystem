@@ -17,6 +17,46 @@ def _normalize(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
 
 
+def _strip_brackets(value: str) -> str:
+    return re.sub(r"[\(\[\{].*?[\)\]\}]", "", value).strip()
+
+
+def _normalize_title(value: Optional[str]) -> str:
+    cleaned = _strip_brackets(value or "")
+    cleaned = re.sub(r"\bfeat\.?\b.*$", "", cleaned, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"[^\w\s]", "", cleaned)
+    return cleaned.lower().strip()
+
+
+def _normalize_artist(value: Optional[str]) -> str:
+    cleaned = _strip_brackets(value or "")
+    cleaned = re.sub(r"&", "and", cleaned)
+    cleaned = re.sub(r"\s+", " ", cleaned)
+    cleaned = re.sub(r"[^\w\s]", "", cleaned)
+    return cleaned.lower().strip()
+
+
+def _title_similarity(query: str, candidate: str) -> float:
+    query_norm = _normalize_title(query)
+    candidate_norm = _normalize_title(candidate)
+    if not query_norm or not candidate_norm:
+        return 0.0
+    if query_norm == candidate_norm:
+        return 1.0
+    return difflib.SequenceMatcher(None, query_norm, candidate_norm).ratio()
+
+
+def _artist_similarity(query: str, candidate: str) -> float:
+    query_norm = _normalize_artist(query)
+    candidate_norm = _normalize_artist(candidate)
+    if not query_norm or not candidate_norm:
+        return 0.0
+    if query_norm == candidate_norm:
+        return 1.0
+    return difflib.SequenceMatcher(None, query_norm, candidate_norm).ratio()
+
+
 def _fallback_title(entry: Dict) -> str:
     path = entry.get("path") or ""
     return os.path.splitext(os.path.basename(path))[0] or "Untitled"
@@ -260,8 +300,11 @@ def _match_playlist_entries(name: str, entries: List[Dict], source_url: Optional
     library_tracks = []
     for entry in list(index.get("files", {}).values()):
         payload = _build_track_payload(entry)
-        key = _normalize(f"{payload['title']} {payload['artist']}")
-        library_tracks.append({**payload, "key": key})
+        library_tracks.append({
+            **payload,
+            "title_norm": _normalize_title(payload.get("title")),
+            "artist_norm": _normalize_artist(payload.get("artist")),
+        })
 
     matches = []
     missing = []
@@ -270,16 +313,28 @@ def _match_playlist_entries(name: str, entries: List[Dict], source_url: Optional
         artist = entry.get("artist") or ""
         if not title:
             continue
-        query_key = _normalize(f"{title} {artist}".strip())
+        title_score_best = 0.0
+        artist_score_best = 0.0
         best = None
         best_score = 0.0
         for candidate in library_tracks:
-            score = _match_score(query_key, candidate.get("key") or "")
+            title_score = _title_similarity(title, candidate.get("title") or "")
+            artist_score = _artist_similarity(artist, candidate.get("artist") or "")
+            score = (title_score * 0.7) + (artist_score * 0.3)
             if score > best_score:
                 best_score = score
+                title_score_best = title_score
+                artist_score_best = artist_score
                 best = candidate
-        threshold = 0.55 if artist else 0.45
-        if best and best_score >= threshold:
+        title_threshold = 0.82
+        artist_threshold = 0.72 if artist else 0.0
+        overall_threshold = 0.78 if artist else 0.7
+        if (
+            best
+            and title_score_best >= title_threshold
+            and artist_score_best >= artist_threshold
+            and best_score >= overall_threshold
+        ):
             matches.append(
                 {
                     "input_title": title,
