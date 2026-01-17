@@ -72,6 +72,12 @@ from app.services.music_search import (
     update_metadata,
     build_library_editor_index,
 )
+from app.services.dj_library import (
+    build_dj_library_index,
+    search_dj_library,
+    match_spotify_playlist,
+    _fetch_spotify_playlist,
+)
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
@@ -486,6 +492,66 @@ def dj_tools():
     resp = make_response(render_template("dj_tools.html", notes=notes, shows=shows))
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
     return resp
+
+
+@main_bp.route("/dj/library")
+def dj_library():
+    resp = make_response(render_template("dj_library.html"))
+    resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+@main_bp.route("/dj/library/data")
+def dj_library_data():
+    payload = build_dj_library_index()
+    return jsonify(payload)
+
+
+@main_bp.route("/dj/library/search")
+def dj_library_search():
+    query = (request.args.get("q") or "").strip()
+    results = search_dj_library(query)
+    return jsonify({"items": results})
+
+
+def _dj_playlist_export_dir() -> str:
+    export_dir = os.path.join(current_app.instance_path, "dj_playlists")
+    os.makedirs(export_dir, exist_ok=True)
+    return export_dir
+
+
+@main_bp.route("/dj/library/spotify", methods=["POST"])
+def dj_library_spotify():
+    payload = request.get_json(silent=True) or {}
+    playlist_url = (payload.get("playlist_url") or "").strip()
+    if not playlist_url:
+        return jsonify({"error": "Please provide a Spotify playlist URL."}), 400
+    spotify_payload = _fetch_spotify_playlist(playlist_url)
+    matched = match_spotify_playlist(spotify_payload)
+    status = 200 if not matched.get("error") else 400
+    return jsonify(matched), status
+
+
+@main_bp.route("/dj/library/playlist/save", methods=["POST"])
+def dj_library_playlist_save():
+    payload = request.get_json(silent=True) or {}
+    name = (payload.get("name") or "rams_playlist").strip() or "rams_playlist"
+    content = (payload.get("content") or "").strip()
+    if not content:
+        return jsonify({"error": "Playlist content is required."}), 400
+    safe_name = secure_filename(name) or "rams_playlist"
+    filename = f"{safe_name}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.txt"
+    export_dir = _dj_playlist_export_dir()
+    target = os.path.join(export_dir, filename)
+    with open(target, "w", encoding="utf-8") as fh:
+        fh.write(content + "\n")
+    return jsonify({"filename": filename, "download_url": url_for("main.dj_library_playlist_download", filename=filename)})
+
+
+@main_bp.route("/dj/library/playlist/download/<path:filename>")
+def dj_library_playlist_download(filename: str):
+    export_dir = _dj_playlist_export_dir()
+    return send_from_directory(export_dir, filename, mimetype="text/plain", as_attachment=True)
 
 
 @main_bp.route("/dj/show-automator")
