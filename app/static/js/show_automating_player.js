@@ -21,7 +21,7 @@ function escapeHtml(value) {
 
 function formatDuration(seconds) {
     const total = Number(seconds);
-    if (Number.isNaN(total) || total <= 0) return '—';
+    if (Number.isNaN(total) || total <= 0) return '00:00';
     const mins = Math.floor(total / 60).toString().padStart(2, '0');
     const secs = Math.floor(total % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
@@ -596,6 +596,8 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
+let overlayStopAt = null;
+let overlayStopForId = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
@@ -1239,6 +1241,15 @@ function playOverlayItem(item) {
     try { overlayPlayer.play(); } catch (e) { /* ignore */ }
 }
 
+function stopOverlayPlayback() {
+    if (!overlayPlayer) return;
+    overlayPlayer.pause();
+    overlayPlayer.removeAttribute('src');
+    overlayPlayer.currentTime = 0;
+    overlayStopAt = null;
+    overlayStopForId = null;
+}
+
 function fadeOutCurrent() {
     const player = activePlayer();
     if (!player || !player.src) return;
@@ -1285,6 +1296,7 @@ function previewCues(item) {
 
 function stopAllAudio({ sync = true } = {}) {
     players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
+    stopOverlayPlayback();
     currentItem = null;
     resetTimers();
     if (sync) {
@@ -1557,7 +1569,7 @@ function updateTimer() {
         const introRem = Math.max(0, cues.intro - player.currentTime);
         introBadge.style.display = 'inline-block';
         introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        const flash = introRem > 0 && introRem <= 5;
+        const flash = introRem > 0 && introRem <= 8;
         introBadge.classList.toggle('countdown-flash', flash);
         introBadge.classList.toggle('text-bg-danger', flash);
     } else {
@@ -1570,7 +1582,7 @@ function updateTimer() {
         const outroRem = Math.max(0, cues.outro - player.currentTime);
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-        const flash = outroRem > 0 && outroRem <= 5;
+        const flash = outroRem > 0 && outroRem <= 8;
         outroBadge.classList.toggle('countdown-flash', flash);
         outroBadge.classList.toggle('text-bg-danger', flash);
     } else {
@@ -1579,6 +1591,23 @@ function updateTimer() {
         outroBadge.classList.remove('countdown-flash','text-bg-danger');
     }
     updateTalkOverlay(cues, player.currentTime, player.duration);
+
+    if (automationMode !== 'automation' && overlayPlayer) {
+        const overlayCandidate = queue.find(item => overlayEligible(item));
+        const nextTrack = queue.find(item => !overlayEligible(item) && !item.stop);
+        if (!overlayPlayer.src && overlayCandidate && currentItem && currentItem.kind === 'music') {
+            if (cues.outro && player.currentTime >= cues.outro) {
+                overlayStopAt = nextTrack?.cues?.intro ?? null;
+                overlayStopForId = nextTrack?.id ?? null;
+                playOverlayItem(overlayCandidate);
+            }
+        }
+        if (overlayStopAt != null && overlayStopForId && currentItem && currentItem.id === overlayStopForId) {
+            if (player.currentTime >= overlayStopAt) {
+                stopOverlayPlayback();
+            }
+        }
+    }
 
     if (automationMode !== 'automation') {
         // Auto-advance when start_next cue is hit.
@@ -1728,9 +1757,7 @@ players.forEach((p, idx) => {
 
 if (overlayPlayer) {
     overlayPlayer.addEventListener('ended', () => {
-        overlayPlayer.pause();
-        overlayPlayer.removeAttribute('src');
-        overlayPlayer.currentTime = 0;
+        stopOverlayPlayback();
     });
 }
 
