@@ -72,7 +72,7 @@ from app.services.archivist_db import (
     delete_album_rip_upload,
     cleanup_album_tmp,
 )
-from app.services.library_index import get_library_index_status
+from app.services.library_index import get_library_index_status, start_library_index_job
 from sqlalchemy import func, inspect, text
 from sqlalchemy.exc import OperationalError
 from app.logger import init_logger
@@ -1565,6 +1565,19 @@ def library_index_status():
         "status": status.get("status"),
         "progress": status.get("progress"),
         "updated_at": status.get("updated_at"),
+    }
+    return jsonify(payload)
+
+
+@api_bp.route("/library/index/refresh", methods=["POST"])
+def library_index_refresh():
+    started = start_library_index_job()
+    status = get_library_index_status()
+    payload = {
+        "status": status.get("status"),
+        "progress": status.get("progress"),
+        "updated_at": status.get("updated_at"),
+        "started": started,
     }
     return jsonify(payload)
 
