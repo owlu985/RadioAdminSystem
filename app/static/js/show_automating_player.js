@@ -1608,21 +1608,24 @@ function updateTimer() {
     const seconds = Math.floor(remaining % 60);
     const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
     const text = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
-    const urgent = remaining > 0 && remaining <= 15;
+    const urgent = remaining > 0 && remaining <= 10;
+    const flash = urgent && Math.floor(remaining * 4) % 2 === 0;
     timerEls.forEach(el => {
         if (!el) return;
         el.textContent = text;
-        el.style.color = urgent ? '#dc3545' : '';
+        el.style.color = flash ? '#dc3545' : '';
         el.style.fontWeight = urgent ? '700' : '400';
+        el.classList.toggle('countdown-flash', flash);
     });
 
     if (intro != null) {
         const introRem = Math.max(0, intro - player.currentTime);
+        const introUrgent = introRem > 0 && introRem <= 10;
+        const introFlash = introUrgent && Math.floor(introRem * 4) % 2 === 0;
         introBadge.style.display = 'inline-block';
         introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        const flash = introRem > 0 && introRem <= 8;
-        introBadge.classList.toggle('countdown-flash', flash);
-        introBadge.classList.toggle('text-bg-danger', flash);
+        introBadge.classList.toggle('countdown-flash', introFlash);
+        introBadge.classList.toggle('text-bg-danger', introFlash);
     } else {
         introBadge.style.display = 'inline-block';
         introBadge.textContent = 'Intro: 0.0s';
@@ -1631,11 +1634,12 @@ function updateTimer() {
 
     if (outro != null) {
         const outroRem = Math.max(0, outro - player.currentTime);
+        const outroUrgent = outroRem > 0 && outroRem <= 10;
+        const outroFlash = outroUrgent && Math.floor(outroRem * 4) % 2 === 0;
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-        const flash = outroRem > 0 && outroRem <= 8;
-        outroBadge.classList.toggle('countdown-flash', flash);
-        outroBadge.classList.toggle('text-bg-danger', flash);
+        outroBadge.classList.toggle('countdown-flash', outroFlash);
+        outroBadge.classList.toggle('text-bg-danger', outroFlash);
     } else {
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = 'Outro: 0.0s';
