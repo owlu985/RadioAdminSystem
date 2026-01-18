@@ -179,6 +179,14 @@ function base64UrlEncode(value) {
     return encoded.replace(/\+/g, '-').replace(/\//g, '_');
 }
 
+function getCueValue(cues, field) {
+    if (!cues) return null;
+    const raw = cues[field];
+    if (raw === null || raw === undefined || raw === '') return null;
+    const num = Number(raw);
+    return Number.isFinite(num) ? num : null;
+}
+
 function buildLibraryQueuePayload(item, mode) {
     if (mode === 'music') {
         const title = item.title || item.path || 'Untitled';
@@ -534,6 +542,11 @@ function updateLibraryQueueList(queueItems) {
 
 async function insertLibraryItem(payload, position) {
     if (!payload || !payload.url) return;
+    if (payload.kind === 'music' && payload.metadata?.path) {
+        const cues = await fetchMusicCues(payload.metadata.path);
+        if (cues) payload.cues = cues;
+        prewarmTranscode(payload);
+    }
     const queuedItem = await enqueueQueueItem(payload, position);
     if (!queuedItem) return;
     logItemInsert(queuedItem);
@@ -604,6 +617,7 @@ let timerInterval = null;
 let recorder = null;
 let recordChunks = [];
 let autoNextTriggered = false;
+let cueOutTriggered = false;
 let prestartedIdx = null;
 let cueItem = null;
 let cueSelected = 'cue_in';
@@ -1074,10 +1088,55 @@ async function moveQueueItem(item, position) {
     queue.splice(position, 0, item);
 }
 
+async function fetchMusicCues(path) {
+    if (!path) return null;
+    try {
+        const res = await fetch(`/api/music/cue?path=${encodeURIComponent(path)}`);
+        if (!res.ok) return null;
+        const data = await res.json();
+        return data.cue || null;
+    } catch (err) {
+        return null;
+    }
+}
+
+function prewarmTranscode(payload) {
+    if (!payload || payload.kind !== 'music') return;
+    const path = payload.metadata?.path;
+    if (!path) return;
+    fetch('/music/pretranscode', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path }),
+    }).catch(() => {});
+}
+
+async function hydrateQueueCues(items) {
+    if (!items || !items.length) return;
+    const updates = await Promise.all(items.map(async (item) => {
+        if (!item || item.kind !== 'music') return false;
+        prewarmTranscode(item);
+        if (item.cues && Object.keys(item.cues || {}).length) return false;
+        const path = item.metadata?.path;
+        if (!path) return false;
+        const cues = await fetchMusicCues(path);
+        if (!cues) return false;
+        item.cues = cues;
+        return true;
+    }));
+    if (updates.some(Boolean)) {
+        renderQueue();
+        if (queue.length) {
+            previewCues(queue[0]);
+        }
+    }
+}
+
 function loadPlaybackQueue() {
     loadQueueState();
     renderQueue();
     updateVTInsertOptions();
+    hydrateQueueCues(queue);
     if (queue.length) {
         previewCues(queue[0]);
     } else {
@@ -1256,12 +1315,14 @@ function previewCues(item) {
         el.style.color = '';
         el.style.fontWeight = '400';
     });
-    const introVal = cues.intro ? cues.intro.toFixed(1) : '0.0';
+    const intro = getCueValue(cues, 'intro');
+    const introVal = intro != null ? intro.toFixed(1) : '0.0';
     introBadge.style.display = 'inline-block';
     introBadge.textContent = `Intro: ${introVal}s`;
     introBadge.classList.remove('countdown-flash', 'text-bg-danger');
 
-    const outroVal = cues.outro ? cues.outro.toFixed(1) : '0.0';
+    const outro = getCueValue(cues, 'outro');
+    const outroVal = outro != null ? outro.toFixed(1) : '0.0';
     outroBadge.style.display = 'inline-block';
     outroBadge.textContent = `Outro: ${outroVal}s`;
     outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
@@ -1383,6 +1444,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     loopBetween.disabled = !hasLoop;
     if (!hasLoop) loopBetween.checked = false;
     autoNextTriggered = false;
+    cueOutTriggered = false;
     prestartedIdx = null;
     if (idx > 0) {
         const removed = queue.splice(0, idx);
@@ -1391,6 +1453,8 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     queue.shift();
     player.src = item.url;
     player.volume = 1;
+    const cueIn = getCueValue(cues, 'cue_in');
+    playerObj.seekTo = cueIn;
     applyPlaybackRate(player, item);
     player.play();
     logItemStart(item, reason);
@@ -1460,12 +1524,14 @@ function startNextWithOverlay(reason = 'auto') {
     nextObj.item = nextItem;
     nextPlayer.src = nextItem.url;
     nextPlayer.volume = 1;
+    nextObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
     currentIdx = nextIdx;
     currentItem = nextItem;
     markItemStarted(nextItem);
     queue.shift();
     prestartedIdx = null;
     autoNextTriggered = false;
+    cueOutTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
     if (currentPlaying) {
@@ -1490,6 +1556,7 @@ function fadeAndNext(reason = 'auto') {
     nextPlayerObj.item = nextItem;
     nextPlayer.src = nextItem.url;
     nextPlayer.volume = 1;
+    nextPlayerObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
     if (currentItem) {
@@ -1509,6 +1576,7 @@ function fadeAndNext(reason = 'auto') {
             markItemStarted(nextItem);
             queue.shift();
             prestartedIdx = null;
+            cueOutTriggered = false;
             applyPlaybackRate();
             startTimer();
             renderQueue();
@@ -1526,43 +1594,52 @@ function updateTimer() {
     }
 
     const cues = currentItem && currentItem.cues ? currentItem.cues : {};
-    let remaining = Math.max(0, player.duration - player.currentTime);
-    if (queue.length > 0 && cues.start_next) {
-        remaining = Math.max(0, cues.start_next - player.currentTime);
+    const startNext = getCueValue(cues, 'start_next');
+    const intro = getCueValue(cues, 'intro');
+    const outro = getCueValue(cues, 'outro');
+    const cueOut = getCueValue(cues, 'cue_out');
+    const endPoint = cueOut != null ? cueOut : player.duration;
+    let remaining = Math.max(0, endPoint - player.currentTime);
+    if (queue.length > 0 && startNext != null) {
+        remaining = Math.max(0, startNext - player.currentTime);
     }
 
     const minutes = Math.floor(remaining / 60);
     const seconds = Math.floor(remaining % 60);
     const ms = Math.floor((remaining - Math.floor(remaining)) * 100);
     const text = `${String(minutes).padStart(2,'0')}:${String(seconds).padStart(2,'0')}.${String(ms).padStart(2,'0')}`;
-    const urgent = remaining > 0 && remaining <= 15;
+    const urgent = remaining > 0 && remaining <= 10;
+    const flash = urgent && Math.floor(remaining * 4) % 2 === 0;
     timerEls.forEach(el => {
         if (!el) return;
         el.textContent = text;
-        el.style.color = urgent ? '#dc3545' : '';
+        el.style.color = flash ? '#dc3545' : '';
         el.style.fontWeight = urgent ? '700' : '400';
+        el.classList.toggle('countdown-flash', flash);
     });
 
-    if (cues.intro) {
-        const introRem = Math.max(0, cues.intro - player.currentTime);
+    if (intro != null) {
+        const introRem = Math.max(0, intro - player.currentTime);
+        const introUrgent = introRem > 0 && introRem <= 10;
+        const introFlash = introUrgent && Math.floor(introRem * 4) % 2 === 0;
         introBadge.style.display = 'inline-block';
         introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        const flash = introRem > 0 && introRem <= 8;
-        introBadge.classList.toggle('countdown-flash', flash);
-        introBadge.classList.toggle('text-bg-danger', flash);
+        introBadge.classList.toggle('countdown-flash', introFlash);
+        introBadge.classList.toggle('text-bg-danger', introFlash);
     } else {
         introBadge.style.display = 'inline-block';
         introBadge.textContent = 'Intro: 0.0s';
         introBadge.classList.remove('countdown-flash','text-bg-danger');
     }
 
-    if (cues.outro) {
-        const outroRem = Math.max(0, cues.outro - player.currentTime);
+    if (outro != null) {
+        const outroRem = Math.max(0, outro - player.currentTime);
+        const outroUrgent = outroRem > 0 && outroRem <= 10;
+        const outroFlash = outroUrgent && Math.floor(outroRem * 4) % 2 === 0;
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-        const flash = outroRem > 0 && outroRem <= 8;
-        outroBadge.classList.toggle('countdown-flash', flash);
-        outroBadge.classList.toggle('text-bg-danger', flash);
+        outroBadge.classList.toggle('countdown-flash', outroFlash);
+        outroBadge.classList.toggle('text-bg-danger', outroFlash);
     } else {
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = 'Outro: 0.0s';
@@ -1570,12 +1647,20 @@ function updateTimer() {
     }
     updateTalkOverlay(cues, player.currentTime, player.duration);
 
+    if (!cueOutTriggered && cueOut != null && player.currentTime >= cueOut) {
+        cueOutTriggered = true;
+        player.pause();
+        player.currentTime = cueOut;
+        handleEnded(currentIdx);
+        return;
+    }
+
     if (automationMode !== 'automation' && overlayPlayer) {
         const overlayCandidate = queue.find(item => overlayEligible(item));
         const nextTrack = queue.find(item => !overlayEligible(item) && !item.stop);
         if (!overlayPlayer.src && overlayCandidate && currentItem && currentItem.kind === 'music') {
-            if (cues.outro && player.currentTime >= cues.outro) {
-                overlayStopAt = nextTrack?.cues?.intro ?? null;
+            if (outro != null && player.currentTime >= outro) {
+                overlayStopAt = getCueValue(nextTrack?.cues, 'intro');
                 overlayStopForId = nextTrack?.id ?? null;
                 playOverlayItem(overlayCandidate);
             }
@@ -1587,17 +1672,15 @@ function updateTimer() {
         }
     }
 
-    if (automationMode !== 'automation') {
-        // Auto-advance when start_next cue is hit.
-        if (!autoNextTriggered && cues.start_next && player.currentTime >= cues.start_next) {
-            autoNextTriggered = true;
-            resetTimers();
-            if (queue.length > 0) {
-                if (overlayEligible(currentItem)) {
-                    startNextWithOverlay('auto');
-                } else {
-                    fadeAndNext('auto');
-                }
+    // Auto-advance when start_next cue is hit.
+    if (!autoNextTriggered && startNext != null && player.currentTime >= startNext) {
+        autoNextTriggered = true;
+        resetTimers();
+        if (queue.length > 0) {
+            if (overlayEligible(currentItem)) {
+                startNextWithOverlay('auto');
+            } else {
+                fadeAndNext('auto');
             }
         }
     }
@@ -1615,14 +1698,15 @@ function updateTimer() {
     if (automationMode !== 'automation' && !prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 0) {
         const nextItem = queue[0];
         const nextCues = nextItem.cues || {};
-        const target = nextCues.intro || nextCues.outro;
-        if (target && remaining <= target + 0.25) {
+        const target = getCueValue(nextCues, 'intro') ?? getCueValue(nextCues, 'outro');
+        if (target != null && remaining <= target + 0.25) {
             const nextIdxDeck = 1 - currentIdx;
             const nextPlayerObj = players[nextIdxDeck];
             const nextPlayer = nextPlayerObj.el;
             nextPlayerObj.item = nextItem;
             nextPlayer.src = nextItem.url;
             nextPlayer.volume = 1;
+            nextPlayerObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
             applyPlaybackRate(nextPlayer, nextItem);
             try { nextPlayer.play(); } catch (e) { /* ignore */ }
             prestartedIdx = nextIdxDeck;
@@ -1724,7 +1808,15 @@ players.forEach((p, idx) => {
     if (!p.el) return;
     preservesPitchOff(p.el);
     p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); if (togglePauseBtn) togglePauseBtn.textContent = 'Pause'; } });
-    p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
+    p.el.addEventListener('loadedmetadata', () => {
+        if (p.item) {
+            applyPlaybackRate(p.el, p.item);
+        }
+        if (p.seekTo != null) {
+            p.el.currentTime = Math.max(0, p.seekTo);
+            p.seekTo = null;
+        }
+    });
     p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); if (togglePauseBtn) togglePauseBtn.textContent = 'Play'; } });
     p.el.addEventListener('ended', () => handleEnded(idx));
 });

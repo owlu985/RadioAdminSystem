@@ -1183,6 +1183,18 @@ def music_stream():
     return _send_audio(safe_path)
 
 
+@main_bp.route("/music/pretranscode", methods=["POST"])
+@permission_required({"music:view"})
+def music_pretranscode():
+    payload = request.get_json(force=True, silent=True) or {}
+    path = payload.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    safe_path = _safe_music_path(path)
+    transcoded = _ensure_transcoded_mp3(safe_path)
+    return jsonify({"status": "ok", "transcoded": bool(transcoded)})
+
+
 @main_bp.route("/music/cover")
 @permission_required({"music:view"})
 def music_cover():
