@@ -58,6 +58,10 @@
         .player-timer {
             font-variant-numeric: tabular-nums;
             letter-spacing: 0.04em;
+            font-size: 1.25rem;
+        }
+        .cue-timer {
+            font-size: 1.1rem;
         }
         .countdown-flash.text-bg-danger {
             animation: flash 0.6s steps(1) infinite;
@@ -114,8 +118,8 @@
                     </div>
                     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
                         <span class="badge text-bg-light text-dark player-timer" id="timer">00:00.00</span>
-                        <span class="badge text-bg-light text-dark" id="introBadge">Intro: 0.0s</span>
-                        <span class="badge text-bg-light text-dark" id="outroBadge">Outro: 0.0s</span>
+                        <span class="badge text-bg-light text-dark cue-timer" id="introBadge">Intro: 0.0s</span>
+                        <span class="badge text-bg-light text-dark cue-timer" id="outroBadge">Outro: 0.0s</span>
                     </div>
                     <div class="position-relative">
                         <div id="talkOverlay" class="talk-overlay d-none">
