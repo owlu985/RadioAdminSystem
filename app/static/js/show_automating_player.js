@@ -1885,29 +1885,44 @@ async function decodeAudioBufferFromBlob(blob) {
     return await ctx.decodeAudioData(arrayBuffer);
 }
 
-function drawWaveform(buffer, canvas, container) {
+function drawWaveform(buffer, canvas, container, widthOverride = null) {
     if (!buffer || !canvas || !container) return;
-    const width = Math.max(container.clientWidth || 600, 600);
-    const height = canvas.height;
-    canvas.width = width;
-    canvas.style.width = `${width}px`;
-    container.style.width = `${width}px`;
+    const cssWidth = Math.max(widthOverride || container.clientWidth || 600, 600);
+    const cssHeight = canvas.height;
+    const ratio = window.devicePixelRatio || 1;
+    const renderWidth = Math.floor(cssWidth * ratio);
+    const renderHeight = Math.floor(cssHeight * ratio);
+    canvas.width = renderWidth;
+    canvas.height = renderHeight;
+    canvas.style.width = `${cssWidth}px`;
+    canvas.style.height = `${cssHeight}px`;
+    container.style.width = `${cssWidth}px`;
     const ctx = canvas.getContext('2d');
-    ctx.clearRect(0, 0, width, height);
-    const data = buffer.getChannelData(0);
-    const step = Math.ceil(data.length / width);
-    const amp = height / 2;
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+    ctx.clearRect(0, 0, cssWidth, cssHeight);
+    const channels = [];
+    for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        channels.push(buffer.getChannelData(ch));
+    }
+    const step = Math.max(1, Math.floor(channels[0].length / (cssWidth * 1.5)));
+    const amp = cssHeight / 2;
     ctx.fillStyle = '#f1f3f5';
-    ctx.fillRect(0, 0, width, height);
+    ctx.fillRect(0, 0, cssWidth, cssHeight);
     ctx.strokeStyle = '#0d6efd';
+    ctx.lineWidth = 1.2;
     ctx.beginPath();
-    for (let i = 0; i < width; i++) {
+    for (let i = 0; i < cssWidth; i++) {
         let min = 1.0;
         let max = -1.0;
+        const baseIndex = i * step;
         for (let j = 0; j < step; j++) {
-            const datum = data[(i * step) + j];
-            if (datum < min) min = datum;
-            if (datum > max) max = datum;
+            const idx = baseIndex + j;
+            for (let ch = 0; ch < channels.length; ch++) {
+                const datum = channels[ch][idx];
+                if (datum === undefined) continue;
+                if (datum < min) min = datum;
+                if (datum > max) max = datum;
+            }
         }
         ctx.moveTo(i, (1 + min) * amp);
         ctx.lineTo(i, (1 + max) * amp);
@@ -2032,6 +2047,18 @@ function fmtCueTime(t) {
     return `${min}:${sec}.${ms.toString().padStart(2,'0')}`;
 }
 
+function getCueWaveMetrics() {
+    if (!cueWave || !cueWaveInner) return { x: 0, width: 0 };
+    const rect = cueWave.getBoundingClientRect();
+    const styles = getComputedStyle(cueWave);
+    const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+    const width = Math.max(1, (cueWaveInner.clientWidth || cueWave.clientWidth || 0));
+    return {
+        x: rect.left + paddingLeft,
+        width,
+    };
+}
+
 function paintCueSwatches() {
     document.querySelectorAll('.cue-swatch').forEach(el => {
         const key = el.dataset.cue;
@@ -2077,8 +2104,15 @@ function updateCueNeedle() {
 function nudgeCue(delta) {
     if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
     const wasPlaying = !cuePlayer.paused;
-    cuePlayer.currentTime = Math.max(0, Math.min(cuePlayer.duration || 0, cuePlayer.currentTime + delta));
+    const baseValue = parseFloat(cueInputs[cueSelected]?.value);
+    const startingPoint = !isNaN(baseValue) ? baseValue : cuePlayer.currentTime;
+    const updated = Math.max(0, Math.min(cuePlayer.duration || 0, startingPoint + delta));
+    if (cueInputs[cueSelected]) {
+        cueInputs[cueSelected].value = updated.toFixed(2);
+    }
+    cuePlayer.currentTime = updated;
     updateCueNeedle();
+    updateCueMarkers();
     if (wasPlaying) cuePlayer.play().catch(() => {});
 }
 
@@ -2088,12 +2122,16 @@ async function drawCueWaveformFromUrl(url) {
         const arrayBuffer = await res.arrayBuffer();
         const ctx = new (window.AudioContext || window.webkitAudioContext)();
         const buffer = await ctx.decodeAudioData(arrayBuffer);
-        cueBaseWidth = Math.max(cueWave.clientWidth || 600, 600);
+        const waveStyle = cueWave ? getComputedStyle(cueWave) : null;
+        const paddingLeft = waveStyle ? parseFloat(waveStyle.paddingLeft) || 0 : 0;
+        const paddingRight = waveStyle ? parseFloat(waveStyle.paddingRight) || 0 : 0;
+        const availableWidth = Math.max(0, (cueWave?.clientWidth || 0) - paddingLeft - paddingRight);
+        cueBaseWidth = Math.max(availableWidth || cueWave.clientWidth || 600, 600);
         cueWaveCanvas.width = cueBaseWidth;
         cueWaveCanvas.style.width = `${cueBaseWidth}px`;
         cueWaveInner.style.width = `${cueBaseWidth}px`;
         cueMarkers.style.width = `${cueBaseWidth}px`;
-        drawWaveform(buffer, cueWaveCanvas, cueWaveInner);
+        drawWaveform(buffer, cueWaveCanvas, cueWaveInner, cueBaseWidth);
     } catch (err) {
         const ctx = cueWaveCanvas.getContext('2d');
         ctx.clearRect(0,0,cueWaveCanvas.width, cueWaveCanvas.height);
@@ -2170,9 +2208,9 @@ if (cuePlayer) {
 
 if (cueWave) cueWave.addEventListener('mousedown', (e) => {
     if (!cuePlayer || !cuePlayer.duration) return;
-    const rect = cueWave.getBoundingClientRect();
-    const x = e.clientX - rect.left + cueWave.scrollLeft;
-    const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
+    const metrics = getCueWaveMetrics();
+    const x = e.clientX - metrics.x + cueWave.scrollLeft;
+    const pct = Math.max(0, Math.min(1, x / metrics.width));
     cuePlayer.currentTime = pct * cuePlayer.duration;
     updateCueNeedle();
 });
@@ -2187,9 +2225,9 @@ document.addEventListener('mouseup', () => { cueDragNeedle = false; cueDragField
 document.addEventListener('mousemove', (e) => {
     if (!cuePlayer || !cueWave) return;
     if ((!cueDragNeedle && !cueDragField) || !cuePlayer.duration) return;
-    const rect = cueWave.getBoundingClientRect();
-    const x = e.clientX - rect.left + cueWave.scrollLeft;
-    const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
+    const metrics = getCueWaveMetrics();
+    const x = e.clientX - metrics.x + cueWave.scrollLeft;
+    const pct = Math.max(0, Math.min(1, x / metrics.width));
     const seconds = pct * cuePlayer.duration;
     if (cueDragNeedle) {
         cuePlayer.currentTime = seconds;
