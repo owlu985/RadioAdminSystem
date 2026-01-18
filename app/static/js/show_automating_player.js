@@ -176,7 +176,7 @@ function base64UrlEncode(value) {
     let binary = '';
     bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
     const encoded = btoa(binary);
-    return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    return encoded.replace(/\+/g, '-').replace(/\//g, '_');
 }
 
 function buildLibraryQueuePayload(item, mode) {
@@ -188,7 +188,7 @@ function buildLibraryQueuePayload(item, mode) {
             name: title,
             artist: item.artist || null,
             duration: item.duration_seconds || null,
-            url: token ? `/media/file/${token}` : null,
+            url: token ? `/media/file/${encodeURIComponent(token)}` : null,
             category: item.genre || 'Music',
             kind: 'music',
             metadata: {
