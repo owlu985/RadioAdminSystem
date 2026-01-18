@@ -253,10 +253,19 @@
     const indexPercent = document.getElementById('libraryIndexPercent');
     const indexProgress = document.getElementById('libraryIndexProgress');
     if (indexBar && indexPercent && indexProgress) {
+      let indexStatusTimer = null;
+      const scheduleIndexPoll = (delayMs) => {
+        if (indexStatusTimer) {
+          window.clearTimeout(indexStatusTimer);
+        }
+        indexStatusTimer = window.setTimeout(updateIndexStatus, delayMs);
+      };
       const updateIndexStatus = async () => {
+        let nextDelay = 300000;
         try {
           const resp = await fetch('{{ url_for("api.library_index_status") }}', { credentials: 'same-origin' });
           if (!resp.ok) {
+            scheduleIndexPoll(nextDelay);
             return;
           }
           const data = await resp.json();
@@ -267,15 +276,16 @@
             indexPercent.textContent = clamped;
             indexProgress.style.width = `${clamped}%`;
             indexBar.classList.remove('d-none');
+            nextDelay = 10000;
           } else {
             indexBar.classList.add('d-none');
           }
         } catch (err) {
           indexBar.classList.add('d-none');
         }
+        scheduleIndexPoll(nextDelay);
       };
       updateIndexStatus();
-      window.setInterval(updateIndexStatus, 10000);
     }
   })();
 </script>
