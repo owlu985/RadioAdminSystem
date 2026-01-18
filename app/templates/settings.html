@@ -552,6 +552,19 @@
                                 </div>
                             </div>
                             <div class="row g-3 mb-3">
+                                <div class="col-12">
+                                    <label class="form-label d-block">Music Library Index</label>
+                                    <div class="d-flex flex-wrap gap-2 align-items-center">
+                                        <button type="button" class="btn btn-outline-secondary" id="libraryIndexRefresh">
+                                            <i class="bi bi-arrow-repeat"></i> Force Refresh
+                                        </button>
+                                        <span class="text-muted small" id="libraryIndexRefreshStatus">
+                                            Runs automatically every 12 hours.
+                                        </span>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label for="radiodj_api_base_url" class="form-label">RadioDJ API Base URL</label>
                                     <input type="text" name="radiodj_api_base_url" id="radiodj_api_base_url" class="form-control" value="{{ radiodj_api_base_url }}" placeholder="http://127.0.0.1:7000">
@@ -672,6 +685,41 @@
         });
         document.getElementById('link_output').value=`https://twitter.com/i/oauth2/authorize?${params.toString()}`;
     });
+
+    const libraryIndexRefresh=document.getElementById('libraryIndexRefresh');
+    const libraryIndexRefreshStatus=document.getElementById('libraryIndexRefreshStatus');
+    if(libraryIndexRefresh){
+        const originalLabel=libraryIndexRefresh.innerHTML;
+        libraryIndexRefresh.addEventListener('click', async ()=>{
+            libraryIndexRefresh.disabled=true;
+            libraryIndexRefresh.innerHTML='<i class="bi bi-arrow-repeat"></i> Refreshing...';
+            if(libraryIndexRefreshStatus){
+                libraryIndexRefreshStatus.textContent='Requesting library refresh...';
+            }
+            try{
+                const resp=await fetch('{{ url_for("api.library_index_refresh") }}', {
+                    method:'POST',
+                    credentials:'same-origin'
+                });
+                if(!resp.ok){
+                    throw new Error('refresh failed');
+                }
+                const data=await resp.json();
+                if(libraryIndexRefreshStatus){
+                    libraryIndexRefreshStatus.textContent=data.started
+                        ? 'Library indexing queued.'
+                        : 'Library indexing already running.';
+                }
+            }catch(err){
+                if(libraryIndexRefreshStatus){
+                    libraryIndexRefreshStatus.textContent='Unable to start library index.';
+                }
+            }finally{
+                libraryIndexRefresh.disabled=false;
+                libraryIndexRefresh.innerHTML=originalLabel;
+            }
+        });
+    }
 </script>
 </body>
 </html>
