@@ -392,7 +392,7 @@ def schedule_radiodj_now_playing():
 def schedule_library_index_job(run_now: bool = False):
     if flask_app is None:
         return
-    hours = flask_app.config.get("LIBRARY_INDEX_INTERVAL_HOURS", 6)
+    hours = flask_app.config.get("LIBRARY_INDEX_INTERVAL_HOURS", 12)
     try:
         scheduler.add_job(
             run_library_index_job,
