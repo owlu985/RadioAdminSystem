@@ -73,7 +73,6 @@ function renderLiveQueue(queueItems, nowPlaying) {
         return;
     }
     const list = document.createElement('ul');
-    list.className = 'list-group';
     queueItems.forEach(item => {
         const li = document.createElement('li');
         const isCurrent = nowPlaying && nowPlaying.queue_item_id === item.id;
@@ -172,7 +171,11 @@ let libraryNavElements = {};
 let libraryNavDrag = null;
 
 function base64UrlEncode(value) {
-    const encoded = btoa(unescape(encodeURIComponent(value)));
+    if (!value) return '';
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    const encoded = btoa(binary);
     return encoded.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 }
 
@@ -244,7 +247,7 @@ function ensureLibraryNavigation() {
             <div class="col-lg-7">
                 <div class="border rounded p-2 bg-body-tertiary">
                     <div id="libraryNavStatus" class="text-muted small mb-2">Loading library…</div>
-                    <ul class="list-group list-group-flush" id="libraryNavResults"></ul>
+                    <ul id="libraryNavResults"></ul>
                     <div class="d-flex justify-content-between align-items-center mt-2">
                         <button class="btn btn-outline-secondary btn-sm" id="libraryNavPrev">Prev</button>
                         <button class="btn btn-outline-secondary btn-sm" id="libraryNavNext">Next</button>
@@ -256,7 +259,7 @@ function ensureLibraryNavigation() {
                     <strong>Queue Builder</strong>
                     <span class="text-muted small">Drag items here</span>
                 </div>
-                <ul class="list-group" id="libraryNavQueue"></ul>
+                <ul id="libraryNavQueue"></ul>
             </div>
         </div>
     `;
