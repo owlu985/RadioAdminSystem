@@ -20,7 +20,7 @@ function escapeHtml(value) {
 
 function formatDuration(seconds) {
     const total = Number(seconds);
-    if (Number.isNaN(total) || total <= 0) return '—';
+    if (Number.isNaN(total) || total <= 0) return '00:00';
     const mins = Math.floor(total / 60).toString().padStart(2, '0');
     const secs = Math.floor(total % 60).toString().padStart(2, '0');
     return `${mins}:${secs}`;
@@ -72,7 +72,6 @@ function renderLiveQueue(queueItems, nowPlaying) {
         return;
     }
     const list = document.createElement('ul');
-    list.className = 'list-group';
     queueItems.forEach(item => {
         const li = document.createElement('li');
         const isCurrent = nowPlaying && nowPlaying.queue_item_id === item.id;
@@ -136,108 +135,418 @@ function renderQueueBuilder(queueItems) {
 }
 
 function renderLibraryNavigation(queueItems, session) {
-    if (!libraryNavigationPanel) return;
-    const items = queueItems || [];
-    const counts = items.reduce((acc, item) => {
-        const kind = (item.kind || item.type || 'item').toLowerCase();
-        acc[kind] = (acc[kind] || 0) + 1;
-        return acc;
-    }, {});
-    const kinds = Object.keys(counts).sort();
-    if (playbackPanelFilter !== 'all' && !counts[playbackPanelFilter]) {
-        playbackPanelFilter = 'all';
+    ensureLibraryNavigation();
+    updateLibraryQueueList(queueItems || []);
+}
+
+function updatePlaybackPanels() {
+    if (!playbackPanelsEnabled) return;
+    const nowPlaying = currentItem ? { ...currentItem, queue_item_id: currentItem.id } : null;
+    const upcoming = queue.map((item, idx) => ({ ...item, position: idx + 1 }));
+    const snapshotQueue = currentItem
+        ? [{ ...currentItem, position: 0 }, ...upcoming]
+        : upcoming;
+    renderNowPlaying(nowPlaying, null);
+    renderLiveQueue(snapshotQueue, nowPlaying);
+    renderQueueBuilder(snapshotQueue);
+    renderLibraryNavigation(queue, null);
+}
+
+const libraryNavState = {
+    mode: 'music',
+    query: '',
+    page: 1,
+    perPage: 20,
+    total: 0,
+    items: [],
+    loading: false,
+    error: null,
+    lastKey: null,
+    lastFetchedAt: 0,
+    pendingKey: null,
+};
+let libraryNavInitialized = false;
+let libraryNavElements = {};
+let libraryNavDrag = null;
+
+function base64UrlEncode(value) {
+    if (!value) return '';
+    const bytes = new TextEncoder().encode(value);
+    let binary = '';
+    bytes.forEach((byte) => { binary += String.fromCharCode(byte); });
+    const encoded = btoa(binary);
+    return encoded.replace(/\+/g, '-').replace(/\//g, '_');
+}
+
+function buildLibraryQueuePayload(item, mode) {
+    if (mode === 'music') {
+        const title = item.title || item.path || 'Untitled';
+        const token = item.path ? base64UrlEncode(item.path) : null;
+        return {
+            title,
+            name: title,
+            artist: item.artist || null,
+            duration: item.duration_seconds || null,
+            url: token ? `/media/file/${encodeURIComponent(token)}` : null,
+            category: item.genre || 'Music',
+            kind: 'music',
+            metadata: {
+                album: item.album || null,
+                genre: item.genre || null,
+                year: item.year || null,
+                folder: item.folder || null,
+                path: item.path || null,
+            },
+        };
     }
-    const navButtons = ['all', ...kinds].map(kind => {
-        const label = kind === 'all' ? 'All' : kind.toUpperCase();
-        const count = kind === 'all' ? items.length : counts[kind];
-        const active = playbackPanelFilter === kind ? 'active' : '';
-        return `<button class="btn btn-sm btn-outline-primary ${active}" data-kind="${kind}">${label} (${count})</button>`;
-    }).join('');
-    const filtered = playbackPanelFilter === 'all'
-        ? items
-        : items.filter(item => (item.kind || item.type || 'item').toLowerCase() === playbackPanelFilter);
-    const rows = filtered.map(item => `
-        <tr>
-            <td>${escapeHtml(item.title || 'Untitled')}</td>
-            <td>${escapeHtml(item.artist || '—')}</td>
-            <td>${escapeHtml(item.kind || item.type || 'item')}</td>
-            <td>${formatDuration(item.duration)}</td>
-        </tr>
-    `).join('') || `<tr><td colspan="4" class="text-muted">No items in this view.</td></tr>`;
-    const showName = escapeHtml(session?.show_name || '—');
-    const djName = escapeHtml(session?.dj_name || '—');
+    return {
+        title: item.title || item.name || 'Untitled',
+        name: item.name || item.title || 'Untitled',
+        artist: item.artist || null,
+        duration: item.duration || null,
+        url: item.url || null,
+        category: item.category || null,
+        token: item.token || null,
+        loop: item.loop || null,
+        kind: item.kind || mode,
+        metadata: {
+            usage_rules: item.usage_rules || null,
+            library_category: item.library_category || null,
+        },
+        cues: item.cues || null,
+    };
+}
+
+function libraryItemDescription(item, mode) {
+    if (mode === 'music') {
+        const parts = [item.artist, item.album, item.genre].filter(Boolean);
+        return parts.join(' • ') || 'Music track';
+    }
+    const parts = [item.category, item.usage_rules].filter(Boolean);
+    return parts.join(' • ') || mode.toUpperCase();
+}
+
+function ensureLibraryNavigation() {
+    if (!libraryNavigationPanel || libraryNavInitialized) return;
     libraryNavigationPanel.innerHTML = `
-        <div class="d-flex flex-wrap gap-2 mb-3">${navButtons}</div>
-        <div class="text-muted small mb-2">Session: ${showName} &middot; DJ: ${djName}</div>
-        <div class="table-responsive">
-            <table class="table table-sm align-middle">
-                <thead>
-                    <tr>
-                        <th>Title</th>
-                        <th>Artist</th>
-                        <th>Type</th>
-                        <th>Length</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    ${rows}
-                </tbody>
-            </table>
+        <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+            <div class="btn-group btn-group-sm" role="group" aria-label="Library types">
+                <button class="btn btn-outline-primary" data-library-mode="music">Music</button>
+                <button class="btn btn-outline-primary" data-library-mode="psa">PSA</button>
+                <button class="btn btn-outline-primary" data-library-mode="imaging">Imaging</button>
+            </div>
+            <div class="input-group input-group-sm" style="max-width: 320px;">
+                <span class="input-group-text">Search</span>
+                <input type="text" class="form-control" id="libraryNavSearch" placeholder="Title, artist, or filename">
+            </div>
+            <button class="btn btn-outline-secondary btn-sm" id="libraryNavRefresh">Refresh</button>
+            <span class="text-muted small" id="libraryNavMeta"></span>
+        </div>
+        <div class="row g-3">
+            <div class="col-lg-7">
+                <div class="border rounded p-2 bg-body-tertiary">
+                    <div id="libraryNavStatus" class="text-muted small mb-2">Loading library…</div>
+                    <ul id="libraryNavResults"></ul>
+                    <div class="d-flex justify-content-between align-items-center mt-2">
+                        <button class="btn btn-outline-secondary btn-sm" id="libraryNavPrev">Prev</button>
+                        <button class="btn btn-outline-secondary btn-sm" id="libraryNavNext">Next</button>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-5">
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <strong>Queue Builder</strong>
+                    <span class="text-muted small">Drag items here</span>
+                </div>
+                <ul id="libraryNavQueue"></ul>
+            </div>
         </div>
     `;
-    libraryNavigationPanel.querySelectorAll('[data-kind]').forEach(btn => {
+
+    libraryNavElements = {
+        modeButtons: Array.from(libraryNavigationPanel.querySelectorAll('[data-library-mode]')),
+        searchInput: libraryNavigationPanel.querySelector('#libraryNavSearch'),
+        refreshBtn: libraryNavigationPanel.querySelector('#libraryNavRefresh'),
+        meta: libraryNavigationPanel.querySelector('#libraryNavMeta'),
+        status: libraryNavigationPanel.querySelector('#libraryNavStatus'),
+        results: libraryNavigationPanel.querySelector('#libraryNavResults'),
+        prevBtn: libraryNavigationPanel.querySelector('#libraryNavPrev'),
+        nextBtn: libraryNavigationPanel.querySelector('#libraryNavNext'),
+        queue: libraryNavigationPanel.querySelector('#libraryNavQueue'),
+    };
+
+    libraryNavElements.modeButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            playbackPanelFilter = btn.dataset.kind;
-            renderLibraryNavigation(queueItems, session);
+            setLibraryNavMode(btn.dataset.libraryMode);
         });
     });
-}
 
-async function loadPlaybackPanels() {
-    if (!playbackPanelsEnabled) return;
-    try {
-        const [sessionRes, queueRes] = await Promise.all([
-            fetch('/api/playback/session'),
-            fetch('/api/playback/queue'),
-        ]);
-        if (!sessionRes.ok || !queueRes.ok) {
-            throw new Error('Unable to load playback panels');
-        }
-        const session = await sessionRes.json();
-        const queueData = await queueRes.json();
-        renderNowPlaying(queueData.now_playing, session);
-        renderLiveQueue(queueData.queue || [], queueData.now_playing);
-        renderQueueBuilder(queueData.queue || []);
-        renderLibraryNavigation(queueData.queue || [], session);
-    } catch (err) {
-        if (nowPlayingPanel) nowPlayingPanel.innerHTML = '<div class="text-danger">Unable to load playback session.</div>';
-        if (liveQueuePanel) liveQueuePanel.innerHTML = '<div class="text-danger">Unable to load queue.</div>';
-        if (queueBuilderPanel) queueBuilderPanel.innerHTML = '<div class="text-danger">Unable to load queue builder.</div>';
-        if (libraryNavigationPanel) libraryNavigationPanel.innerHTML = '<div class="text-danger">Unable to load library view.</div>';
+    if (libraryNavElements.searchInput) {
+        let searchTimer = null;
+        libraryNavElements.searchInput.addEventListener('input', (e) => {
+            if (searchTimer) clearTimeout(searchTimer);
+            searchTimer = setTimeout(() => {
+                libraryNavState.query = e.target.value.trim();
+                libraryNavState.page = 1;
+                fetchLibraryNav();
+            }, 250);
+        });
     }
+
+    if (libraryNavElements.refreshBtn) {
+        libraryNavElements.refreshBtn.addEventListener('click', () => fetchLibraryNav({ refresh: true }));
+    }
+
+    if (libraryNavElements.prevBtn) {
+        libraryNavElements.prevBtn.addEventListener('click', () => {
+            if (libraryNavState.page <= 1) return;
+            libraryNavState.page -= 1;
+            fetchLibraryNav();
+        });
+    }
+    if (libraryNavElements.nextBtn) {
+        libraryNavElements.nextBtn.addEventListener('click', () => {
+            libraryNavState.page += 1;
+            fetchLibraryNav();
+        });
+    }
+
+    if (libraryNavElements.queue) {
+        libraryNavElements.queue.addEventListener('dragover', (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.add('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('dragleave', (ev) => {
+            const target = ev.target.closest('li[data-queue-index]');
+            if (target) target.classList.remove('drop-target');
+        });
+        libraryNavElements.queue.addEventListener('drop', async (ev) => {
+            if (!libraryNavDrag) return;
+            ev.preventDefault();
+            const target = ev.target.closest('li[data-queue-index]');
+            const rect = target ? target.getBoundingClientRect() : null;
+            let dropIndex = queue.length;
+            if (target && rect) {
+                const idx = Number(target.dataset.queueIndex);
+                dropIndex = ev.clientY > rect.top + rect.height / 2 ? idx + 1 : idx;
+                target.classList.remove('drop-target');
+            }
+
+            if (libraryNavDrag.source === 'library') {
+                await insertLibraryItem(libraryNavDrag.item, dropIndex);
+            } else if (libraryNavDrag.source === 'queue') {
+                const fromIndex = libraryNavDrag.index;
+                if (fromIndex != null && fromIndex !== dropIndex) {
+                    const [moved] = queue.splice(fromIndex, 1);
+                    const normalizedIndex = dropIndex > fromIndex ? dropIndex - 1 : dropIndex;
+                    queue.splice(normalizedIndex, 0, moved);
+                    renderQueue();
+                }
+            }
+            libraryNavDrag = null;
+        });
+    }
+
+    libraryNavInitialized = true;
+    setLibraryNavMode(libraryNavState.mode);
 }
 
-if (playbackPanelsEnabled) {
-    loadPlaybackPanels();
-    playbackPanelTimer = setInterval(loadPlaybackPanels, 5000);
-    window.addEventListener('beforeunload', () => {
-        if (playbackPanelTimer) {
-            clearInterval(playbackPanelTimer);
-            playbackPanelTimer = null;
-        }
+function setLibraryNavMode(mode) {
+    if (!mode) return;
+    libraryNavState.mode = mode;
+    libraryNavState.page = 1;
+    fetchLibraryNav();
+    updateLibraryNavButtons();
+}
+
+function updateLibraryNavButtons() {
+    if (!libraryNavElements.modeButtons) return;
+    libraryNavElements.modeButtons.forEach(btn => {
+        const active = btn.dataset.libraryMode === libraryNavState.mode;
+        btn.classList.toggle('active', active);
+        btn.classList.toggle('btn-primary', active);
+        btn.classList.toggle('btn-outline-primary', !active);
     });
+}
+
+async function fetchLibraryNav({ refresh = false } = {}) {
+    if (!libraryNavInitialized) return;
+    const requestKey = [
+        libraryNavState.mode,
+        libraryNavState.query || '',
+        libraryNavState.page,
+        libraryNavState.perPage,
+    ].join('|');
+    const now = Date.now();
+    if (!refresh) {
+        if (libraryNavState.loading && libraryNavState.pendingKey === requestKey) {
+            return;
+        }
+        if (libraryNavState.lastKey === requestKey && now - libraryNavState.lastFetchedAt < 15000) {
+            return;
+        }
+    }
+    libraryNavState.loading = true;
+    libraryNavState.pendingKey = requestKey;
+    if (libraryNavElements.status) {
+        libraryNavElements.status.textContent = 'Loading library…';
+    }
+    const mode = libraryNavState.mode;
+    try {
+        let data = null;
+        if (mode === 'music') {
+            const params = new URLSearchParams({
+                q: libraryNavState.query || '%',
+                page: libraryNavState.page,
+                per_page: libraryNavState.perPage,
+            });
+            if (refresh) params.set('refresh', '1');
+            const res = await fetch(`/api/music/search?${params.toString()}`);
+            data = await res.json();
+        } else {
+            const params = new URLSearchParams({
+                page: libraryNavState.page,
+                per_page: libraryNavState.perPage,
+                kind: mode,
+            });
+            if (libraryNavState.query) params.set('q', libraryNavState.query);
+            const res = await fetch(`/api/psa/library?${params.toString()}`);
+            data = await res.json();
+        }
+        libraryNavState.items = data.items || [];
+        libraryNavState.total = data.total || 0;
+        libraryNavState.page = data.page || libraryNavState.page;
+        libraryNavState.perPage = data.per_page || libraryNavState.perPage;
+        libraryNavState.error = null;
+        libraryNavState.lastKey = requestKey;
+        libraryNavState.lastFetchedAt = now;
+    } catch (err) {
+        libraryNavState.items = [];
+        libraryNavState.total = 0;
+        libraryNavState.error = 'Unable to load library.';
+    } finally {
+        libraryNavState.loading = false;
+        if (libraryNavState.pendingKey === requestKey) {
+            libraryNavState.pendingKey = null;
+        }
+    }
+    renderLibraryResults();
+}
+
+function renderLibraryResults() {
+    if (!libraryNavInitialized) return;
+    if (!libraryNavElements.results) return;
+    libraryNavElements.results.innerHTML = '';
+
+    if (libraryNavState.error) {
+        libraryNavElements.results.innerHTML = `<li class="list-group-item text-danger">${libraryNavState.error}</li>`;
+    } else if (!libraryNavState.items.length) {
+        libraryNavElements.results.innerHTML = '<li class="list-group-item text-muted">No items found.</li>';
+    } else {
+        libraryNavState.items.forEach((item, idx) => {
+            const payload = buildLibraryQueuePayload(item, libraryNavState.mode);
+            const li = document.createElement('li');
+            li.className = 'list-group-item d-flex justify-content-between align-items-start gap-2';
+            li.draggable = Boolean(payload.url);
+            li.dataset.libraryIndex = idx;
+            li.innerHTML = `
+                <div>
+                    <div class="fw-semibold">${escapeHtml(payload.title || payload.name || 'Untitled')}</div>
+                    <div class="small text-muted">${escapeHtml(libraryItemDescription(item, libraryNavState.mode))}</div>
+                    <div class="small text-muted">${escapeHtml((payload.kind || '').toUpperCase())} · ${formatDuration(payload.duration)}</div>
+                </div>
+                <button class="btn btn-sm btn-outline-primary" ${payload.url ? '' : 'disabled'}>Add</button>
+            `;
+            if (payload.url) {
+                li.addEventListener('dragstart', (ev) => {
+                    libraryNavDrag = { source: 'library', item: payload };
+                    ev.dataTransfer.effectAllowed = 'copy';
+                });
+            }
+            const addBtn = li.querySelector('button');
+            if (addBtn && payload.url) {
+                addBtn.addEventListener('click', async () => {
+                    await insertLibraryItem(payload, null);
+                });
+            }
+            libraryNavElements.results.appendChild(li);
+        });
+    }
+
+    const total = libraryNavState.total || 0;
+    const start = total ? ((libraryNavState.page - 1) * libraryNavState.perPage) + 1 : 0;
+    const end = Math.min(total, libraryNavState.page * libraryNavState.perPage);
+    if (libraryNavElements.meta) {
+        libraryNavElements.meta.textContent = total
+            ? `Showing ${start}-${end} of ${total}`
+            : 'No library items loaded.';
+    }
+    if (libraryNavElements.prevBtn) {
+        libraryNavElements.prevBtn.disabled = libraryNavState.page <= 1;
+    }
+    if (libraryNavElements.nextBtn) {
+        libraryNavElements.nextBtn.disabled = end >= total;
+    }
+    if (libraryNavElements.status) {
+        libraryNavElements.status.textContent = libraryNavState.loading ? 'Loading library…' : '';
+    }
+    updateLibraryNavButtons();
+}
+
+function updateLibraryQueueList(queueItems) {
+    if (!libraryNavInitialized || !libraryNavElements.queue) return;
+    libraryNavElements.queue.innerHTML = '';
+    if (!queueItems.length) {
+        libraryNavElements.queue.innerHTML = '<li class="list-group-item text-muted">Drop items here to build the queue.</li>';
+        return;
+    }
+    queueItems.forEach((item, idx) => {
+        const li = document.createElement('li');
+        const isCurrent = currentItem && item.id === currentItem.id;
+        li.className = `list-group-item d-flex justify-content-between align-items-start gap-2${isCurrent ? ' list-group-item-info' : ''}`;
+        li.dataset.queueIndex = idx;
+        li.draggable = !isCurrent;
+        li.innerHTML = `
+            <div>
+                <div class="fw-semibold">${escapeHtml(item.title || item.name || 'Untitled')}${isCurrent ? ' <span class="badge text-bg-success ms-2">Now</span>' : ''}</div>
+                <div class="small text-muted">${escapeHtml((item.kind || '').toUpperCase())} · ${formatDuration(item.duration)}</div>
+            </div>
+            ${isCurrent ? '' : '<button class="btn btn-sm btn-outline-danger">Remove</button>'}
+        `;
+        if (!isCurrent) {
+            li.addEventListener('dragstart', (ev) => {
+                libraryNavDrag = { source: 'queue', index: idx };
+                ev.dataTransfer.effectAllowed = 'move';
+            });
+            const removeBtn = li.querySelector('button');
+            if (removeBtn) {
+                removeBtn.addEventListener('click', () => {
+                    removeFromQueue(idx);
+                });
+            }
+        }
+        libraryNavElements.queue.appendChild(li);
+    });
+}
+
+async function insertLibraryItem(payload, position) {
+    if (!payload || !payload.url) return;
+    const queuedItem = await enqueueQueueItem(payload, position);
+    if (!queuedItem) return;
+    logItemInsert(queuedItem);
+    updateVTInsertOptions();
+    const player = activePlayer();
+    if (!currentItem && queue.length === 1 && player && player.paused) {
+        startFrom(0, currentIdx, 'auto');
+    }
+    renderQueue();
 }
 
 let library = [];
-const psaList = document.getElementById('psaList');
 const queueList = document.getElementById('queueList');
 const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
-const categoryFilter = document.getElementById('categoryFilter');
-const libraryMeta = document.getElementById('libraryMeta');
-const libraryPrev = document.getElementById('libraryPrev');
-const libraryNext = document.getElementById('libraryNext');
-const psaSearch = document.getElementById('psaSearch');
-const metadataKinds = new Set(['psa', 'imaging']);
 const top40 = document.getElementById('top40');
 const loopBetween = document.getElementById('loopBetween');
 const togglePauseBtn = document.getElementById('togglePause');
@@ -252,6 +561,17 @@ const outroBadge = document.getElementById('outroBadge');
 const talkOverlay = document.getElementById('talkOverlay');
 const talkOverlayIntro = document.getElementById('talkOverlayIntro');
 const talkOverlayOutro = document.getElementById('talkOverlayOutro');
+const startRecBtn = document.getElementById('startRecord');
+const stopRecBtn = document.getElementById('stopRecord');
+const vtFile = document.getElementById('vtFile');
+const vtImport = document.getElementById('vtImport');
+const vtMeta = document.getElementById('vtMeta');
+const vtWaveCanvas = document.getElementById('vtWaveCanvas');
+const vtWaveInner = document.getElementById('vtWaveInner');
+const vtInsertPosition = document.getElementById('vtInsertPosition');
+const vtTitle = document.getElementById('vtTitle');
+const vtHost = document.getElementById('vtHost');
+const vtNotes = document.getElementById('vtNotes');
 const queue = [];
 const players = [
     { el: document.getElementById('psaAudioA'), item: null },
@@ -305,11 +625,91 @@ let automationOverlayTimer = null;
 let automationFadeTimer = null;
 let automationContext = null;
 let automationPlanKey = null;
-let playbackSession = null;
+let overlayStopAt = null;
+let overlayStopForId = null;
 let activeShowRunId = null;
 let activeLogSheetId = null;
 let showRunStartPromise = null;
-let queueSyncInProgress = false;
+const QUEUE_STORAGE_KEY = 'show_automator_queue_v1';
+const AUTOMATION_STORAGE_KEY = 'show_automator_automation_v1';
+const enablePlaybackLogging = false;
+let localQueueId = 1;
+
+if (playbackPanelsEnabled) {
+    updatePlaybackPanels();
+    playbackPanelTimer = setInterval(updatePlaybackPanels, 5000);
+    window.addEventListener('beforeunload', () => {
+        if (playbackPanelTimer) {
+            clearInterval(playbackPanelTimer);
+            playbackPanelTimer = null;
+        }
+    });
+}
+
+function nextQueueId() {
+    const nextId = localQueueId;
+    localQueueId += 1;
+    return nextId;
+}
+
+function normalizeQueueItem(source = {}, { keepId = false } = {}) {
+    const cues = source.cues || source.metadata?.cues || null;
+    const metadata = source.metadata || {};
+    const kind = source.kind || source.type || metadata.kind || queueTypeFor(source);
+    const id = keepId && source.id ? source.id : nextQueueId();
+    const sourceId = keepId ? source.source_id : (source.source_id || source.id || null);
+    return {
+        id,
+        source_id: sourceId,
+        name: source.name || source.title || metadata.name || 'Untitled',
+        title: source.title || source.name || metadata.name || 'Untitled',
+        artist: source.artist || metadata.artist || null,
+        duration: source.duration || metadata.duration || null,
+        url: source.url || metadata.url || null,
+        category: source.category || metadata.category || null,
+        token: source.token || metadata.token || null,
+        loop: source.loop ?? metadata.loop ?? null,
+        stop: Boolean(source.stop || kind === 'stop'),
+        kind,
+        metadata: metadata.metadata || metadata || null,
+        cues,
+        started_at: source.started_at || null,
+    };
+}
+
+function persistQueueState() {
+    try {
+        const payload = {
+            queue: queue.map(item => normalizeQueueItem(item, { keepId: true })),
+            currentItem: currentItem ? normalizeQueueItem(currentItem, { keepId: true }) : null,
+            saved_at: new Date().toISOString(),
+        };
+        localStorage.setItem(QUEUE_STORAGE_KEY, JSON.stringify(payload));
+    } catch (err) {
+        // ignore storage errors
+    }
+    updatePlaybackPanels();
+}
+
+function loadQueueState() {
+    try {
+        const raw = localStorage.getItem(QUEUE_STORAGE_KEY);
+        if (!raw) return;
+        const payload = JSON.parse(raw);
+        queue.length = 0;
+        if (payload.currentItem) {
+            queue.push(normalizeQueueItem(payload.currentItem, { keepId: true }));
+        }
+        (payload.queue || []).forEach(item => {
+            queue.push(normalizeQueueItem(item, { keepId: true }));
+        });
+        currentItem = null;
+        const maxId = queue.reduce((max, item) => Math.max(max, item.id || 0), 0);
+        localQueueId = Math.max(1, maxId + 1);
+    } catch (err) {
+        // ignore invalid storage
+    }
+}
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
@@ -323,7 +723,7 @@ const metadataPath = document.getElementById('metadataPath');
 const bulkDialog = document.getElementById('bulkDialog');
 const bulkKind = document.getElementById('bulkKind');
 const bulkStatus = document.getElementById('bulkStatus');
-const legacyPlayerEnabled = Boolean(queueList && psaList);
+const legacyPlayerEnabled = Boolean(queueList);
 
 function openDialog(dialog) {
     if (!dialog) return;
@@ -367,55 +767,12 @@ async function openMetadataEditor(item) {
     openDialog(metadataDialog);
 }
 
-function renderCategories(cats) {
-    const options = cats || [];
-    categoryFilter.innerHTML = '<option value="">All categories</option>' + options.map(c => `<option value="${c}">${c}</option>`).join('');
-}
-
-function renderLibrary(filter = '') {
-    psaList.innerHTML = '';
-    const term = filter.toLowerCase();
-    const cat = categoryFilter.value;
-    library.filter(item => {
-        const title = (item.title || item.name || '').toLowerCase();
-        return title.includes(term) && (!cat || item.category === cat);
-    }).forEach(item => {
-        const li = document.createElement('li');
-        li.className = 'list-group-item';
-        const meta = [];
-        if (item.duration) meta.push(`${item.duration}s`);
-        if (item.loop) meta.push('loop');
-        if (item.category) meta.push(item.category);
-        if (item.expires_on) meta.push(`expires ${item.expires_on}`);
-        const displayName = item.title || item.name;
-        const subtitle = item.title ? `<small class="text-muted">${item.name}</small><br>` : '';
-        const usage = item.usage_rules ? `<small class="text-muted">Usage: ${item.usage_rules}</small><br>` : '';
-        li.innerHTML = `<div class="d-flex justify-content-between align-items-center">
-            <div>
-                <strong>${displayName}</strong><br>
-                ${subtitle}
-                ${usage}
-                ${meta.length ? `<small class='text-muted'>${meta.join(' • ')}</small>` : ''}
-            </div>
-            <div class="d-flex gap-2 align-items-center">
-                <button class="btn btn-sm btn-outline-primary" data-add>Queue</button>
-                <button class="btn btn-sm btn-outline-secondary" data-cue>Cues</button>
-                ${item.loop ? '<span class="badge text-bg-info">Loop</span>' : ''}
-            </div>
-        </div>`;
-        li.querySelector('[data-add]').addEventListener('click', () => addToQueue(item));
-        li.querySelector('[data-cue]').addEventListener('click', () => selectCueItem(item));
-        psaList.appendChild(li);
-    });
-    if (!psaList.children.length) {
-        const li = document.createElement('li');
-        li.className = 'list-group-item text-muted';
-        li.textContent = 'No items found.';
-        psaList.appendChild(li);
-    }
-}
-
 function renderQueue() {
+    if (!queueList) {
+        persistQueueState();
+        updatePlaybackPanels();
+        return;
+    }
     queueList.innerHTML = '';
     const displayItems = [];
     if (currentItem) {
@@ -463,6 +820,7 @@ function renderQueue() {
         queueList.appendChild(li);
     });
     updateVTInsertOptions();
+    persistQueueState();
 }
 
 function updateAutomationModeUI() {
@@ -482,6 +840,12 @@ function updateAutomationModeUI() {
 
 function updateShowLogExport() {
     if (!showLogExport) return;
+    if (!enablePlaybackLogging) {
+        showLogExport.classList.add('disabled');
+        showLogExport.setAttribute('aria-disabled', 'true');
+        showLogExport.href = '#';
+        return;
+    }
     if (!activeLogSheetId) {
         showLogExport.classList.add('disabled');
         showLogExport.setAttribute('aria-disabled', 'true');
@@ -494,12 +858,10 @@ function updateShowLogExport() {
 }
 
 async function ensureShowRun() {
+    if (!enablePlaybackLogging) return null;
     if (activeShowRunId) return activeShowRunId;
     if (showRunStartPromise) return showRunStartPromise;
-    const payload = {
-        show_name: playbackSession?.show_name || undefined,
-        dj_name: playbackSession?.dj_name || undefined,
-    };
+    const payload = {};
     showRunStartPromise = fetch('/api/playback/show/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -532,6 +894,7 @@ function buildLogPayload(event, item, extra = {}) {
 }
 
 async function logPlaybackEvent(event, item, extra = {}) {
+    if (!enablePlaybackLogging) return;
     if (!item) return;
     await ensureShowRun();
     if (!activeShowRunId) return;
@@ -573,6 +936,11 @@ function logItemInsert(item, reason = 'manual') {
     logPlaybackEvent('insert', item, { reason });
 }
 
+function markItemStarted(item) {
+    if (!item) return;
+    item.started_at = new Date().toISOString();
+}
+
 function resetTimers() {
     const text = '00:00.00';
     timerEls.forEach(el => {
@@ -595,19 +963,13 @@ function resetTimers() {
 
 async function loadAutomationMode() {
     try {
-        const res = await fetch('/api/playback/session');
-        const data = await res.json();
-        if (res.ok && data.automation_mode) {
-            automationMode = data.automation_mode;
+        const stored = localStorage.getItem(AUTOMATION_STORAGE_KEY);
+        if (stored) {
+            const data = JSON.parse(stored);
+            if (data && data.mode) {
+                automationMode = data.mode;
+            }
         }
-        playbackSession = data;
-        if (data.show_run_id) {
-            activeShowRunId = data.show_run_id;
-        }
-        if (data.log_sheet_id) {
-            activeLogSheetId = data.log_sheet_id;
-        }
-        updateShowLogExport();
     } catch (err) {
         // ignore
     }
@@ -617,18 +979,11 @@ async function loadAutomationMode() {
 
 async function setAutomationMode(mode) {
     if (!['manual', 'automation'].includes(mode)) return;
+    automationMode = mode;
     try {
-        const res = await fetch('/api/playback/session', {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({automation_mode: mode})
-        });
-        const data = await res.json();
-        if (res.ok) {
-            automationMode = data.automation_mode || mode;
-        }
+        localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify({ mode }));
     } catch (err) {
-        automationMode = mode;
+        // ignore
     }
     updateAutomationModeUI();
     toggleAutomationPolling();
@@ -695,150 +1050,36 @@ function queueTypeFor(item) {
     return 'music';
 }
 
-function buildQueueMetadata(item) {
-    return {
-        url: item.url || null,
-        name: item.name || item.title || null,
-        category: item.category || null,
-        token: item.token || null,
-        loop: item.loop || null,
-        stop: Boolean(item.stop),
-        kind: item.kind || null,
-        metadata: item.metadata || null,
-    };
-}
-
-function buildLocalQueueItem(payload = {}) {
-    const metadata = payload.metadata || {};
-    const extra = metadata.metadata || {};
-    const kind = metadata.kind || payload.kind || payload.type || queueTypeFor(metadata);
-    return {
-        id: payload.id || payload.queue_item_id || null,
-        name: metadata.name || payload.title || 'Untitled',
-        title: payload.title || metadata.name || 'Untitled',
-        artist: payload.artist || metadata.artist || null,
-        duration: payload.duration || metadata.duration || null,
-        url: metadata.url || extra.url || null,
-        category: metadata.category || extra.category || null,
-        token: metadata.token || extra.token || null,
-        loop: metadata.loop ?? extra.loop ?? null,
-        stop: Boolean(metadata.stop || payload.kind === 'stop' || payload.type === 'stop'),
-        kind,
-        metadata: extra,
-        cues: payload.cues || metadata.cues || extra.cues || null,
-    };
-}
-
-async function syncNowPlaying(item, status = 'playing') {
-    const payload = { status };
-    if (item && item.id) {
-        payload.item_id = item.id;
-    } else if (item) {
-        payload.type = queueTypeFor(item);
-        payload.kind = item.kind || queueTypeFor(item);
-        payload.title = item.title || item.name || '';
-        payload.artist = item.artist || null;
-        payload.duration = item.duration || null;
-        payload.metadata = buildQueueMetadata(item);
-        payload.cues = item.cues || null;
-    }
-    try {
-        await fetch('/api/playback/now-playing', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-    } catch (err) {
-        // ignore
-    }
-}
-
-async function syncSkip() {
-    try {
-        await fetch('/api/playback/queue/skip', { method: 'POST' });
-    } catch (err) {
-        // ignore
-    }
-}
-
 async function enqueueQueueItem(item, position = null) {
-    const payload = {
-        type: queueTypeFor(item),
-        kind: item.kind || queueTypeFor(item),
-        title: item.title || item.name || 'Untitled',
-        artist: item.artist || null,
-        duration: item.duration || null,
-        metadata: buildQueueMetadata(item),
-        cues: item.cues || null,
-    };
-    if (position != null) payload.position = position;
-    try {
-        const res = await fetch('/api/playback/queue/enqueue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok || data.status !== 'ok' || !data.item) {
-            return null;
-        }
-        return buildLocalQueueItem(data.item);
-    } catch (err) {
-        return null;
+    const queuedItem = normalizeQueueItem(item);
+    if (position != null) {
+        queue.splice(position, 0, queuedItem);
+    } else {
+        queue.push(queuedItem);
     }
+    return queuedItem;
 }
 
-async function dequeueQueueItem(item) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/dequeue', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id }),
-        });
-    } catch (err) {
-        // ignore
-    }
+async function dequeueQueueItem() {
+    // local-only queue; state is updated by callers
 }
 
 async function moveQueueItem(item, position) {
-    if (!item || !item.id) return;
-    try {
-        await fetch('/api/playback/queue/move', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ item_id: item.id, position }),
-        });
-    } catch (err) {
-        // ignore
-    }
+    if (!item) return;
+    const idx = queue.indexOf(item);
+    if (idx === -1) return;
+    queue.splice(idx, 1);
+    queue.splice(position, 0, item);
 }
 
-async function loadPlaybackQueue() {
-    if (queueSyncInProgress) return;
-    queueSyncInProgress = true;
-    try {
-        const res = await fetch('/api/playback/queue');
-        if (!res.ok) throw new Error('Unable to load queue');
-        const data = await res.json();
-        queue.length = 0;
-        (data.queue || []).forEach(item => {
-            queue.push(buildLocalQueueItem(item));
-        });
-        currentItem = data.now_playing ? buildLocalQueueItem(data.now_playing) : null;
-        renderQueue();
-        updateVTInsertOptions();
-        if (currentItem) {
-            previewCues(currentItem);
-        } else if (queue.length) {
-            previewCues(queue[0]);
-        } else {
-            resetTimers();
-        }
-    } catch (err) {
-        // ignore
-    } finally {
-        queueSyncInProgress = false;
+function loadPlaybackQueue() {
+    loadQueueState();
+    renderQueue();
+    updateVTInsertOptions();
+    if (queue.length) {
+        previewCues(queue[0]);
+    } else {
+        resetTimers();
     }
 }
 
@@ -976,6 +1217,15 @@ function playOverlayItem(item) {
     try { overlayPlayer.play(); } catch (e) { /* ignore */ }
 }
 
+function stopOverlayPlayback() {
+    if (!overlayPlayer) return;
+    overlayPlayer.pause();
+    overlayPlayer.removeAttribute('src');
+    overlayPlayer.currentTime = 0;
+    overlayStopAt = null;
+    overlayStopForId = null;
+}
+
 function fadeOutCurrent() {
     const player = activePlayer();
     if (!player || !player.src) return;
@@ -988,9 +1238,9 @@ function fadeOutCurrent() {
             player.volume = 1;
             player.removeAttribute('src');
             currentItem = null;
-            syncNowPlaying(null, 'idle');
             resetTimers();
             renderQueue();
+            persistQueueState();
         }
     }, 80);
 }
@@ -1022,20 +1272,21 @@ function previewCues(item) {
 
 function stopAllAudio({ sync = true } = {}) {
     players.forEach(p => { p.el.pause(); p.el.removeAttribute('src'); p.el.volume = 1; });
+    stopOverlayPlayback();
     currentItem = null;
-    if (sync) {
-        syncNowPlaying(null, 'idle');
-    }
     resetTimers();
+    if (sync) {
+        persistQueueState();
+    }
 }
 
 async function addToQueue(item) {
     const queuedItem = await enqueueQueueItem(item, queue.length);
     if (!queuedItem) return;
-    queue.push(queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
-    if (!currentItem && queue.length === 1 && activePlayer().paused) {
+    const player = activePlayer();
+    if (!currentItem && queue.length === 1 && player && player.paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
@@ -1045,10 +1296,10 @@ async function insertToQueue(item, idx) {
     const position = Math.max(0, Math.min(queue.length, idx));
     const queuedItem = await enqueueQueueItem(item, position);
     if (!queuedItem) return;
-    queue.splice(position, 0, queuedItem);
     logItemInsert(queuedItem);
     updateVTInsertOptions();
-    if (!currentItem && position === 0 && activePlayer().paused) {
+    const player = activePlayer();
+    if (!currentItem && position === 0 && player && player.paused) {
         startFrom(0, currentIdx, 'auto');
     }
     renderQueue();
@@ -1095,7 +1346,7 @@ function overlayEligible(item) {
     return item && OVERLAY_KINDS.includes(item.kind);
 }
 
-function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowPlayingState = true } = {}) {
+function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     const item = queue[idx];
     if (!item) return;
     if (item.stop) {
@@ -1124,6 +1375,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
     currentIdx = preferredIdx;
     currentItem = item;
     playerObj.item = item;
+    markItemStarted(item);
     const cues = item.cues || {};
     const hasLoop = cues.loop_in != null && cues.loop_out != null;
     loopBetween.disabled = !hasLoop;
@@ -1135,9 +1387,6 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual', { syncNowP
         removed.forEach(entry => dequeueQueueItem(entry));
     }
     queue.shift();
-    if (syncNowPlayingState) {
-        syncNowPlaying(item, 'playing');
-    }
     player.src = item.url;
     player.volume = 1;
     applyPlaybackRate(player, item);
@@ -1164,10 +1413,8 @@ function playNext(reason = 'skip') {
     autoNextTriggered = false;
     prestartedIdx = null;
     if (queue.length) {
-        syncSkip();
-        startFrom(0, currentIdx, 'auto', { syncNowPlayingState: false });
+        startFrom(0, currentIdx, 'auto');
     } else {
-        syncNowPlaying(null, 'idle');
         renderQueue();
     }
 }
@@ -1213,16 +1460,12 @@ function startNextWithOverlay(reason = 'auto') {
     nextPlayer.volume = 1;
     currentIdx = nextIdx;
     currentItem = nextItem;
+    markItemStarted(nextItem);
     queue.shift();
     prestartedIdx = null;
     autoNextTriggered = false;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentPlaying) {
         logItemEnd(currentPlaying, reason);
     }
@@ -1247,11 +1490,6 @@ function fadeAndNext(reason = 'auto') {
     nextPlayer.volume = 1;
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
-    if (reason !== 'auto') {
-        syncSkip();
-    } else {
-        syncNowPlaying(nextItem, 'playing');
-    }
     if (currentItem) {
         logItemEnd(currentItem, reason);
     }
@@ -1266,6 +1504,7 @@ function fadeAndNext(reason = 'auto') {
             shiftPastStops();
             currentIdx = nextIdx;
             currentItem = nextItem;
+            markItemStarted(nextItem);
             queue.shift();
             prestartedIdx = null;
             applyPlaybackRate();
@@ -1306,7 +1545,7 @@ function updateTimer() {
         const introRem = Math.max(0, cues.intro - player.currentTime);
         introBadge.style.display = 'inline-block';
         introBadge.textContent = `Intro: ${introRem.toFixed(1)}s`;
-        const flash = introRem > 0 && introRem <= 5;
+        const flash = introRem > 0 && introRem <= 8;
         introBadge.classList.toggle('countdown-flash', flash);
         introBadge.classList.toggle('text-bg-danger', flash);
     } else {
@@ -1319,7 +1558,7 @@ function updateTimer() {
         const outroRem = Math.max(0, cues.outro - player.currentTime);
         outroBadge.style.display = 'inline-block';
         outroBadge.textContent = `Outro: ${outroRem.toFixed(1)}s`;
-        const flash = outroRem > 0 && outroRem <= 5;
+        const flash = outroRem > 0 && outroRem <= 8;
         outroBadge.classList.toggle('countdown-flash', flash);
         outroBadge.classList.toggle('text-bg-danger', flash);
     } else {
@@ -1328,6 +1567,23 @@ function updateTimer() {
         outroBadge.classList.remove('countdown-flash','text-bg-danger');
     }
     updateTalkOverlay(cues, player.currentTime, player.duration);
+
+    if (automationMode !== 'automation' && overlayPlayer) {
+        const overlayCandidate = queue.find(item => overlayEligible(item));
+        const nextTrack = queue.find(item => !overlayEligible(item) && !item.stop);
+        if (!overlayPlayer.src && overlayCandidate && currentItem && currentItem.kind === 'music') {
+            if (cues.outro && player.currentTime >= cues.outro) {
+                overlayStopAt = nextTrack?.cues?.intro ?? null;
+                overlayStopForId = nextTrack?.id ?? null;
+                playOverlayItem(overlayCandidate);
+            }
+        }
+        if (overlayStopAt != null && overlayStopForId && currentItem && currentItem.id === overlayStopForId) {
+            if (player.currentTime >= overlayStopAt) {
+                stopOverlayPlayback();
+            }
+        }
+    }
 
     if (automationMode !== 'automation') {
         // Auto-advance when start_next cue is hit.
@@ -1386,10 +1642,10 @@ function handleEnded(idx) {
         if (prestartedIdx !== null && players[prestartedIdx].item === queue[0]) {
             currentIdx = prestartedIdx;
             currentItem = queue[0];
+            markItemStarted(currentItem);
             prestartedIdx = null;
             applyPlaybackRate();
             queue.shift();
-            syncNowPlaying(currentItem, 'playing');
             logItemStart(currentItem, 'auto');
             startTimer();
             renderQueue();
@@ -1402,14 +1658,27 @@ function handleEnded(idx) {
     }
 }
 
-document.getElementById('clearQueue').addEventListener('click', () => {
+const clearQueueBtn = document.getElementById('clearQueue');
+const overlayPlayBtn = document.getElementById('overlayPlay');
+const overlayUrlInput = document.getElementById('overlayUrl');
+const toggleTalkupBtn = document.getElementById('toggleTalkup');
+const cueStepBackBtn = document.getElementById('cueStepBack');
+const cueStepForwardBtn = document.getElementById('cueStepForward');
+const cueToggleBtn = document.getElementById('cueToggle');
+const cueSetBtn = document.getElementById('cueSet');
+const cueRemoveBtn = document.getElementById('cueRemove');
+const cueSaveBtn = document.getElementById('cueSave');
+const vtConfirmBtn = document.getElementById('vtConfirm');
+const vtDeleteBtn = document.getElementById('vtDelete');
+
+if (clearQueueBtn) clearQueueBtn.addEventListener('click', () => {
     const removed = queue.splice(0, queue.length);
     removed.forEach(entry => dequeueQueueItem(entry));
     stopFade();
     stopAllAudio();
     renderQueue();
 });
-togglePauseBtn.addEventListener('click', () => {
+if (togglePauseBtn) togglePauseBtn.addEventListener('click', () => {
     const player = activePlayer();
     if (!currentItem || !player || !player.src) return;
     if (player.paused) {
@@ -1420,19 +1689,19 @@ togglePauseBtn.addEventListener('click', () => {
         togglePauseBtn.textContent = 'Play';
     }
 });
-playNextBtn.addEventListener('click', () => playNext('manual'));
-addStopBtn.addEventListener('click', addStopCue);
-fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
-document.getElementById('overlayPlay').addEventListener('click', () => {
-    const url = document.getElementById('overlayUrl').value.trim();
+if (playNextBtn) playNextBtn.addEventListener('click', () => playNext('manual'));
+if (addStopBtn) addStopBtn.addEventListener('click', addStopCue);
+if (fadeOutBtn) fadeOutBtn.addEventListener('click', () => fadeAndNext('manual'));
+if (overlayPlayBtn && overlayUrlInput && overlayPlayer) overlayPlayBtn.addEventListener('click', () => {
+    const url = overlayUrlInput.value.trim();
     if (!url) return;
     overlayPlayer.src = url;
     overlayPlayer.play();
 });
-document.getElementById('toggleTalkup').addEventListener('click', () => {
+if (toggleTalkupBtn) toggleTalkupBtn.addEventListener('click', () => {
     talkUpMode = !talkUpMode;
-    document.getElementById('toggleTalkup').classList.toggle('btn-dark', talkUpMode);
-    document.getElementById('toggleTalkup').classList.toggle('btn-outline-dark', !talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-dark', talkUpMode);
+    toggleTalkupBtn.classList.toggle('btn-outline-dark', !talkUpMode);
     updateTalkOverlay(currentItem ? (currentItem.cues || {}) : null, activePlayer().currentTime || 0, activePlayer().duration || 0);
 });
 
@@ -1440,109 +1709,47 @@ modeToggleButtons.forEach(btn => {
     btn.addEventListener('click', () => setAutomationMode(btn.dataset.automationMode));
 });
 
-document.getElementById('psaSearch').addEventListener('input', (e) => renderLibrary(e.target.value || ''));
-categoryFilter.addEventListener('change', () => renderLibrary(document.getElementById('psaSearch').value || ''));
-document.getElementById('refreshPsa').addEventListener('click', () => loadPSAs());
-top40.addEventListener('change', () => {
+if (top40) top40.addEventListener('change', () => {
     players.forEach((p) => {
         preservesPitchOff(p.el);
-        if (p.item) {
+        if (p.el && p.item) {
             p.el.playbackRate = computePlaybackRate(p.item);
         }
     });
 });
 
 players.forEach((p, idx) => {
+    if (!p.el) return;
     preservesPitchOff(p.el);
-    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); togglePauseBtn.textContent = 'Pause'; } });
+    p.el.addEventListener('play', () => { if (idx === currentIdx) { startTimer(); applyPlaybackRate(p.el, p.item); if (togglePauseBtn) togglePauseBtn.textContent = 'Pause'; } });
     p.el.addEventListener('loadedmetadata', () => { if (p.item) { applyPlaybackRate(p.el, p.item); } });
-    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); togglePauseBtn.textContent = 'Play'; } });
+    p.el.addEventListener('pause', () => { if (idx === currentIdx) { stopTimer(); if (togglePauseBtn) togglePauseBtn.textContent = 'Play'; } });
     p.el.addEventListener('ended', () => handleEnded(idx));
 });
 
-overlayPlayer.addEventListener('ended', () => {
-    overlayPlayer.pause();
-    overlayPlayer.removeAttribute('src');
-    overlayPlayer.currentTime = 0;
-});
-
-async function loadPSAs() {
-    try {
-        const params = new URLSearchParams({
-            page: libraryPage,
-            per_page: libraryPerPage,
-        });
-        if (categoryFilter.value) params.set('category', categoryFilter.value);
-        if (libraryQuery) params.set('q', libraryQuery);
-        const res = await fetch(`/api/psa/library?${params.toString()}`);
-        const data = await res.json();
-        library = data.items || [];
-        libraryTotal = data.total || 0;
-        renderCategories(data.categories || []);
-        renderLibrary();
-        const start = libraryTotal ? ((data.page - 1) * data.per_page) + 1 : 0;
-        const end = Math.min(libraryTotal, data.page * data.per_page);
-        libraryMeta.textContent = libraryTotal
-            ? `Showing ${start}-${end} of ${libraryTotal}`
-            : 'No items found.';
-        libraryPrev.disabled = data.page <= 1;
-        libraryNext.disabled = end >= libraryTotal;
-    } catch (e) {
-        psaList.innerHTML = '<li class="list-group-item text-danger">Unable to load media.</li>';
-    }
+if (overlayPlayer) {
+    overlayPlayer.addEventListener('ended', () => {
+        stopOverlayPlayback();
+    });
 }
 
 if (!legacyPlayerEnabled) {
     return;
 }
-loadPSAs();
 loadPlaybackQueue();
-loadAutomationMode().then(() => ensureShowRun());
+loadAutomationMode();
 updateShowLogExport();
 
 window.addEventListener('beforeunload', () => {
+    if (!enablePlaybackLogging) return;
     if (!activeShowRunId) return;
     const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
     navigator.sendBeacon('/api/playback/show/stop', payload);
 });
 
-libraryPrev.addEventListener('click', async () => {
-    if (libraryPage <= 1) return;
-    libraryPage -= 1;
-    await loadPSAs();
-});
-libraryNext.addEventListener('click', async () => {
-    libraryPage += 1;
-    await loadPSAs();
-});
-categoryFilter.addEventListener('change', async () => {
-    libraryPage = 1;
-    await loadPSAs();
-});
-let searchTimer = null;
-psaSearch.addEventListener('input', () => {
-    if (searchTimer) clearTimeout(searchTimer);
-    searchTimer = setTimeout(async () => {
-        libraryQuery = psaSearch.value.trim();
-        libraryPage = 1;
-        await loadPSAs();
-    }, 250);
-});
-
-// Voice track recording
-const startRecBtn = document.getElementById('startRecord');
-const stopRecBtn = document.getElementById('stopRecord');
-const vtFile = document.getElementById('vtFile');
-const vtImport = document.getElementById('vtImport');
-const vtMeta = document.getElementById('vtMeta');
-const vtWaveCanvas = document.getElementById('vtWaveCanvas');
-const vtWaveInner = document.getElementById('vtWaveInner');
-const vtInsertPosition = document.getElementById('vtInsertPosition');
-const vtTitle = document.getElementById('vtTitle');
-const vtHost = document.getElementById('vtHost');
-const vtNotes = document.getElementById('vtNotes');
 
 function vtDisplayMeta(text) {
+    if (!vtMeta) return;
     vtMeta.textContent = text;
 }
 
@@ -1562,9 +1769,9 @@ function updateVTInsertOptions() {
 
 function collectVTMeta() {
     return {
-        title: vtTitle.value.trim(),
-        host: vtHost.value.trim(),
-        notes: vtNotes.value.trim(),
+        title: vtTitle ? vtTitle.value.trim() : '',
+        host: vtHost ? vtHost.value.trim() : '',
+        notes: vtNotes ? vtNotes.value.trim() : '',
     };
 }
 
@@ -1632,8 +1839,8 @@ function updatePendingVTFromBlob(blob, duration = null) {
     vtDisplayMeta(`${title}${duration ? ` • ${duration.toFixed(1)}s` : ''}`);
 }
 
-vtImport.addEventListener('click', () => vtFile.click());
-vtFile.addEventListener('change', async (e) => {
+if (vtImport) vtImport.addEventListener('click', () => { if (vtFile) vtFile.click(); });
+if (vtFile) vtFile.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (!file) return;
     try {
@@ -1646,10 +1853,11 @@ vtFile.addEventListener('change', async (e) => {
 });
 
 [vtTitle, vtHost, vtNotes].forEach(field => {
+    if (!field) return;
     field.addEventListener('input', syncPendingVTMeta);
 });
 
-startRecBtn.addEventListener('click', async () => {
+if (startRecBtn) startRecBtn.addEventListener('click', async () => {
     if (recorder) return;
     try {
         const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
@@ -1674,9 +1882,10 @@ startRecBtn.addEventListener('click', async () => {
         recorder = null;
     }
 });
-stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
+if (stopRecBtn) stopRecBtn.addEventListener('click', () => { if (recorder) recorder.stop(); });
 
-document.getElementById('vtConfirm').addEventListener('click', () => {
+if (vtConfirmBtn) vtConfirmBtn.addEventListener('click', () => {
+    if (!vtInsertPosition) return;
     if (pendingVT) {
         const value = vtInsertPosition.value;
         if (value === 'next') {
@@ -1695,7 +1904,7 @@ document.getElementById('vtConfirm').addEventListener('click', () => {
     document.getElementById('vtPending').classList.add('d-none');
     pendingVT = null;
 });
-document.getElementById('vtDelete').addEventListener('click', () => {
+if (vtDeleteBtn) vtDeleteBtn.addEventListener('click', () => {
     if (pendingVTUrl) URL.revokeObjectURL(pendingVTUrl);
     pendingVTUrl = null;
     pendingVTBlob = null;
@@ -1704,6 +1913,7 @@ document.getElementById('vtDelete').addEventListener('click', () => {
 });
 
 function updateTalkOverlay(cues, currentTime = 0, duration = 0) {
+    if (!talkOverlay || !talkOverlayIntro || !talkOverlayOutro) return;
     if (!talkUpMode || !cues) {
         talkOverlay.classList.add('d-none');
         return;
@@ -1819,21 +2029,22 @@ cueFields.forEach(field => {
 document.querySelectorAll('.cue-btn').forEach(btn => {
     btn.addEventListener('click', () => selectCueButton(btn.dataset.cue));
 });
-document.getElementById('cueStepBack').addEventListener('click', () => nudgeCue(-0.05));
-document.getElementById('cueStepForward').addEventListener('click', () => nudgeCue(0.05));
-document.getElementById('cueToggle').addEventListener('click', () => {
+if (cueStepBackBtn) cueStepBackBtn.addEventListener('click', () => nudgeCue(-0.05));
+if (cueStepForwardBtn) cueStepForwardBtn.addEventListener('click', () => nudgeCue(0.05));
+if (cueToggleBtn) cueToggleBtn.addEventListener('click', () => {
+    if (!cuePlayer) return;
     if (cuePlayer.paused) cuePlayer.play(); else cuePlayer.pause();
 });
-document.getElementById('cueSet').addEventListener('click', () => {
+if (cueSetBtn) cueSetBtn.addEventListener('click', () => {
     if (!cuePlayer || isNaN(cuePlayer.currentTime)) return;
     cueInputs[cueSelected].value = cuePlayer.currentTime.toFixed(2);
     updateCueMarkers();
 });
-document.getElementById('cueRemove').addEventListener('click', () => {
+if (cueRemoveBtn) cueRemoveBtn.addEventListener('click', () => {
     cueInputs[cueSelected].value = '';
     updateCueMarkers();
 });
-document.getElementById('cueSave').addEventListener('click', async () => {
+if (cueSaveBtn) cueSaveBtn.addEventListener('click', async () => {
     if (!cueItem || !cueItem.token) return;
     const payload = {};
     cueFields.forEach(field => {
@@ -1850,7 +2061,6 @@ document.getElementById('cueSave').addEventListener('click', async () => {
         if (data.status === 'ok') {
             cueItem.cues = data.cue || payload;
             renderQueue();
-            renderLibrary(document.getElementById('psaSearch').value || '');
         } else {
             alert('Unable to save cues.');
         }
@@ -1859,11 +2069,13 @@ document.getElementById('cueSave').addEventListener('click', async () => {
     }
 });
 
-cuePlayer.addEventListener('timeupdate', updateCueNeedle);
-cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+if (cuePlayer) {
+    cuePlayer.addEventListener('timeupdate', updateCueNeedle);
+    cuePlayer.addEventListener('loadedmetadata', updateCueMarkers);
+}
 
-cueWave.addEventListener('mousedown', (e) => {
-    if (!cuePlayer.duration) return;
+if (cueWave) cueWave.addEventListener('mousedown', (e) => {
+    if (!cuePlayer || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
     const pct = Math.max(0, Math.min(1, x / cueWave.clientWidth));
@@ -1871,14 +2083,15 @@ cueWave.addEventListener('mousedown', (e) => {
     updateCueNeedle();
 });
 
-cueMarkers.addEventListener('mousedown', (e) => {
+if (cueMarkers) cueMarkers.addEventListener('mousedown', (e) => {
     if (!e.target.dataset.cue) return;
     cueDragField = e.target.dataset.cue;
     cueDragNeedle = false;
 });
-cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
+if (cueNeedle) cueNeedle.addEventListener('mousedown', () => { cueDragNeedle = true; cueDragField = null; });
 document.addEventListener('mouseup', () => { cueDragNeedle = false; cueDragField = null; });
 document.addEventListener('mousemove', (e) => {
+    if (!cuePlayer || !cueWave) return;
     if ((!cueDragNeedle && !cueDragField) || !cuePlayer.duration) return;
     const rect = cueWave.getBoundingClientRect();
     const x = e.clientX - rect.left + cueWave.scrollLeft;
