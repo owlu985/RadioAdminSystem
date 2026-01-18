@@ -155,8 +155,14 @@
     function nudge(delta) {
         if (!player || isNaN(player.currentTime)) return;
         const wasPlaying = !player.paused;
-        player.currentTime = Math.max(0, Math.min(player.duration || 0, player.currentTime + delta));
+        const input = document.getElementById(selectedCue);
+        const baseValue = parseFloat(input?.value || '');
+        const startingPoint = !isNaN(baseValue) ? baseValue : player.currentTime;
+        const updated = Math.max(0, Math.min(player.duration || 0, startingPoint + delta));
+        if (input) input.value = updated.toFixed(2);
+        player.currentTime = updated;
         updateNeedle();
+        updateMarkers();
         if (wasPlaying) {
             player.play().catch(() => {});
         }
@@ -170,15 +176,25 @@
     function drawWaveform() {
         if (!waveCanvas || !peaksData) return;
         const peakLen = (peaksData.mono?.length || peaksData.left?.length || peaksData.right?.length || 0);
-        baseWidth = Math.max(wave.clientWidth || 1200, peakLen ? Math.min(peakLen, 8000) : 1200);
-        waveCanvas.width = baseWidth;
-        waveCanvas.style.width = `${baseWidth}px`;
-        waveInner.style.width = `${baseWidth}px`;
-        markersLayer.style.width = `${baseWidth}px`;
-        markersLayer.style.minWidth = `${baseWidth}px`;
+        const waveStyle = wave ? getComputedStyle(wave) : null;
+        const paddingLeft = waveStyle ? parseFloat(waveStyle.paddingLeft) || 0 : 0;
+        const paddingRight = waveStyle ? parseFloat(waveStyle.paddingRight) || 0 : 0;
+        const availableWidth = Math.max(0, (wave?.clientWidth || 0) - paddingLeft - paddingRight);
+        baseWidth = Math.max(availableWidth || 1200, peakLen ? Math.min(peakLen, 8000) : 1200);
+        const ratio = window.devicePixelRatio || 1;
+        const cssWidth = baseWidth;
+        const cssHeight = waveCanvas.height;
+        waveCanvas.width = Math.floor(cssWidth * ratio);
+        waveCanvas.height = Math.floor(cssHeight * ratio);
+        waveCanvas.style.width = `${cssWidth}px`;
+        waveCanvas.style.height = `${cssHeight}px`;
+        waveInner.style.width = `${cssWidth}px`;
+        markersLayer.style.width = `${cssWidth}px`;
+        markersLayer.style.minWidth = `${cssWidth}px`;
         const ctx = waveCanvas.getContext('2d');
-        const width = waveCanvas.width;
-        const height = waveCanvas.height;
+        ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+        const width = cssWidth;
+        const height = cssHeight;
         ctx.clearRect(0,0,width,height);
         const mono = peaksData.mono || peaksData.left || peaksData || [];
         const right = peaksData.right || [];
@@ -196,7 +212,7 @@
         ctx.lineTo(width, height/2);
         ctx.stroke();
         const len = data.length;
-        const step = Math.max(1, Math.floor(len / width));
+        const step = Math.max(1, Math.floor(len / (width * 1.5)));
         const mid = height/2;
         const leftGrad = ctx.createLinearGradient(0,0,width,0);
         leftGrad.addColorStop(0,'#0d6efd');
@@ -219,17 +235,47 @@
             }
         }
         for (let i=0,x=0;i<len;i+=step, x++) {
-            const p = parseFloat(data[i]) || 0;
-            const h = Math.min(mid-10, Math.abs(p)*mid);
+            let min = 1.0;
+            let max = -1.0;
+            for (let j = 0; j < step; j++) {
+                const idx = i + j;
+                const datum = parseFloat(data[idx]);
+                if (Number.isNaN(datum)) continue;
+                if (datum < min) min = datum;
+                if (datum > max) max = datum;
+            }
+            if (min === 1.0 && max === -1.0) continue;
+            const h = Math.min(mid-10, Math.max(Math.abs(min), Math.abs(max)) * mid);
             ctx.fillStyle = leftGrad;
             ctx.fillRect(x, mid-h, 1, h);
             if (right.length) {
-                const pr = parseFloat(right[i]) || 0;
-                const hr = Math.min(mid-10, Math.abs(pr)*mid);
+                let minR = 1.0;
+                let maxR = -1.0;
+                for (let j = 0; j < step; j++) {
+                    const idx = i + j;
+                    const datum = parseFloat(right[idx]);
+                    if (Number.isNaN(datum)) continue;
+                    if (datum < minR) minR = datum;
+                    if (datum > maxR) maxR = datum;
+                }
+                if (minR === 1.0 && maxR === -1.0) continue;
+                const hr = Math.min(mid-10, Math.max(Math.abs(minR), Math.abs(maxR)) * mid);
                 ctx.fillStyle = rightGrad;
                 ctx.fillRect(x, mid+1, 1, hr);
             }
         }
+    }
+
+    function getWaveMetrics() {
+        if (!wave || !waveInner) return { x: 0, width: 1 };
+        const rect = wave.getBoundingClientRect();
+        const styles = getComputedStyle(wave);
+        const paddingLeft = parseFloat(styles.paddingLeft) || 0;
+        const width = Math.max(1, (waveInner.clientWidth || wave.clientWidth || 1));
+        return {
+            x: rect.left + paddingLeft,
+            width,
+        };
     }
 
     function applyZoom() {
@@ -291,8 +337,8 @@
 
     function onDrag(ev) {
         if ((!dragField && !dragNeedle) || !waveInner || !player || !player.duration) return;
-        const rect = waveInner.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const metrics = getWaveMetrics();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - metrics.x + wave.scrollLeft) / metrics.width));
         const seconds = pct * player.duration;
         if (dragNeedle) {
             player.currentTime = seconds;
@@ -301,6 +347,7 @@
             input.value = seconds.toFixed(2);
             updateMarkers();
         }
+        updateNeedle();
     }
 
     function endDrag() {
@@ -312,9 +359,10 @@
 
     wave.addEventListener('click', (ev) => {
         if (!player || !player.duration) return;
-        const rect = waveInner.getBoundingClientRect();
-        const pct = Math.max(0, Math.min(1, (ev.clientX - rect.left) / rect.width));
+        const metrics = getWaveMetrics();
+        const pct = Math.max(0, Math.min(1, (ev.clientX - metrics.x + wave.scrollLeft) / metrics.width));
         player.currentTime = pct * player.duration;
+        updateNeedle();
     });
 
     needle.addEventListener('pointerdown', (ev) => {
