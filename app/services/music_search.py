@@ -1358,7 +1358,18 @@ def queues_snapshot():
 
 
 def load_cue(path: str) -> Optional[MusicCue]:
-    return MusicCue.query.filter_by(path=path).first()
+    cue = MusicCue.query.filter_by(path=path).first()
+    tag_cues = _read_radiodj_cue_tag(path)
+    if cue and tag_cues:
+        for field, val in tag_cues.items():
+            if getattr(cue, field) is None:
+                setattr(cue, field, val)
+        return cue
+    if cue:
+        return cue
+    if tag_cues:
+        return MusicCue(path=path, **tag_cues)
+    return None
 
 
 def save_cue(path: str, payload: Dict) -> MusicCue:
@@ -1465,3 +1476,108 @@ def _write_radiodj_cue_tag(path: str, payload: Dict) -> None:
     except Exception:
         # Silently ignore tagging errors so cue saving still succeeds in RAMS
         return
+
+
+def _read_radiodj_cue_tag(path: str) -> Dict[str, float]:
+    if not mutagen:
+        return {}
+
+    def _coerce_text(value):
+        if value is None:
+            return None
+        if isinstance(value, list):
+            for item in value:
+                coerced = _coerce_text(item)
+                if isinstance(coerced, str) and coerced.strip():
+                    return coerced
+            return _coerce_text(value[0]) if value else None
+        if hasattr(value, "decode"):
+            try:
+                return value.decode("utf-8", errors="ignore").strip("\x00")
+            except Exception:
+                pass
+        try:
+            from mutagen.mp4 import MP4FreeForm  # type: ignore
+        except Exception:  # noqa: BLE001
+            MP4FreeForm = None  # type: ignore
+        if MP4FreeForm is not None and isinstance(value, MP4FreeForm):
+            try:
+                return value.decode("utf-8", errors="ignore").strip("\x00")
+            except Exception:
+                try:
+                    return bytes(value).decode("utf-8", errors="ignore").strip("\x00")
+                except Exception:
+                    return str(value)
+        if isinstance(value, bytes):
+            try:
+                return value.decode("utf-8", errors="ignore").strip("\x00")
+            except Exception:
+                return None
+        if isinstance(value, str):
+            return value
+        try:
+            return str(value)
+        except Exception:
+            return None
+
+    def _parse_cues(tag_value: str) -> Dict[str, float]:
+        if not tag_value:
+            return {}
+        mapping = {
+            "sta": "cue_in",
+            "int": "intro",
+            "pin": "loop_in",
+            "pou": "loop_out",
+            "hin": "hook_in",
+            "hou": "hook_out",
+            "out": "outro",
+            "xta": "start_next",
+            "end": "cue_out",
+            "fin": "fade_in",
+            "fou": "fade_out",
+        }
+        cues: Dict[str, float] = {}
+        for part in tag_value.strip().split("&"):
+            if not part or "=" not in part:
+                continue
+            key, raw = part.split("=", 1)
+            field = mapping.get(key.strip())
+            if not field:
+                continue
+            try:
+                cues[field] = float(raw)
+            except Exception:
+                continue
+        return cues
+
+    tag_value = None
+    try:
+        ext = os.path.splitext(path)[1].lower()
+        if ext == ".mp3":
+            try:
+                from mutagen.id3 import ID3  # type: ignore
+            except Exception:
+                return {}
+            id3 = ID3(path)
+            for frame in id3.getall("TXXX"):
+                if getattr(frame, "desc", "") == "MusicID PUID":
+                    tag_value = _coerce_text(frame.text)
+                    break
+        elif ext in {".m4a", ".mp4", ".m4b"}:
+            try:
+                from mutagen.mp4 import MP4  # type: ignore
+            except Exception:
+                return {}
+            mp4 = MP4(path)
+            key = "----:com.apple.iTunes:MusicID PUID"
+            tag_value = _coerce_text(mp4.tags.get(key)) if mp4.tags else None
+        else:
+            audio = mutagen.File(path, easy=False)
+            if audio and audio.tags:
+                tag_value = _coerce_text(audio.tags.get("MusicID PUID"))
+    except Exception:
+        return {}
+
+    if not tag_value:
+        return {}
+    return _parse_cues(tag_value)
