@@ -971,15 +971,9 @@ def bulk_add_djs():
 @permission_required({"schedule:edit"})
 def bulk_add_shows():
     raw_lines = (request.form.get("bulk_shows") or "").strip()
-    primary_dj_id = request.form.get("primary_dj_id", type=int)
-    primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
 
     if not raw_lines:
         flash("Enter at least one show line to add.", "warning")
-        return redirect(url_for("main.shows"))
-
-    if not primary_dj:
-        flash("Select a primary host for the bulk shows.", "warning")
         return redirect(url_for("main.shows"))
 
     start_date = current_app.config["DEFAULT_START_DATE"]
@@ -988,7 +982,7 @@ def bulk_add_shows():
     end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
 
     pattern = re.compile(
-        r"^\\s*(?P<name>[^/]+?)\\s*/\\s*Start\\s*(?P<start>\\d{1,2}:\\d{2})\\s*-\\s*END\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU)\\s*$",
+        r"^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2})\\s*-\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU)\\s*$",
         re.IGNORECASE,
     )
     day_map = {
@@ -1024,8 +1018,8 @@ def bulk_add_shows():
             continue
 
         show = Show(
-            host_first_name=primary_dj.first_name,
-            host_last_name=primary_dj.last_name,
+            host_first_name="",
+            host_last_name="",
             show_name=show_name,
             genre=None,
             description=None,
@@ -2162,8 +2156,8 @@ def add_show():
             dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
 
             show = Show(
-                host_first_name=primary_dj.first_name,
-                host_last_name=primary_dj.last_name,
+                host_first_name="",
+                host_last_name="",
                 show_name=request.form.get('show_name'),
                 genre=request.form.get('genre'),
                 description=request.form.get('description'),
@@ -2210,11 +2204,7 @@ def edit_show(id):
                 flash("Select a primary host from the DJ list.", "danger")
                 return redirect(url_for('main.edit_show', id=id))
             selected_djs = request.form.getlist('dj_ids')
-            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
-            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
-
-            show.host_first_name = primary_dj.first_name
-            show.host_last_name = primary_dj.last_name
+            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
             show.show_name = request.form.get('show_name')
             show.genre = request.form.get('genre')
             show.description = request.form.get('description')
@@ -2239,17 +2229,12 @@ def edit_show(id):
             .order_by(DJ.first_name, DJ.last_name)
             .all()
         )
-        primary_dj = DJ.query.filter_by(first_name=show.host_first_name, last_name=show.host_last_name).first()
-        selected_primary_id = primary_dj.id if primary_dj else None
         selected_ids = {dj.id for dj in show.djs}
-        if selected_primary_id in selected_ids:
-            selected_ids.discard(selected_primary_id)
         return render_template(
             'edit_show.html',
             show=show,
             djs=all_djs,
             selected_ids=selected_ids,
-            selected_primary_id=selected_primary_id,
         )
     except Exception as e:
         logger.error(f"Error editing show: {e}")

@@ -77,6 +77,11 @@
                                 {% set _ = names.append(dj_name) %}
                             {% endif %}
                         {% endfor %}
+                        {{ names|join(', ') }}
+                    {% elif show.host_first_name or show.host_last_name %}
+                        {{ (show.host_first_name ~ ' ' ~ show.host_last_name).strip() }}
+                    {% else %}
+                        <span class="badge bg-warning text-dark">Unassigned</span>
                     {% endif %}
                     {{ names|join(', ') }}
                 </td>
@@ -167,18 +172,9 @@
                 </div>
                 <div class="modal-body">
                     <div class="mb-3">
-                        <label class="form-label" for="bulkPrimaryDj">Primary host</label>
-                        <select class="form-select" id="bulkPrimaryDj" name="primary_dj_id" required>
-                            <option value="">Select a DJ</option>
-                            {% for dj in djs %}
-                                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
-                            {% endfor %}
-                        </select>
-                    </div>
-                    <div class="mb-3">
                         <label class="form-label" for="bulkShows">Show lines</label>
-                        <textarea class="form-control" id="bulkShows" name="bulk_shows" rows="6" placeholder="Night Show / Start 18:00 - END 20:00 / TH" required></textarea>
-                        <div class="form-text">One show per line. Format: {NAME} / Start HH:MM - END HH:MM / {Day of week M/T/W/TH/F/SA/SU}</div>
+                        <textarea class="form-control" id="bulkShows" name="bulk_shows" rows="6" placeholder="Night Show / 18:00 - 20:00 / TH" required></textarea>
+                        <div class="form-text">One show per line. Format: {NAME} / {Start Time HH:MM} - {End Time HH:MM} / {Day of week M/T/W/TH/F/SA/SU}</div>
                     </div>
                 </div>
                 <div class="modal-footer">
