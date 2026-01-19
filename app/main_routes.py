@@ -984,7 +984,7 @@ def bulk_add_shows():
     end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
 
     pattern = re.compile(
-        r\"^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2})\\s*[-–—]\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU|MON|MONDAY|TUE|TUES|TUESDAY|WED|WEDNESDAY|THU|THUR|THURSDAY|FRI|FRIDAY|SAT|SATURDAY|SUN|SUNDAY)\\s*$\",
+        r"^\s*(?P<name>[^/]+?)\s*/\s*(?P<start>\d{1,2}:\d{2})\s*[-–—]\s*(?P<end>\d{1,2}:\d{2})\s*/\s*(?P<day>M|T|W|TH|F|SA|SU|MON|MONDAY|TUE|TUES|TUESDAY|WED|WEDNESDAY|THU|THUR|THURSDAY|FRI|FRIDAY|SAT|SATURDAY|SUN|SUNDAY)\s*$",
         re.IGNORECASE,
     )
     day_map = {
