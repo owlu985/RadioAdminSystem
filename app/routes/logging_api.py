@@ -29,10 +29,20 @@ def submit_log():
     if request.method == "POST":
         dj_id = request.form.get("dj_id", type=int)
         show_id = request.form.get("show_id", type=int)
+        show_run_id = request.form.get("show_run_id", type=int)
         show_name = request.form.get("show_name", "").strip()
         dj_first = request.form.get("dj_first_name", "").strip()
         dj_last = request.form.get("dj_last_name", "").strip()
         show_date_raw = request.form.get("show_date") or date.today().isoformat()
+        selected_run = ShowRun.query.get(show_run_id) if show_run_id else None
+        if show_run_id and not selected_run:
+            flash("Selected airing could not be found. Please try again.", "danger")
+            return redirect(url_for("logs.submit_log"))
+
+        if selected_run:
+            show_name = selected_run.show_name
+            dj_first = selected_run.dj_first_name
+            dj_last = selected_run.dj_last_name
 
         dj_obj = DJ.query.get(dj_id) if dj_id else None
         if dj_obj:
@@ -50,11 +60,14 @@ def submit_log():
             flash("DJ and show selection are required.", "danger")
             return redirect(url_for("logs.submit_log"))
 
-        try:
-            show_date = datetime.strptime(show_date_raw, "%Y-%m-%d").date()
-        except ValueError:
-            flash("Invalid show date.", "danger")
-            return redirect(url_for("logs.submit_log"))
+        if selected_run:
+            show_date = selected_run.start_time.date()
+        else:
+            try:
+                show_date = datetime.strptime(show_date_raw, "%Y-%m-%d").date()
+            except ValueError:
+                flash("Invalid show date.", "danger")
+                return redirect(url_for("logs.submit_log"))
 
         sheet = LogSheet(
             dj_first_name=dj_first,
@@ -64,21 +77,24 @@ def submit_log():
         )
         db.session.add(sheet)
 
-        current_show = get_current_show()
-        show_run = None
-        if current_show:
-            show_run = get_or_create_active_run(
-                show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
-                dj_first_name=current_show.host_first_name,
-                dj_last_name=current_show.host_last_name,
-            )
+        if selected_run:
+            show_run = selected_run
         else:
-            # Fallback run to satisfy NOT NULL constraint on legacy DBs
-            show_run = start_show_run(
-                dj_first_name=dj_first,
-                dj_last_name=dj_last,
-                show_name=show_name or "Unscheduled Show"
-            )
+            current_show = get_current_show()
+            show_run = None
+            if current_show:
+                show_run = get_or_create_active_run(
+                    show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
+                    dj_first_name=current_show.host_first_name,
+                    dj_last_name=current_show.host_last_name,
+                )
+            else:
+                # Fallback run to satisfy NOT NULL constraint on legacy DBs
+                show_run = start_show_run(
+                    dj_first_name=dj_first,
+                    dj_last_name=dj_last,
+                    show_name=show_name or "Unscheduled Show"
+                )
 
         rows = request.form.getlist("row_index")
         for idx in rows:
@@ -122,11 +138,24 @@ def submit_log():
         }
         for s in shows
     ]
+    show_runs = ShowRun.query.order_by(ShowRun.start_time.desc()).limit(60).all()
+    show_run_payload = [
+        {
+            "id": run.id,
+            "show_name": run.show_name,
+            "dj_first_name": run.dj_first_name,
+            "dj_last_name": run.dj_last_name,
+            "start_time": run.start_time.isoformat(),
+            "start_label": run.start_time.strftime("%Y-%m-%d %H:%M"),
+        }
+        for run in show_runs
+    ]
     return render_template(
         "logs_submit.html",
         now=datetime.utcnow(),
         djs=dj_payload,
         shows=show_payload,
+        show_runs=show_run_payload,
     )
 
 
