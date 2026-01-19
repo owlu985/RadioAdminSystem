@@ -69,6 +69,7 @@ def backup_data_snapshot() -> Optional[str]:
                     "last_name": dj.last_name,
                     "bio": dj.bio,
                     "photo_url": dj.photo_url,
+                    "is_public": dj.is_public,
                 }
                 for dj in DJ.query.order_by(DJ.id).all()
             ],

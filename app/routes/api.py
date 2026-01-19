@@ -1617,7 +1617,7 @@ def audit_run_detail(run_id):
 
 @api_bp.route("/djs")
 def list_djs_api():
-    items = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+    items = DJ.query.filter(DJ.is_public.is_(True)).order_by(DJ.last_name, DJ.first_name).all()
     payload = []
     for dj in items:
         payload.append({

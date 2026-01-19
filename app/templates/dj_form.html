@@ -42,6 +42,11 @@
             <label class="form-label">Description</label>
             <textarea class="form-control" name="description" rows="3">{{ dj.description if dj else '' }}</textarea>
         </div>
+        <div class="mb-3 form-check">
+            <input class="form-check-input" type="checkbox" id="isPublic" name="is_public" {% if dj is none or dj.is_public %}checked{% endif %}>
+            <label class="form-check-label" for="isPublic">Show on public DJ API</label>
+            <div class="form-text">Uncheck to hide this DJ from public API consumers (including the website).</div>
+        </div>
         <div class="mb-3">
             <label class="form-label">Shows (hold Ctrl/Cmd to multi-select)</label>
             <select class="form-select" name="show_ids" multiple size="6">
