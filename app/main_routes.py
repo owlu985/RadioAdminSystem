@@ -275,8 +275,13 @@ def shows():
         Show.start_date
     ).paginate(page=page, per_page=15)
 
+    all_djs = (
+        DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+        .order_by(DJ.first_name, DJ.last_name)
+        .all()
+    )
     logger.info("Rendering shows database page.")
-    return render_template('shows_database.html', shows=shows_column)
+    return render_template('shows_database.html', shows=shows_column, djs=all_djs)
 
 
 @main_bp.route('/schedule/grid')
@@ -909,6 +914,7 @@ def add_dj():
             bio=request.form.get("bio"),
             description=request.form.get("description"),
             photo_url=photo_url,
+            is_public=bool(request.form.get("is_public")),
         )
         selected = request.form.getlist("show_ids")
         if selected:
@@ -1063,6 +1069,7 @@ def edit_dj(dj_id):
         dj.bio = request.form.get("bio")
         dj.description = request.form.get("description")
         dj.photo_url = photo_url
+        dj.is_public = bool(request.form.get("is_public"))
         selected = request.form.getlist("show_ids")
         dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
         db.session.commit()
@@ -2139,8 +2146,14 @@ def add_show():
 
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            if not primary_dj:
+                flash("Select a primary host from the DJ list.", "danger")
+                return redirect(url_for('main.add_show'))
             selected_djs = request.form.getlist('dj_ids')
-            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
 
             show = Show(
                 host_first_name="",
@@ -2185,6 +2198,11 @@ def edit_show(id):
         if request.method == 'POST':
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            if not primary_dj:
+                flash("Select a primary host from the DJ list.", "danger")
+                return redirect(url_for('main.edit_show', id=id))
             selected_djs = request.form.getlist('dj_ids')
             dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
             show.show_name = request.form.get('show_name')

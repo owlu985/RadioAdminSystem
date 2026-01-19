@@ -66,8 +66,11 @@
             <tr>
                 <td>{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</td>
                 <td>
+                    {% set names = [] %}
+                    {% if show.host_first_name or show.host_last_name %}
+                        {% set _ = names.append((show.host_first_name ~ ' ' ~ show.host_last_name).strip()) %}
+                    {% endif %}
                     {% if show.djs and show.djs|length > 0 %}
-                        {% set names = [] %}
                         {% for dj in show.djs %}
                             {% set dj_name = (dj.first_name ~ ' ' ~ dj.last_name).strip() %}
                             {% if dj_name and dj_name not in names %}
@@ -80,6 +83,7 @@
                     {% else %}
                         <span class="badge bg-warning text-dark">Unassigned</span>
                     {% endif %}
+                    {{ names|join(', ') }}
                 </td>
                 <td>{{ show.genre or '-' }}</td>
                 <td style="max-width: 260px;">{{ show.description or '-' }}</td>
