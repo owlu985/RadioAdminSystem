@@ -1,11 +1,12 @@
 from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, Response, stream_with_context
-from io import BytesIO
+from io import BytesIO, StringIO
 from dataclasses import dataclass
 import mutagen  # type: ignore
 from mutagen.id3 import ID3  # type: ignore
 from mutagen.mp4 import MP4  # type: ignore
 import ffmpeg
 import json
+import csv
 import os
 import subprocess
 import secrets
@@ -971,9 +972,10 @@ def bulk_add_djs():
 @permission_required({"schedule:edit"})
 def bulk_add_shows():
     raw_lines = (request.form.get("bulk_shows") or "").strip()
+    csv_file = request.files.get("bulk_shows_csv")
 
-    if not raw_lines:
-        flash("Enter at least one show line to add.", "warning")
+    if not raw_lines and (not csv_file or not csv_file.filename):
+        flash("Enter at least one show line or upload a CSV file.", "warning")
         return redirect(url_for("main.shows"))
 
     start_date = current_app.config["DEFAULT_START_DATE"]
@@ -1013,6 +1015,24 @@ def bulk_add_shows():
 
     created = []
     skipped = []
+
+    def _create_show(show_name: str, start_time_obj, end_time_obj, day_key: str) -> None:
+        show = Show(
+            host_first_name="",
+            host_last_name="",
+            show_name=show_name,
+            genre=None,
+            description=None,
+            is_regular_host=True,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            start_time=start_time_obj,
+            end_time=end_time_obj,
+            days_of_week=normalize_days_list([day_key]),
+        )
+        db.session.add(show)
+        created.append(show_name)
+
     for raw_line in raw_lines.splitlines():
         line = raw_line.strip()
         if not line:
@@ -1032,22 +1052,30 @@ def bulk_add_shows():
         except ValueError:
             skipped.append(raw_line)
             continue
+        _create_show(show_name, start_time_obj, end_time_obj, day_key)
 
-        show = Show(
-            host_first_name="",
-            host_last_name="",
-            show_name=show_name,
-            genre=None,
-            description=None,
-            is_regular_host=True,
-            start_date=start_date_obj,
-            end_date=end_date_obj,
-            start_time=start_time_obj,
-            end_time=end_time_obj,
-            days_of_week=normalize_days_list([day_key]),
-        )
-        db.session.add(show)
-        created.append(show_name)
+    if csv_file and csv_file.filename:
+        content = csv_file.read().decode("utf-8-sig")
+        reader = csv.DictReader(StringIO(content))
+        for row in reader:
+            show_name = (row.get("ShowName") or "").strip()
+            start_val = (row.get("StartTime") or "").strip()
+            end_val = (row.get("EndTime") or "").strip()
+            day_val = (row.get("DayOfWeek") or "").strip()
+            if not show_name or not start_val or not end_val or not day_val:
+                skipped.append(", ".join([show_name, start_val, end_val, day_val]).strip() or "CSV row")
+                continue
+            day_key = day_map.get(day_val.upper())
+            if not day_key:
+                skipped.append(", ".join([show_name, start_val, end_val, day_val]))
+                continue
+            try:
+                start_time_obj = datetime.strptime(start_val, "%H:%M").time()
+                end_time_obj = datetime.strptime(end_val, "%H:%M").time()
+            except ValueError:
+                skipped.append(", ".join([show_name, start_val, end_val, day_val]))
+                continue
+            _create_show(show_name, start_time_obj, end_time_obj, day_key)
 
     if created:
         db.session.commit()
