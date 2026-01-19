@@ -40,12 +40,13 @@
             <input type="text" name="show_name" id="show_name" class="form-control" value="{{ show.show_name }}">
         </div>
         <div class="mb-3">
-            <label for="host_first_name" class="form-label">Host First Name:</label>
-            <input type="text" name="host_first_name" id="host_first_name" class="form-control" value="{{ show.host_first_name }}" required>
-        </div>
-        <div class="mb-3">
-            <label for="host_last_name" class="form-label">Host Last Name:</label>
-            <input type="text" name="host_last_name" id="host_last_name" class="form-control" value="{{ show.host_last_name }}" required>
+            <label for="primary_dj_id" class="form-label">Primary DJ:</label>
+            <select name="primary_dj_id" id="primary_dj_id" class="form-select" required>
+                <option value="">Select a DJ</option>
+                {% for dj in djs %}
+                    <option value="{{ dj.id }}" {% if dj.id == selected_primary_id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
+                {% endfor %}
+            </select>
         </div>
         <div class="mb-3">
             <label for="genre" class="form-label">Genre:</label>
@@ -93,13 +94,13 @@
         </div>
 
         <div class="mb-3">
-            <label for="dj_ids" class="form-label">DJs for this show:</label>
+            <label for="dj_ids" class="form-label">Additional co-hosts (optional):</label>
             <select name="dj_ids" id="dj_ids" class="form-select" multiple>
                 {% for dj in djs %}
                     <option value="{{ dj.id }}" {% if dj.id in selected_ids %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Select one or more DJs; the first DJ listed will be treated as primary for displays.</div>
+            <div class="form-text">Optional: choose co-hosts beyond the primary DJ.</div>
         </div>
         <button type="submit" class="btn btn-primary">
             <i class="bi bi-check-circle"></i> Update Show
