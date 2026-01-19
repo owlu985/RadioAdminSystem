@@ -15,6 +15,7 @@ from app.services.library_index import start_library_index_job
 from .utils import update_user_config, show_display_title, show_primary_host
 from datetime import date as date_cls
 import ffmpeg
+import mutagen
 import json
 import os
 
@@ -96,7 +97,44 @@ def _update_marathon_status(event_id: int, status: str, job_ids=None, canceled=F
     db.session.commit()
 
 
-def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None, label=None):
+def _format_host_list(hosts):
+    cleaned = [host.strip() for host in hosts if host and host.strip()]
+    if not cleaned:
+        return ""
+    if len(cleaned) == 1:
+        return cleaned[0]
+    if len(cleaned) == 2:
+        return f"{cleaned[0]} & {cleaned[1]}"
+    return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
+
+
+def _apply_recording_tags(path, show_name, hosts, recorded_at):
+    try:
+        audio = mutagen.File(path, easy=True)
+        if not audio:
+            logger.warning("Unable to tag recording %s (unsupported format).", path)
+            return
+        if audio.tags is None:
+            audio.add_tags()
+        host_text = _format_host_list(hosts)
+        title = f"{show_name} ({recorded_at.strftime('%m-%d-%Y')})"
+        comment = (
+            f"Official Logger File for {show_name}"
+            f"{' with ' + host_text if host_text else ''} on WLMC Radio. "
+            "The log for this show, if applicable, is available through the show/log management portal."
+        )
+        audio["title"] = [title]
+        audio["artist"] = [host_text] if host_text else []
+        audio["album"] = [show_name]
+        audio["comment"] = [comment]
+        audio.save()
+        logger.info("Applied metadata tags to recording %s.", path)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Failed to tag recording %s: %s", path, exc)
+
+
+def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
+                  label=None, show_name=None, hosts=None):
     """Records the stream using FFmpeg."""
 
     ctx = flask_app.app_context() if flask_app else None
@@ -120,8 +158,9 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             return
 
 
-    output_file = f"{output_file}_{datetime.now().strftime('%m-%d-%y')}_RAWDATA.mp3"
-    start_time = datetime.now().strftime('%H-%M-%S')
+    recorded_at = datetime.now()
+    output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA.mp3"
+    start_time = recorded_at.strftime('%H-%M-%S')
     try:
         if marathon_event_id:
             _update_marathon_status(marathon_event_id, "running")
@@ -136,6 +175,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 )
                 logger.info(f"Recording started for {output_file}.")
                 logger.info(f"Start time:{start_time}.")
+                if show_name:
+                    _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
                 if attempt == 2:
                     record_failure("recorder", reason="retry_success", restarted=True)
                 return
@@ -188,6 +229,11 @@ def schedule_recording(show):
 
     display_name = show_display_title(show)
     safe_name = display_name.replace(" ", "_")
+    hosts = []
+    if show.djs:
+        hosts = [f"{dj.first_name} {dj.last_name}".strip() for dj in show.djs]
+    elif show.host_first_name or show.host_last_name:
+        hosts = [f"{show.host_first_name} {show.host_last_name}".strip()]
 
     if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:
         show_folder = os.path.join(current_app.config['OUTPUT_FOLDER'], display_name)
@@ -203,7 +249,7 @@ def schedule_recording(show):
         scheduler.add_job(
             record_stream, 'cron',
             day_of_week=show.days_of_week, hour=show.start_time.hour, minute=show.start_time.minute,
-            args=[stream_url, duration, output_file, user_config_path],
+            args=[stream_url, duration, output_file, user_config_path, None, None, None, display_name, hosts],
             start_date=start_time,
             end_date=show.end_date,
         )
