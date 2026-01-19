@@ -51,6 +51,7 @@ from .models import (
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func
+from sqlalchemy.orm import load_only
 from functools import wraps
 from .logger import init_logger
 from app.auth_utils import (
@@ -274,7 +275,11 @@ def shows():
         Show.start_date
     ).paginate(page=page, per_page=15)
 
-    all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+    all_djs = (
+        DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+        .order_by(DJ.first_name, DJ.last_name)
+        .all()
+    )
     logger.info("Rendering shows database page.")
     return render_template('shows_database.html', shows=shows_column, djs=all_djs)
 
@@ -2178,7 +2183,11 @@ def add_show():
             return redirect(url_for('main.shows'))
 
         logger.info("Rendering add show page.")
-        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
         return render_template('add_show.html', config=current_app.config, djs=all_djs)
     except Exception as e:
         logger.error(f"Error adding show: {e}")
@@ -2225,7 +2234,11 @@ def edit_show(id):
             return redirect(url_for('main.shows'))
 
         logger.info(f'Rendering edit show page for show {id}.')
-        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
         primary_dj = DJ.query.filter_by(first_name=show.host_first_name, last_name=show.host_last_name).first()
         selected_primary_id = primary_dj.id if primary_dj else None
         selected_ids = {dj.id for dj in show.djs}
