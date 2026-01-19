@@ -41,6 +41,16 @@
         </div>
 
         <div class="mb-3">
+            <label for="primary_dj_id" class="form-label">Primary DJ:</label>
+            <select name="primary_dj_id" id="primary_dj_id" class="form-select" required>
+                <option value="">Select a DJ</option>
+                {% for dj in djs %}
+                    <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+                {% endfor %}
+            </select>
+        </div>
+
+        <div class="mb-3">
             <label for="genre" class="form-label">Genre:</label>
             <input type="text" name="genre" id="genre" class="form-control" placeholder="Rock, talk, news...">
         </div>
@@ -99,13 +109,13 @@
         </div>
 
         <div class="mb-3">
-            <label for="dj_ids" class="form-label">DJs for this show (optional):</label>
+            <label for="dj_ids" class="form-label">Additional co-hosts (optional):</label>
             <select name="dj_ids" id="dj_ids" class="form-select" multiple>
                 {% for dj in djs %}
                     <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Leave blank to assign DJs later.</div>
+            <div class="form-text">Optional: choose co-hosts beyond the primary DJ.</div>
         </div>
 
         <!-- Submit&Cancel Button -->

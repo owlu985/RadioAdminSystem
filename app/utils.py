@@ -145,11 +145,11 @@ def show_host_names(show: Show) -> str:
     if primary:
         names.append(primary)
     if getattr(show, "djs", None):
-        names = [f"{dj.first_name} {dj.last_name}".strip() for dj in show.djs]
-        names = [name for name in names if name]
-        if names:
-            return ", ".join(dict.fromkeys(names))
-    return f"{show.host_first_name} {show.host_last_name}".strip()
+        for dj in show.djs:
+            cohost = f"{dj.first_name} {dj.last_name}".strip()
+            if cohost and cohost not in names:
+                names.append(cohost)
+    return ", ".join(names)
 
 
 def show_primary_host(show: Show) -> tuple[str, str]:

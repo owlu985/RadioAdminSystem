@@ -982,17 +982,33 @@ def bulk_add_shows():
     end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
 
     pattern = re.compile(
-        r"^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2})\\s*[-–—]\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU)\\s*$",
+        r\"^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2})\\s*[-–—]\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU|MON|MONDAY|TUE|TUES|TUESDAY|WED|WEDNESDAY|THU|THUR|THURSDAY|FRI|FRIDAY|SAT|SATURDAY|SUN|SUNDAY)\\s*$\",
         re.IGNORECASE,
     )
     day_map = {
         "M": "mon",
+        "MON": "mon",
+        "MONDAY": "mon",
         "T": "tue",
+        "TUE": "tue",
+        "TUES": "tue",
+        "TUESDAY": "tue",
         "W": "wed",
+        "WED": "wed",
+        "WEDNESDAY": "wed",
         "TH": "thu",
+        "THU": "thu",
+        "THUR": "thu",
+        "THURSDAY": "thu",
         "F": "fri",
+        "FRI": "fri",
+        "FRIDAY": "fri",
         "SA": "sat",
+        "SAT": "sat",
+        "SATURDAY": "sat",
         "SU": "sun",
+        "SUN": "sun",
+        "SUNDAY": "sun",
     }
 
     created = []
@@ -2147,17 +2163,21 @@ def add_show():
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
             primary_dj_id = request.form.get('primary_dj_id', type=int)
-            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            primary_dj = (
+                DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+                .filter_by(id=primary_dj_id)
+                .first()
+            )
             if not primary_dj:
-                flash("Select a primary host from the DJ list.", "danger")
+                flash("Select a primary DJ for this show.", "danger")
                 return redirect(url_for('main.add_show'))
             selected_djs = request.form.getlist('dj_ids')
             cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
             dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
 
             show = Show(
-                host_first_name="",
-                host_last_name="",
+                host_first_name=primary_dj.first_name,
+                host_last_name=primary_dj.last_name,
                 show_name=request.form.get('show_name'),
                 genre=request.form.get('genre'),
                 description=request.form.get('description'),
@@ -2199,16 +2219,23 @@ def edit_show(id):
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
             primary_dj_id = request.form.get('primary_dj_id', type=int)
-            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            primary_dj = (
+                DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+                .filter_by(id=primary_dj_id)
+                .first()
+            )
             if not primary_dj:
-                flash("Select a primary host from the DJ list.", "danger")
+                flash("Select a primary DJ for this show.", "danger")
                 return redirect(url_for('main.edit_show', id=id))
             selected_djs = request.form.getlist('dj_ids')
-            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
             show.show_name = request.form.get('show_name')
             show.genre = request.form.get('genre')
             show.description = request.form.get('description')
             show.is_regular_host = 'is_regular_host' in request.form
+            show.host_first_name = primary_dj.first_name
+            show.host_last_name = primary_dj.last_name
             show.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
             show.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
             show.start_time = datetime.strptime(request.form['start_time'].strip(), '%H:%M').time()
@@ -2229,12 +2256,21 @@ def edit_show(id):
             .order_by(DJ.first_name, DJ.last_name)
             .all()
         )
+        primary_dj = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .filter_by(first_name=show.host_first_name, last_name=show.host_last_name)
+            .first()
+        )
+        selected_primary_id = primary_dj.id if primary_dj else None
         selected_ids = {dj.id for dj in show.djs}
+        if selected_primary_id in selected_ids:
+            selected_ids.discard(selected_primary_id)
         return render_template(
             'edit_show.html',
             show=show,
             djs=all_djs,
             selected_ids=selected_ids,
+            selected_primary_id=selected_primary_id,
         )
     except Exception as e:
         logger.error(f"Error editing show: {e}")
