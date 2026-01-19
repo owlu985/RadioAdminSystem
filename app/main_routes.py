@@ -921,6 +921,45 @@ def add_dj():
     return render_template("dj_form.html", dj=None, shows=shows)
 
 
+@main_bp.route("/djs/bulk-add", methods=["POST"])
+@admin_required
+def bulk_add_djs():
+    raw_names = (request.form.get("bulk_names") or "").strip()
+    if not raw_names:
+        flash("Enter at least one DJ name to add.", "warning")
+        return redirect(url_for("main.list_djs"))
+
+    entries = [entry.strip() for entry in raw_names.split(",") if entry.strip()]
+    created = []
+    skipped = []
+    for entry in entries:
+        parts = entry.split(maxsplit=1)
+        if len(parts) < 2:
+            skipped.append(entry)
+            continue
+        first_name, last_name = parts[0].strip(), parts[1].strip()
+        if not first_name or not last_name:
+            skipped.append(entry)
+            continue
+        dj = DJ(first_name=first_name, last_name=last_name)
+        db.session.add(dj)
+        created.append(f"{first_name} {last_name}")
+
+    if created:
+        db.session.commit()
+        flash(f"Added {len(created)} DJs.", "success")
+    else:
+        flash("No DJs were added. Provide first and last names separated by a space.", "warning")
+
+    if skipped:
+        flash(
+            f"Skipped {len(skipped)} entries without a first and last name: {', '.join(skipped)}",
+            "warning",
+        )
+
+    return redirect(url_for("main.list_djs"))
+
+
 @main_bp.route("/djs/<int:dj_id>/edit", methods=["GET", "POST"])
 @admin_required
 def edit_dj(dj_id):
