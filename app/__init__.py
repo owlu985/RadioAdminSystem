@@ -122,7 +122,9 @@ def create_app(config_class=Config):
                 if "entry_time" not in cols:
                     conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
                 if "dj" not in insp.get_table_names():
-                    conn.execute(text("CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, description TEXT, photo_url VARCHAR(255))"))
+                    conn.execute(text(
+                        "CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, description TEXT, photo_url VARCHAR(255), is_public BOOLEAN NOT NULL DEFAULT 1)"
+                    ))
                 if "show_dj" not in insp.get_table_names():
                     conn.execute(text("CREATE TABLE IF NOT EXISTS show_dj (show_id INTEGER NOT NULL, dj_id INTEGER NOT NULL, PRIMARY KEY (show_id, dj_id))"))
                 if "user" not in insp.get_table_names():
@@ -162,6 +164,9 @@ def create_app(config_class=Config):
                 dj_cols = {c["name"] for c in insp.get_columns("dj")}
                 if "description" not in dj_cols:
                     conn.execute(text("ALTER TABLE dj ADD COLUMN description TEXT"))
+                if "is_public" not in dj_cols:
+                    conn.execute(text("ALTER TABLE dj ADD COLUMN is_public BOOLEAN DEFAULT 1"))
+                    conn.execute(text("UPDATE dj SET is_public = 1 WHERE is_public IS NULL"))
                 if "dj_absence" not in insp.get_table_names():
                     conn.execute(text(
                         """
