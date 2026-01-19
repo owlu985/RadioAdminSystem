@@ -52,7 +52,7 @@ from .models import (
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func
-from sqlalchemy.orm import load_only
+from sqlalchemy.orm import load_only, selectinload
 from functools import wraps
 from .logger import init_logger
 from app.auth_utils import (
@@ -270,7 +270,9 @@ def shows():
     )
 
     page = request.args.get('page', 1, type=int)
-    shows_column = Show.query.order_by(
+    shows_column = Show.query.options(
+        selectinload(Show.djs).load_only(DJ.id, DJ.first_name, DJ.last_name)
+    ).order_by(
         day_order,
         Show.start_time,
         Show.start_date
