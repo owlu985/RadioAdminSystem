@@ -140,18 +140,25 @@ def format_show_window(show: Show) -> dict:
 
 
 def show_host_names(show: Show) -> str:
+    names = []
+    primary = f"{show.host_first_name} {show.host_last_name}".strip()
+    if primary:
+        names.append(primary)
     if getattr(show, "djs", None):
-        names = [f"{dj.first_name} {dj.last_name}" for dj in show.djs]
-        if names:
-            return ", ".join(names)
-    return f"{show.host_first_name} {show.host_last_name}".strip()
+        for dj in show.djs:
+            cohost = f"{dj.first_name} {dj.last_name}".strip()
+            if cohost and cohost not in names:
+                names.append(cohost)
+    return ", ".join(names)
 
 
 def show_primary_host(show: Show) -> tuple[str, str]:
+    if show.host_first_name or show.host_last_name:
+        return show.host_first_name, show.host_last_name
     if getattr(show, "djs", None):
         for dj in show.djs:
             return dj.first_name, dj.last_name
-    return show.host_first_name, show.host_last_name
+    return "", ""
 
 
 def show_display_title(show: Show) -> str:
