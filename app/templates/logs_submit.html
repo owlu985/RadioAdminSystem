@@ -43,7 +43,18 @@
             </div>
             <div class="col-md-3">
                 <label class="form-label">Show Date</label>
-                <input type="date" class="form-control" name="show_date" value="{{ now.date() }}" required>
+                <input type="date" class="form-control" name="show_date" id="show_date" value="{{ now.date() }}" required>
+            </div>
+            <div class="col-md-3">
+                <label class="form-label">Airing (optional)</label>
+                <div class="input-group">
+                    <input type="text" class="form-control" id="show_run_display" placeholder="Link an airing" readonly>
+                    <button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#showRunModal">
+                        Select
+                    </button>
+                    <button class="btn btn-outline-danger" type="button" id="clearShowRun">Clear</button>
+                </div>
+                <input type="hidden" name="show_run_id" id="show_run_id">
             </div>
         </div>
 
@@ -60,6 +71,27 @@
 
         <button type="submit" class="btn btn-primary mt-3">Submit Log</button>
     </form>
+</div>
+
+<div class="modal fade" id="showRunModal" tabindex="-1" aria-labelledby="showRunModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title" id="showRunModalLabel">Link to a recent airing</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted small mb-2">Choose a recent airing to connect this log to a recording.</p>
+                <select class="form-select" id="show_run_select">
+                    <option value="">-- Select an airing --</option>
+                </select>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" id="applyShowRun">Link airing</button>
+            </div>
+        </div>
+    </div>
 </div>
 
 <template id="rowTemplate">
@@ -104,11 +136,17 @@
     const artistSuggestions = document.getElementById('artistSuggestions');
     const djs = {{ djs|tojson }};
     const shows = {{ shows|tojson }};
+    const showRuns = {{ show_runs|tojson }};
     const djSelect = document.getElementById('dj_id');
     const showSelect = document.getElementById('show_id');
     const djFirst = document.getElementById('dj_first_name');
     const djLast = document.getElementById('dj_last_name');
     const showName = document.getElementById('show_name');
+    const showDateInput = document.getElementById('show_date');
+    const showRunDisplay = document.getElementById('show_run_display');
+    const showRunInput = document.getElementById('show_run_id');
+    const showRunSelect = document.getElementById('show_run_select');
+    const clearShowRun = document.getElementById('clearShowRun');
 
     function populateDJFields(id) {
         const dj = djs.find(d => d.id === Number(id));
@@ -152,6 +190,47 @@
         }
     }
 
+    function formatShowRun(run) {
+        const host = `${run.dj_first_name} ${run.dj_last_name}`.trim();
+        return `${run.show_name} — ${host} (${run.start_label})`;
+    }
+
+    function populateShowRuns() {
+        showRunSelect.innerHTML = '<option value="">-- Select an airing --</option>';
+        showRuns.forEach(run => {
+            const option = document.createElement('option');
+            option.value = run.id;
+            option.textContent = formatShowRun(run);
+            showRunSelect.appendChild(option);
+        });
+    }
+
+    function applyShowRun(runId) {
+        const run = showRuns.find(r => r.id === Number(runId));
+        if (!run) {
+            showRunDisplay.value = '';
+            showRunInput.value = '';
+            return;
+        }
+        showRunDisplay.value = formatShowRun(run);
+        showRunInput.value = run.id;
+        if (run.start_time) {
+            showDateInput.value = run.start_time.split('T')[0];
+        }
+        const matchingDj = djs.find(dj => (
+            dj.first_name === run.dj_first_name && dj.last_name === run.dj_last_name
+        ));
+        if (matchingDj) {
+            djSelect.value = matchingDj.id;
+            populateDJFields(matchingDj.id);
+        }
+        const matchingShow = shows.find(show => show.name === run.show_name);
+        if (matchingShow) {
+            showSelect.value = matchingShow.id;
+            showName.value = matchingShow.name;
+        }
+    }
+
     function loadSuggestions() {
         const data = JSON.parse(localStorage.getItem('wlmc_artists') || '[]');
         artistSuggestions.innerHTML = data.map(a => `<option value="${a}"></option>`).join('');
@@ -175,6 +254,18 @@
     showSelect.addEventListener('change', (e) => {
         const opt = e.target.selectedOptions[0];
         showName.value = opt ? opt.dataset.name || '' : '';
+    });
+
+    document.getElementById('applyShowRun').addEventListener('click', () => {
+        applyShowRun(showRunSelect.value);
+        const modal = bootstrap.Modal.getInstance(document.getElementById('showRunModal'));
+        if (modal) modal.hide();
+    });
+
+    clearShowRun.addEventListener('click', () => {
+        showRunDisplay.value = '';
+        showRunInput.value = '';
+        showRunSelect.value = '';
     });
 
     function addRow(data) {
@@ -284,6 +375,7 @@
     populateDJFields(djSelect.value || null);
     loadSuggestions();
     restoreRows();
+    populateShowRuns();
 </script>
 {% include '_footer.html' %}
 </body>
