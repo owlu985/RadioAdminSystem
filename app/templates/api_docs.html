@@ -23,7 +23,7 @@
             <pre><code>GET /api/now
 GET /api/now/widget
 GET /api/now/recent-tracks</code></pre>
-            Returns current scheduled show or automation/off-air with run metadata. The widget variant returns a compact automation payload when off-schedule. <code>/api/now/recent-tracks</code> returns the last 10 music log entries with cover image links.</li>
+            Returns current scheduled show or automation/off-air with run metadata. The widget variant returns a compact automation payload when off-schedule, using cached RadioDJ data when available. <code>/api/now/recent-tracks</code> returns the last 10 music log entries with cover image links.</li>
         <li><strong>Station Status (stream + probe):</strong>
             <pre><code>GET /api/stream/status</code></pre>
             Stream reachability, listener counts (Icecast), latest probe classification (live/auto/dead air), and dB ratios.</li>
