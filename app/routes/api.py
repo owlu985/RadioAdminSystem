@@ -666,9 +666,6 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
-    override_enabled = bool(base.get("override_enabled")) if isinstance(base, dict) else _override_enabled()
-    if not override_enabled:
-        return jsonify(base or {"status": "off_air"})
     nowplaying_payload = _get_cached_radiodj_nowplaying()
     if nowplaying_payload:
         base = base or {}
