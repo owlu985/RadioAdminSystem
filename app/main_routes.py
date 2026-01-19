@@ -51,6 +51,7 @@ from .models import (
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func
+from sqlalchemy.orm import load_only
 from functools import wraps
 from .logger import init_logger
 from app.auth_utils import (
@@ -274,8 +275,13 @@ def shows():
         Show.start_date
     ).paginate(page=page, per_page=15)
 
+    all_djs = (
+        DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+        .order_by(DJ.first_name, DJ.last_name)
+        .all()
+    )
     logger.info("Rendering shows database page.")
-    return render_template('shows_database.html', shows=shows_column)
+    return render_template('shows_database.html', shows=shows_column, djs=all_djs)
 
 
 @main_bp.route('/schedule/grid')
@@ -958,6 +964,94 @@ def bulk_add_djs():
         )
 
     return redirect(url_for("main.list_djs"))
+
+
+@main_bp.route("/shows/bulk-add", methods=["POST"])
+@permission_required({"schedule:edit"})
+def bulk_add_shows():
+    raw_lines = (request.form.get("bulk_shows") or "").strip()
+    primary_dj_id = request.form.get("primary_dj_id", type=int)
+    primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+
+    if not raw_lines:
+        flash("Enter at least one show line to add.", "warning")
+        return redirect(url_for("main.shows"))
+
+    if not primary_dj:
+        flash("Select a primary host for the bulk shows.", "warning")
+        return redirect(url_for("main.shows"))
+
+    start_date = current_app.config["DEFAULT_START_DATE"]
+    end_date = current_app.config["DEFAULT_END_DATE"]
+    start_date_obj = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
+
+    pattern = re.compile(
+        r"^\\s*(?P<name>[^/]+?)\\s*/\\s*Start\\s*(?P<start>\\d{1,2}:\\d{2})\\s*-\\s*END\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU)\\s*$",
+        re.IGNORECASE,
+    )
+    day_map = {
+        "M": "mon",
+        "T": "tue",
+        "W": "wed",
+        "TH": "thu",
+        "F": "fri",
+        "SA": "sat",
+        "SU": "sun",
+    }
+
+    created = []
+    skipped = []
+    for raw_line in raw_lines.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        match = pattern.match(line)
+        if not match:
+            skipped.append(raw_line)
+            continue
+        show_name = match.group("name").strip()
+        day_key = day_map.get(match.group("day").upper())
+        if not show_name or not day_key:
+            skipped.append(raw_line)
+            continue
+        try:
+            start_time_obj = datetime.strptime(match.group("start"), "%H:%M").time()
+            end_time_obj = datetime.strptime(match.group("end"), "%H:%M").time()
+        except ValueError:
+            skipped.append(raw_line)
+            continue
+
+        show = Show(
+            host_first_name=primary_dj.first_name,
+            host_last_name=primary_dj.last_name,
+            show_name=show_name,
+            genre=None,
+            description=None,
+            is_regular_host=True,
+            start_date=start_date_obj,
+            end_date=end_date_obj,
+            start_time=start_time_obj,
+            end_time=end_time_obj,
+            days_of_week=normalize_days_list([day_key]),
+        )
+        db.session.add(show)
+        created.append(show_name)
+
+    if created:
+        db.session.commit()
+        refresh_schedule()
+        flash(f"Added {len(created)} shows.", "success")
+    else:
+        flash("No shows were added. Check the formatting and try again.", "warning")
+
+    if skipped:
+        flash(
+            f"Skipped {len(skipped)} lines that did not match the required format.",
+            "warning",
+        )
+
+    return redirect(url_for("main.shows"))
 
 
 @main_bp.route("/djs/<int:dj_id>/edit", methods=["GET", "POST"])
@@ -2056,12 +2150,18 @@ def add_show():
 
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            if not primary_dj:
+                flash("Select a primary host from the DJ list.", "danger")
+                return redirect(url_for('main.add_show'))
             selected_djs = request.form.getlist('dj_ids')
-            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
 
             show = Show(
-                host_first_name=request.form['host_first_name'],
-                host_last_name=request.form['host_last_name'],
+                host_first_name=primary_dj.first_name,
+                host_last_name=primary_dj.last_name,
                 show_name=request.form.get('show_name'),
                 genre=request.form.get('genre'),
                 description=request.form.get('description'),
@@ -2081,7 +2181,11 @@ def add_show():
             return redirect(url_for('main.shows'))
 
         logger.info("Rendering add show page.")
-        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
         return render_template('add_show.html', config=current_app.config, djs=all_djs)
     except Exception as e:
         logger.error(f"Error adding show: {e}")
@@ -2098,11 +2202,17 @@ def edit_show(id):
         if request.method == 'POST':
             selected_days = request.form.getlist('days_of_week')
             normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = DJ.query.get(primary_dj_id) if primary_dj_id else None
+            if not primary_dj:
+                flash("Select a primary host from the DJ list.", "danger")
+                return redirect(url_for('main.edit_show', id=id))
             selected_djs = request.form.getlist('dj_ids')
-            dj_objs = DJ.query.filter(DJ.id.in_(selected_djs)).all() if selected_djs else []
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
 
-            show.host_first_name = request.form['host_first_name']
-            show.host_last_name = request.form['host_last_name']
+            show.host_first_name = primary_dj.first_name
+            show.host_last_name = primary_dj.last_name
             show.show_name = request.form.get('show_name')
             show.genre = request.form.get('genre')
             show.description = request.form.get('description')
@@ -2122,9 +2232,23 @@ def edit_show(id):
             return redirect(url_for('main.shows'))
 
         logger.info(f'Rendering edit show page for show {id}.')
-        all_djs = DJ.query.order_by(DJ.first_name, DJ.last_name).all()
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
+        primary_dj = DJ.query.filter_by(first_name=show.host_first_name, last_name=show.host_last_name).first()
+        selected_primary_id = primary_dj.id if primary_dj else None
         selected_ids = {dj.id for dj in show.djs}
-        return render_template('edit_show.html', show=show, djs=all_djs, selected_ids=selected_ids)
+        if selected_primary_id in selected_ids:
+            selected_ids.discard(selected_primary_id)
+        return render_template(
+            'edit_show.html',
+            show=show,
+            djs=all_djs,
+            selected_ids=selected_ids,
+            selected_primary_id=selected_primary_id,
+        )
     except Exception as e:
         logger.error(f"Error editing show: {e}")
         flash(f"Error editing show: {e}", "danger")

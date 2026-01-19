@@ -40,16 +40,14 @@
             <input type="text" name="show_name" id="show_name" class="form-control" placeholder="Optional show name">
         </div>
 
-        <!-- Host First Name -->
         <div class="mb-3">
-            <label for="host_first_name" class="form-label">Host First Name:</label>
-            <input type="text" name="host_first_name" id="host_first_name" class="form-control" required>
-        </div>
-
-        <!-- Host Last Name -->
-        <div class="mb-3">
-            <label for="host_last_name" class="form-label">Host Last Name:</label>
-            <input type="text" name="host_last_name" id="host_last_name" class="form-control" required>
+            <label for="primary_dj_id" class="form-label">Primary host:</label>
+            <select name="primary_dj_id" id="primary_dj_id" class="form-select" required>
+                <option value="">Select a DJ</option>
+                {% for dj in djs %}
+                    <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+                {% endfor %}
+            </select>
         </div>
 
         <div class="mb-3">
@@ -112,13 +110,13 @@
 
         <!-- DJs (multi-select) -->
         <div class="mb-3">
-            <label for="dj_ids" class="form-label">DJs for this show:</label>
+            <label for="dj_ids" class="form-label">Additional co-hosts:</label>
             <select name="dj_ids" id="dj_ids" class="form-select" multiple>
                 {% for dj in djs %}
                     <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Select one or more DJs; the first DJ listed will be treated as primary for displays.</div>
+            <div class="form-text">Optional: select co-hosts beyond the primary host.</div>
         </div>
 
         <!-- Submit&Cancel Button -->
