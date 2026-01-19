@@ -69,11 +69,16 @@
                     {% if show.djs and show.djs|length > 0 %}
                         {% set names = [] %}
                         {% for dj in show.djs %}
-                            {% set _ = names.append(dj.first_name ~ ' ' ~ dj.last_name) %}
+                            {% set dj_name = (dj.first_name ~ ' ' ~ dj.last_name).strip() %}
+                            {% if dj_name and dj_name not in names %}
+                                {% set _ = names.append(dj_name) %}
+                            {% endif %}
                         {% endfor %}
                         {{ names|join(', ') }}
+                    {% elif show.host_first_name or show.host_last_name %}
+                        {{ (show.host_first_name ~ ' ' ~ show.host_last_name).strip() }}
                     {% else %}
-                        {{ show.host_first_name }} {{ show.host_last_name }}
+                        <span class="badge bg-warning text-dark">Unassigned</span>
                     {% endif %}
                 </td>
                 <td>{{ show.genre or '-' }}</td>
@@ -136,6 +141,10 @@
         <i class="bi bi-plus-circle"></i> Add New Show
     </a>
 
+    <button type="button" class="btn btn-outline-primary mt-3 ms-2" data-bs-toggle="modal" data-bs-target="#bulkAddShowsModal">
+        <i class="bi bi-upload"></i> Bulk Add Shows
+    </button>
+
     <form action="{{ url_for('main.clear_all') }}" method="post" class="mt-3">
         <button type="submit" class="btn btn-danger" onclick="return confirmDelete()">
             <i class="bi bi-trash"></i> Clear All Shows
@@ -147,6 +156,30 @@
             return confirm("Are you sure you want to delete all shows? This action cannot be undone.");
         }
     </script>
+</div>
+
+<div class="modal fade" id="bulkAddShowsModal" tabindex="-1" aria-labelledby="bulkAddShowsModalLabel" aria-hidden="true">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <form method="post" action="{{ url_for('main.bulk_add_shows') }}">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="bulkAddShowsModalLabel">Bulk add shows</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label" for="bulkShows">Show lines</label>
+                        <textarea class="form-control" id="bulkShows" name="bulk_shows" rows="6" placeholder="Night Show / 18:00 - 20:00 / TH" required></textarea>
+                        <div class="form-text">One show per line. Format: {NAME} / {Start Time HH:MM} - {End Time HH:MM} / {Day of week M/T/W/TH/F/SA/SU}</div>
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Add Shows</button>
+                </div>
+            </form>
+        </div>
+    </div>
 </div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>

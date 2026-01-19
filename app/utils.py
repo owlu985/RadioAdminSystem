@@ -141,9 +141,10 @@ def format_show_window(show: Show) -> dict:
 
 def show_host_names(show: Show) -> str:
     if getattr(show, "djs", None):
-        names = [f"{dj.first_name} {dj.last_name}" for dj in show.djs]
+        names = [f"{dj.first_name} {dj.last_name}".strip() for dj in show.djs]
+        names = [name for name in names if name]
         if names:
-            return ", ".join(names)
+            return ", ".join(dict.fromkeys(names))
     return f"{show.host_first_name} {show.host_last_name}".strip()
 
 

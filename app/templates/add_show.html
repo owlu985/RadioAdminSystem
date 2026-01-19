@@ -40,18 +40,6 @@
             <input type="text" name="show_name" id="show_name" class="form-control" placeholder="Optional show name">
         </div>
 
-        <!-- Host First Name -->
-        <div class="mb-3">
-            <label for="host_first_name" class="form-label">Host First Name:</label>
-            <input type="text" name="host_first_name" id="host_first_name" class="form-control" required>
-        </div>
-
-        <!-- Host Last Name -->
-        <div class="mb-3">
-            <label for="host_last_name" class="form-label">Host Last Name:</label>
-            <input type="text" name="host_last_name" id="host_last_name" class="form-control" required>
-        </div>
-
         <div class="mb-3">
             <label for="genre" class="form-label">Genre:</label>
             <input type="text" name="genre" id="genre" class="form-control" placeholder="Rock, talk, news...">
@@ -110,15 +98,14 @@
             <div class="form-text">Hold Ctrl/Cmd to pick multiple days.</div>
         </div>
 
-        <!-- DJs (multi-select) -->
         <div class="mb-3">
-            <label for="dj_ids" class="form-label">DJs for this show:</label>
+            <label for="dj_ids" class="form-label">DJs for this show (optional):</label>
             <select name="dj_ids" id="dj_ids" class="form-select" multiple>
                 {% for dj in djs %}
                     <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
                 {% endfor %}
             </select>
-            <div class="form-text">Select one or more DJs; the first DJ listed will be treated as primary for displays.</div>
+            <div class="form-text">Leave blank to assign DJs later.</div>
         </div>
 
         <!-- Submit&Cancel Button -->
