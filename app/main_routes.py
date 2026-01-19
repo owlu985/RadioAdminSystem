@@ -914,6 +914,7 @@ def add_dj():
             bio=request.form.get("bio"),
             description=request.form.get("description"),
             photo_url=photo_url,
+            is_public=bool(request.form.get("is_public")),
         )
         selected = request.form.getlist("show_ids")
         if selected:
@@ -1074,6 +1075,7 @@ def edit_dj(dj_id):
         dj.bio = request.form.get("bio")
         dj.description = request.form.get("description")
         dj.photo_url = photo_url
+        dj.is_public = bool(request.form.get("is_public"))
         selected = request.form.getlist("show_ids")
         dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
         db.session.commit()

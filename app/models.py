@@ -43,6 +43,7 @@ class DJ(db.Model):
     bio = db.Column(db.Text, nullable=True)
     description = db.Column(db.Text, nullable=True)
     photo_url = db.Column(db.String(255), nullable=True)
+    is_public = db.Column(db.Boolean, default=True, nullable=False)
 
     shows = db.relationship("Show", secondary=show_dj, back_populates="djs")
 
