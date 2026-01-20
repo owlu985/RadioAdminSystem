@@ -37,6 +37,11 @@
                     <input type="text" class="form-control" name="filename" placeholder="DailyNews.mp3" value="{{ edit_type.filename if edit_type else '' }}" required>
                 </div>
                 <div class="col-md-4">
+                    <label class="form-label">Output directory</label>
+                    <input type="text" class="form-control" name="output_dir" placeholder="/path/to/RadioDJ/Import" value="{{ edit_type.output_dir if edit_type else '' }}">
+                    <div class="form-text">Leave blank to use the default NAS root directory.</div>
+                </div>
+                <div class="col-md-4">
                     <label class="form-label">Frequency</label>
                     <select class="form-select" name="frequency">
                         <option value="daily" {% if edit_type and edit_type.frequency == 'daily' %}selected{% endif %}>Daily</option>
@@ -118,6 +123,7 @@
                         <th>Key</th>
                         <th>Label</th>
                         <th>Filename</th>
+                        <th>Directory</th>
                         <th>Frequency</th>
                         <th>Status</th>
                         <th>Actions</th>
@@ -129,6 +135,7 @@
                             <td>{{ nt.key }}</td>
                             <td>{{ nt.label }}</td>
                             <td>{{ nt.filename }}</td>
+                            <td>{{ nt.output_dir or 'Default' }}</td>
                             <td>{{ nt.frequency }}</td>
                             <td>{{ 'Active' if nt.is_active else 'Disabled' }}</td>
                             <td>
@@ -141,7 +148,7 @@
                             </td>
                         </tr>
                     {% else %}
-                        <tr><td colspan="6" class="text-muted">No news types yet.</td></tr>
+                        <tr><td colspan="7" class="text-muted">No news types yet.</td></tr>
                     {% endfor %}
                 </tbody>
             </table>

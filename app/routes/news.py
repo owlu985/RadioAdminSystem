@@ -125,7 +125,9 @@ def activate_news_for_date(target_date: date, news_key: str | None = None) -> bo
         audio_path = os.path.join(storage_dir, cast.audio_filename)
         if not os.path.exists(audio_path):
             continue
-        dest = os.path.join(current_app.config["NAS_ROOT"], nt.filename)
+        output_dir = nt.output_dir or current_app.config["NAS_ROOT"]
+        os.makedirs(output_dir, exist_ok=True)
+        dest = os.path.join(output_dir, nt.filename)
         shutil.copy(audio_path, dest)
         logger.info("Activated %s file for %s -> %s", nt.key, target_date, dest)
         activated = True
@@ -313,6 +315,7 @@ def news_settings():
         key = (request.form.get("key") or "").strip().lower().replace(" ", "_")
         label = (request.form.get("label") or "").strip()
         filename = (request.form.get("filename") or "").strip()
+        output_dir = (request.form.get("output_dir") or "").strip()
         frequency = (request.form.get("frequency") or "daily").lower()
         rotation_day = request.form.get("rotation_day", type=int)
         active_days = request.form.getlist("active_days")
@@ -342,6 +345,7 @@ def news_settings():
         news_type.key = key
         news_type.label = label
         news_type.filename = filename
+        news_type.output_dir = output_dir or None
         news_type.frequency = frequency
         news_type.rotation_day = rotation_day if frequency == "weekly" else None
         news_type.active_days = ",".join(active_days) if frequency == "custom" else None
