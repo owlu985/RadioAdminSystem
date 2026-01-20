@@ -38,7 +38,7 @@
             <tr>
                 <td>{{ dj.first_name }} {{ dj.last_name }}</td>
                 <td>
-                    {% for show in dj.shows %}
+                    {% for show in dj.display_shows %}
                         <span class="badge bg-primary">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</span>
                     {% endfor %}
                 </td>

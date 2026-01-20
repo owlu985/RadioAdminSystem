@@ -51,7 +51,7 @@ from .models import (
     MarathonEvent,
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
-from sqlalchemy import case, func
+from sqlalchemy import case, func, tuple_
 from sqlalchemy.orm import load_only, selectinload
 from functools import wraps
 from .logger import init_logger
@@ -722,7 +722,48 @@ def media_file(token: str):
 @main_bp.route("/djs")
 @admin_required
 def list_djs():
-        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+        djs = (
+            DJ.query.options(
+                selectinload(DJ.shows).load_only(
+                    Show.id,
+                    Show.show_name,
+                    Show.host_first_name,
+                    Show.host_last_name,
+                )
+            )
+            .order_by(DJ.last_name, DJ.first_name)
+            .all()
+        )
+        name_pairs = {(dj.first_name, dj.last_name) for dj in djs}
+        primary_shows = []
+        if name_pairs:
+            primary_shows = (
+                Show.query.options(
+                    load_only(
+                        Show.id,
+                        Show.show_name,
+                        Show.host_first_name,
+                        Show.host_last_name,
+                    )
+                )
+                .filter(tuple_(Show.host_first_name, Show.host_last_name).in_(name_pairs))
+                .all()
+            )
+        primary_by_name = {}
+        for show in primary_shows:
+            key = (show.host_first_name, show.host_last_name)
+            primary_by_name.setdefault(key, []).append(show)
+
+        for dj in djs:
+            combined = []
+            seen_ids = set()
+            for show in list(dj.shows or []) + primary_by_name.get((dj.first_name, dj.last_name), []):
+                if show.id in seen_ids:
+                    continue
+                combined.append(show)
+                seen_ids.add(show.id)
+            dj.display_shows = combined
+
         return render_template("djs_list.html", djs=djs)
 
 
