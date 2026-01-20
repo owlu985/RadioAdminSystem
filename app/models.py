@@ -295,6 +295,7 @@ class NewsType(db.Model):
     key = db.Column(db.String(64), unique=True, nullable=False)
     label = db.Column(db.String(128), nullable=False)
     filename = db.Column(db.String(200), nullable=False)
+    output_dir = db.Column(db.String(255), nullable=True)
     frequency = db.Column(db.String(32), default="daily", nullable=False)
     rotation_day = db.Column(db.Integer, nullable=True)
     active_days = db.Column(db.String(32), nullable=True)
@@ -312,6 +313,7 @@ class NewsType(db.Model):
             "key": self.key,
             "label": self.label,
             "filename": self.filename,
+            "output_dir": self.output_dir,
             "frequency": self.frequency,
             "rotation_day": self.rotation_day,
             "active_days": self.active_days,
