@@ -184,6 +184,11 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "news_type" in insp.get_table_names():
+                    news_type_cols = {c["name"] for c in insp.get_columns("news_type")}
+                    if "output_dir" not in news_type_cols:
+                        conn.execute(text("ALTER TABLE news_type ADD COLUMN output_dir VARCHAR(255) DEFAULT ''"))
+                        conn.execute(text("UPDATE news_type SET output_dir = '' WHERE output_dir IS NULL"))
                 if "show" in insp.get_table_names():
                     show_cols = {c["name"] for c in insp.get_columns("show")}
                     if "is_temporary" not in show_cols:
