@@ -2212,6 +2212,7 @@ def add_show():
                 genre=request.form.get('genre'),
                 description=request.form.get('description'),
                 is_regular_host='is_regular_host' in request.form,
+                is_temporary='is_temporary' in request.form,
                 start_date=start_date_obj,
                 end_date=end_date_obj,
                 start_time=start_time_obj,
@@ -2264,6 +2265,7 @@ def edit_show(id):
             show.genre = request.form.get('genre')
             show.description = request.form.get('description')
             show.is_regular_host = 'is_regular_host' in request.form
+            show.is_temporary = 'is_temporary' in request.form
             show.host_first_name = primary_dj.first_name
             show.host_last_name = primary_dj.last_name
             show.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()

@@ -83,6 +83,7 @@ class Show(db.Model):
     genre = db.Column(db.String(50), nullable=True)
     description = db.Column(db.Text, nullable=True)
     is_regular_host = db.Column(db.Boolean, default=True, nullable=False)
+    is_temporary = db.Column(db.Boolean, default=False, nullable=False)
 
     start_date = db.Column(db.Date, nullable=False)
     end_date = db.Column(db.Date, nullable=False)

@@ -184,6 +184,11 @@ def create_app(config_class=Config):
                         )
                         """
                     ))
+                if "show" in insp.get_table_names():
+                    show_cols = {c["name"] for c in insp.get_columns("show")}
+                    if "is_temporary" not in show_cols:
+                        conn.execute(text("ALTER TABLE show ADD COLUMN is_temporary BOOLEAN DEFAULT 0"))
+                        conn.execute(text("UPDATE show SET is_temporary = 0 WHERE is_temporary IS NULL"))
                 if "music_analysis" not in insp.get_table_names():
                     conn.execute(text(
                         """
