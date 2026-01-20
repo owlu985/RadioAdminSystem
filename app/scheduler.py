@@ -134,7 +134,7 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at):
 
 
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
-                  label=None, show_name=None, hosts=None):
+                  label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None):
     """Records the stream using FFmpeg."""
 
     ctx = flask_app.app_context() if flask_app else None
@@ -155,6 +155,15 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
         active_marathon = _active_marathon()
         if active_marathon:
             logger.info("Skipping show recording due to active marathon %s", active_marathon.name)
+            return
+
+    if show_start_date or show_end_date:
+        today = datetime.now().date()
+        if show_start_date and today < show_start_date:
+            logger.info("Skipping recording before show start date %s.", show_start_date)
+            return
+        if show_end_date and today > show_end_date:
+            logger.info("Skipping recording after show end date %s.", show_end_date)
             return
 
 
@@ -218,6 +227,10 @@ def delete_show(show_id):
 def schedule_recording(show):
     """Schedules the recurring recording and deletion of a show."""
 
+    if show.start_date and show.end_date and show.start_date > show.end_date:
+        logger.warning("Skipping show %s due to start date after end date.", show.id)
+        return
+
     start_time = datetime.combine(show.start_date, show.start_time)
     end_time = datetime.combine(show.start_date, show.end_time)
 
@@ -244,23 +257,39 @@ def schedule_recording(show):
 
     output_file = os.path.join(show_folder, safe_name)
     user_config_path = os.path.join(current_app.instance_path, 'user_config.json')
+    schedule_end = datetime.combine(show.end_date, show.end_time)
+    if show.end_time <= show.start_time:
+        schedule_end += timedelta(days=1)
 
     try:
         scheduler.add_job(
             record_stream, 'cron',
             day_of_week=show.days_of_week, hour=show.start_time.hour, minute=show.start_time.minute,
-            args=[stream_url, duration, output_file, user_config_path, None, None, None, display_name, hosts],
+            args=[
+                stream_url,
+                duration,
+                output_file,
+                user_config_path,
+                None,
+                None,
+                None,
+                display_name,
+                hosts,
+                show.start_date,
+                show.end_date,
+            ],
             start_date=start_time,
-            end_date=show.end_date,
+            end_date=schedule_end,
         )
         logger.info(f"Recording scheduled for show {show.id}.")
 
-        scheduler.add_job(
-            delete_show, 'date',
-            run_date=show.end_date + timedelta(days=1),
-            args=[show.id]
-        )
-        logger.info(f"Deletion scheduled for show {show.id} after last airing.")
+        if show.is_temporary:
+            scheduler.add_job(
+                delete_show, 'date',
+                run_date=schedule_end + timedelta(hours=1),
+                args=[show.id]
+            )
+            logger.info(f"Deletion scheduled for temporary show {show.id} after last airing.")
     except Exception as e:
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
 

@@ -107,20 +107,31 @@ def get_current_show(now: datetime | None = None):
         days = [d.strip() for d in (show_obj.days_of_week or "").split(',') if d.strip()]
         return key in days
 
+    def _within_date_range(show_obj: Show, show_date) -> bool:
+        if show_obj.start_date and show_date < show_obj.start_date:
+            return False
+        if show_obj.end_date and show_date > show_obj.end_date:
+            return False
+        return True
+
     for show in today_shows:
         if not _has_day(show, day_key):
+            continue
+        if not _within_date_range(show, now.date()):
             continue
         if show.start_time <= show.end_time:
             if show.start_time <= current_time < show.end_time:
                 return show
         else:
             # Overnight show into next day
-            if current_time >= show.start_time or current_time < show.end_time:
+            if current_time >= show.start_time:
                 return show
 
     # Handle shows that began yesterday and end after midnight today
     for show in today_shows:
         if not _has_day(show, yesterday_key):
+            continue
+        if not _within_date_range(show, now.date() - timedelta(days=1)):
             continue
         if show.end_time < show.start_time and current_time < show.end_time:
             return show
