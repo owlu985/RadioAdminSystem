@@ -69,6 +69,16 @@ class RadioDJClient:
         resp.raise_for_status()
         return resp.text
 
+    def _command_endpoint(self, endpoint: str, command: str, arg: Optional[str] = None, timeout: int = 10) -> str:
+        if not self.enabled:
+            raise RuntimeError("RadioDJ API disabled")
+        params = {"auth": self.api_password, "command": command}
+        if arg is not None:
+            params["arg"] = arg
+        resp = requests.get(self._endpoint(endpoint), params=params, timeout=timeout)
+        resp.raise_for_status()
+        return resp.text
+
     def _xml_to_dict(self, payload: str) -> dict:
         try:
             root = ElementTree.fromstring(payload)
@@ -84,6 +94,18 @@ class RadioDJClient:
                 continue
             data[tag.lower()] = (child.text or "").strip()
         return data
+
+    def _xml_list_to_dicts(self, payload: str) -> list[dict]:
+        try:
+            root = ElementTree.fromstring(payload)
+        except ElementTree.ParseError:
+            return []
+        items = []
+        for child in root:
+            item = self._element_to_dict(child)
+            if item:
+                items.append(item)
+        return items
 
     def list_psas(self) -> list:
         logger.info("RadioDJ PSA listing not supported by the plugin API.")
@@ -107,6 +129,9 @@ class RadioDJClient:
 
     def insert_track_top(self, track_id: str) -> None:
         self._command("LoadTrackToTop", str(track_id))
+
+    def set_item(self, command: str, arg: Optional[str] = None) -> str:
+        return self._command(command, arg)
 
     def set_autodj(self, enabled: bool) -> dict:
         try:
@@ -139,6 +164,17 @@ class RadioDJClient:
             logger.error("RadioDJ now playing fetch failed: %s", exc)
             return None
 
+    def status(self) -> dict:
+        if not self.enabled:
+            return {}
+        try:
+            resp = requests.get(self._endpoint("Status"), params={"auth": self.api_password}, timeout=6)
+            resp.raise_for_status()
+            return self._xml_to_dict(resp.text)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ status fetch failed: %s", exc)
+            return {}
+
     def playlist(self) -> list[dict]:
         if not self.enabled:
             return []
@@ -156,6 +192,45 @@ class RadioDJClient:
                 items.append(payload)
         return items
 
+    def playlists_main(self) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Playlists", "Main")
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ main playlist fetch failed: %s", exc)
+            return []
+
+    def playlists_list(self) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Playlists", "List")
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ playlists list fetch failed: %s", exc)
+            return []
+
+    def playlist_item_by_id(self, playlist_id: str) -> Optional[dict]:
+        if not self.enabled:
+            return None
+        try:
+            payload = self._command_endpoint("Playlists", "Item", playlist_id)
+            return self._xml_to_dict(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ playlist item fetch failed: %s", exc)
+            return None
+
+    def playlist_update(self, payload: str) -> str:
+        return self._command_endpoint("Playlists", "Update", payload)
+
+    def playlist_insert(self, payload: str) -> str:
+        return self._command_endpoint("Playlists", "Insert", payload)
+
+    def playlist_delete(self, playlist_id: str) -> str:
+        return self._command_endpoint("Playlists", "Delete", playlist_id)
+
     def playlist_item(self, index: int) -> Optional[dict]:
         if not self.enabled:
             return None
@@ -171,6 +246,115 @@ class RadioDJClient:
             logger.error("RadioDJ playlist item fetch failed: %s", exc)
             return None
         return payload or None
+
+    def rotations_list(self) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Rotations", "List")
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ rotations list fetch failed: %s", exc)
+            return []
+
+    def rotation_item(self, rotation_id: str) -> Optional[dict]:
+        if not self.enabled:
+            return None
+        try:
+            payload = self._command_endpoint("Rotations", "Item", rotation_id)
+            return self._xml_to_dict(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ rotation item fetch failed: %s", exc)
+            return None
+
+    def rotation_update(self, payload: str) -> str:
+        return self._command_endpoint("Rotations", "Update", payload)
+
+    def rotation_insert(self, payload: str) -> str:
+        return self._command_endpoint("Rotations", "Insert", payload)
+
+    def rotation_delete(self, rotation_id: str) -> str:
+        return self._command_endpoint("Rotations", "Delete", rotation_id)
+
+    def rotation_load(self, rotation_id: str) -> str:
+        return self._command_endpoint("Rotations", "Load", rotation_id)
+
+    def categories(self) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Categories", "Categories")
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ categories fetch failed: %s", exc)
+            return []
+
+    def subcategories(self, category_id: str) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Categories", "Subcategories", category_id)
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ subcategories fetch failed: %s", exc)
+            return []
+
+    def genres(self) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            payload = self._command_endpoint("Categories", "Genres")
+            return self._xml_list_to_dicts(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ genres fetch failed: %s", exc)
+            return []
+
+    def category_update(self, payload: str) -> str:
+        return self._command_endpoint("Categories", "UpdateCategory", payload)
+
+    def category_insert(self, payload: str) -> str:
+        return self._command_endpoint("Categories", "InsertCategory", payload)
+
+    def category_delete(self, payload: str) -> str:
+        return self._command_endpoint("Categories", "DeleteCategory", payload)
+
+    def genre_update(self, payload: str) -> str:
+        return self._command_endpoint("Categories", "UpdateGenre", payload)
+
+    def genre_insert(self, payload: str) -> str:
+        return self._command_endpoint("Categories", "InsertGenre", payload)
+
+    def genre_delete(self, genre_id: str) -> str:
+        return self._command_endpoint("Categories", "DeleteGenre", genre_id)
+
+    def tracks_search(self, payload: str) -> list[dict]:
+        if not self.enabled:
+            return []
+        try:
+            result = self._command_endpoint("Tracks", "Search", payload, timeout=15)
+            return self._xml_list_to_dicts(result)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ track search failed: %s", exc)
+            return []
+
+    def track_item(self, track_id: str) -> Optional[dict]:
+        if not self.enabled:
+            return None
+        try:
+            payload = self._command_endpoint("Tracks", "Item", track_id)
+            return self._xml_to_dict(payload)
+        except Exception as exc:  # noqa: BLE001
+            logger.error("RadioDJ track fetch failed: %s", exc)
+            return None
+
+    def track_update(self, payload: str) -> str:
+        return self._command_endpoint("Tracks", "Update", payload)
+
+    def track_insert(self, payload: str) -> str:
+        return self._command_endpoint("Tracks", "Insert", payload)
+
+    def track_delete(self, track_id: str) -> str:
+        return self._command_endpoint("Tracks", "Delete", track_id)
 
     def import_file(self, source_path: str, target_name: Optional[str] = None) -> Path:
         """
