@@ -18,6 +18,7 @@
       <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('main.plugins_home') }}">Back to Plugins</a>
     </div>
 
+    {% if can_rules %}
     <form class="card card-body mb-4" method="post">
       <h5 class="mb-3">New Rule</h5>
       <div class="row g-3">
@@ -29,25 +30,31 @@
           <label class="form-label">Match tag (optional)</label>
           <input class="form-control" name="match_tag" placeholder="e.g. marathon">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
+          <label class="form-label">Days of week</label>
+          <div class="d-flex flex-wrap gap-2">
+            {% for day in ['mon','tue','wed','thu','fri','sat','sun'] %}
+            <label class="form-check-label small text-muted">
+              <input class="form-check-input me-1" type="checkbox" name="days" value="{{ day }}">{{ day|upper }}
+            </label>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="col-md-4">
           <label class="form-label">Time window (start)</label>
           <input class="form-control" name="start_time" placeholder="HH:MM">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-4">
           <label class="form-label">Time window (end)</label>
           <input class="form-control" name="end_time" placeholder="HH:MM">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
           <label class="form-label">RadioDJ Track ID (optional)</label>
-          <input class="form-control" name="rdj_track_id" placeholder="1234">
+          <input class="form-control" name="radiodj_id" placeholder="1234">
         </div>
-        <div class="col-md-3">
+        <div class="col-md-6">
           <label class="form-label">RadioDJ Track Name (for search)</label>
-          <input class="form-control" name="rdj_track_name" placeholder="Urgent cut">
-        </div>
-        <div class="col-md-3">
-          <label class="form-label">Priority</label>
-          <input class="form-control" type="number" name="priority" value="100">
+          <input class="form-control" name="radiodj_title" placeholder="Urgent cut">
         </div>
         <div class="col-md-3">
           <label class="form-label">Enabled</label>
@@ -62,8 +69,9 @@
         <a class="btn btn-outline-secondary btn-sm" href="{{ url_for('api.now_playing') }}" target="_blank">Check RadioDJ Status</a>
       </div>
     </form>
+    {% endif %}
 
-    <div class="card">
+    <div class="card mb-4">
       <div class="card-header d-flex justify-content-between align-items-center">
         <span>Existing Rules</span>
         <small class="text-muted">Plugin: {{ plugin.display_name if plugin else 'Automation Bridge' }}</small>
@@ -74,9 +82,9 @@
             <tr>
               <th>Name</th>
               <th>Match Tag</th>
+              <th>Days</th>
               <th>Window</th>
               <th>RDJ Track</th>
-              <th>Priority</th>
               <th>Status</th>
               <th></th>
             </tr>
@@ -86,9 +94,9 @@
             <tr>
               <td>{{ rule.name }}</td>
               <td>{{ rule.match_tag or '—' }}</td>
+              <td>{{ rule.days_of_week or '—' }}</td>
               <td>{{ rule.start_time or '—' }} – {{ rule.end_time or '—' }}</td>
-              <td>{{ rule.rdj_track_id or '—' }} {{ ' / ' + rule.rdj_track_name if rule.rdj_track_name else '' }}</td>
-              <td>{{ rule.priority or 0 }}</td>
+              <td>{{ rule.radiodj_id or '—' }} {{ ' / ' + rule.radiodj_title if rule.radiodj_title else '' }}</td>
               <td>
                 {% if rule.enabled %}
                   <span class="badge bg-success">Enabled</span>
@@ -97,9 +105,11 @@
                 {% endif %}
               </td>
               <td class="text-end">
-                <form method="post" action="{{ url_for('api.delete_automation_rule', rule_id=rule.id) }}" onsubmit="return confirm('Delete this rule?');">
+                {% if can_rules %}
+                <form method="post" action="{{ url_for('automation_bridge_plugin.delete_rule', rule_id=rule.id) }}" onsubmit="return confirm('Delete this rule?');">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>
                 </form>
+                {% endif %}
               </td>
             </tr>
             {% else %}
@@ -109,6 +119,484 @@
         </table>
       </div>
     </div>
+
+    {% if can_rdj_read %}
+    <div class="card mb-4">
+      <div class="card-header">RadioDJ Status</div>
+      <div class="card-body">
+        {% if not rdj_enabled %}
+          <div class="alert alert-warning mb-0">RadioDJ API is not configured.</div>
+        {% else %}
+          <div class="row g-3">
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">AutoDJ</div>
+                <div class="fw-semibold">{{ rdj_status.get('autodj', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Assisted</div>
+                <div class="fw-semibold">{{ rdj_status.get('assisted', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Input</div>
+                <div class="fw-semibold">{{ rdj_status.get('input', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Paused</div>
+                <div class="fw-semibold">{{ rdj_status.get('paused', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Record</div>
+                <div class="fw-semibold">{{ rdj_status.get('record', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Loop</div>
+                <div class="fw-semibold">{{ rdj_status.get('loop', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Queue Count</div>
+                <div class="fw-semibold">{{ rdj_status.get('queuecount', '—') }}</div>
+              </div>
+            </div>
+            <div class="col-md-3">
+              <div class="border rounded p-2">
+                <div class="text-muted small">Listeners</div>
+                <div class="fw-semibold">{{ rdj_status.get('listenerscount', '—') }}</div>
+              </div>
+            </div>
+          </div>
+        {% endif %}
+      </div>
+    </div>
+
+    {% if can_rdj_write %}
+    <div class="card mb-4">
+      <div class="card-header">RadioDJ Quick Actions</div>
+      <div class="card-body">
+        <form class="row g-3" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_set_item') }}">
+          <div class="col-md-5">
+            <label class="form-label">Command</label>
+            <select class="form-select" name="command" required>
+              <option value="PlayFromIntro">Play From Intro</option>
+              <option value="RestartPlayer">Restart Player</option>
+              <option value="PausePlayer">Pause/Unpause</option>
+              <option value="StopPlayer">Stop Player</option>
+              <option value="Loop">Toggle Loop</option>
+              <option value="Record">Toggle Record</option>
+              <option value="EnableInput">Toggle Input</option>
+              <option value="EnableAutoDJ">Toggle AutoDJ</option>
+              <option value="EnableAssisted">Toggle Assisted</option>
+              <option value="PlayCartByNumber">Play Cart By Number</option>
+            </select>
+          </div>
+          <div class="col-md-4">
+            <label class="form-label">Argument (optional)</label>
+            <input class="form-control" name="arg" placeholder="0/1, cart number, etc.">
+          </div>
+          <div class="col-md-3 d-flex align-items-end">
+            <button class="btn btn-primary w-100" type="submit">Send Command</button>
+          </div>
+        </form>
+      </div>
+    </div>
+    {% endif %}
+
+    <div class="card mb-4">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <span>Main Playlist</span>
+        {% if can_rdj_write %}
+        <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+          <input type="hidden" name="action" value="clear">
+          <button class="btn btn-sm btn-outline-danger">Clear Playlist</button>
+        </form>
+        {% endif %}
+      </div>
+      <div class="card-body">
+        {% if can_rdj_write %}
+        <div class="row g-3 mb-3">
+          <form class="col-md-4" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+            <input type="hidden" name="action" value="load_top">
+            <label class="form-label">Load Track to Top (ID)</label>
+            <div class="input-group">
+              <input class="form-control" name="track_id" placeholder="1234">
+              <button class="btn btn-outline-primary" type="submit">Load</button>
+            </div>
+          </form>
+          <form class="col-md-4" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+            <input type="hidden" name="action" value="load_bottom">
+            <label class="form-label">Load Track to Bottom (ID)</label>
+            <div class="input-group">
+              <input class="form-control" name="track_id" placeholder="1234">
+              <button class="btn btn-outline-primary" type="submit">Load</button>
+            </div>
+          </form>
+          <form class="col-md-4" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+            <input type="hidden" name="action" value="load_playlist">
+            <label class="form-label">Append Saved Playlist (ID)</label>
+            <div class="input-group">
+              <input class="form-control" name="playlist_id" placeholder="10">
+              <button class="btn btn-outline-primary" type="submit">Append</button>
+            </div>
+          </form>
+        </div>
+        {% endif %}
+        <div class="table-responsive">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Title</th>
+                <th>Artist</th>
+                <th>Album</th>
+                <th>Duration</th>
+                {% if can_rdj_write %}
+                <th></th>
+                {% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for item in rdj_playlist %}
+              <tr>
+                <td>{{ loop.index0 }}</td>
+                <td>{{ item.get('title', '—') }}</td>
+                <td>{{ item.get('artist', '—') }}</td>
+                <td>{{ item.get('album', '—') }}</td>
+                <td>{{ item.get('duration', '—') }}</td>
+                {% if can_rdj_write %}
+                <td class="text-end">
+                  <div class="btn-group btn-group-sm">
+                    <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+                      <input type="hidden" name="action" value="play">
+                      <input type="hidden" name="index" value="{{ loop.index0 }}">
+                      <button class="btn btn-outline-primary">Play</button>
+                    </form>
+                    <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+                      <input type="hidden" name="action" value="remove">
+                      <input type="hidden" name="index" value="{{ loop.index0 }}">
+                      <button class="btn btn-outline-danger">Remove</button>
+                    </form>
+                  </div>
+                </td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted">No playlist items returned.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">Saved Playlists</div>
+      <div class="card-body">
+        <div class="table-responsive mb-3">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Items</th>
+                {% if can_rdj_write %}<th></th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for playlist in rdj_playlists %}
+              <tr>
+                <td>{{ playlist.get('id', '—') }}</td>
+                <td>{{ playlist.get('name', '—') }}</td>
+                <td>{{ playlist.get('items', '—') }}</td>
+                {% if can_rdj_write %}
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+                    <input type="hidden" name="action" value="load_playlist">
+                    <input type="hidden" name="playlist_id" value="{{ playlist.get('id', '') }}">
+                    <button class="btn btn-sm btn-outline-primary">Append</button>
+                  </form>
+                </td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted">No saved playlists returned.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_rdj_write %}
+        <form class="row g-3" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlists_save') }}">
+          <div class="col-md-3">
+            <label class="form-label">Action</label>
+            <select class="form-select" name="action" required>
+              <option value="insert">Insert</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Playlist ID (delete)</label>
+            <input class="form-control" name="playlist_id" placeholder="10">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Payload (insert/update)</label>
+            <textarea class="form-control" name="payload" rows="2" placeholder='{"ID":0,"Name":"My Playlist",...}'></textarea>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-outline-primary" type="submit">Send Playlist Update</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">Rotations</div>
+      <div class="card-body">
+        <div class="table-responsive mb-3">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Name</th>
+                <th>Description</th>
+                {% if can_rdj_write %}<th></th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for rotation in rdj_rotations %}
+              <tr>
+                <td>{{ rotation.get('id', '—') }}</td>
+                <td>{{ rotation.get('name', '—') }}</td>
+                <td>{{ rotation.get('description', '—') }}</td>
+                {% if can_rdj_write %}
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_rotations_save') }}">
+                    <input type="hidden" name="action" value="load">
+                    <input type="hidden" name="rotation_id" value="{{ rotation.get('id', '') }}">
+                    <button class="btn btn-sm btn-outline-primary">Load</button>
+                  </form>
+                </td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="4" class="text-center text-muted">No rotations returned.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+        {% if can_rdj_write %}
+        <form class="row g-3" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_rotations_save') }}">
+          <div class="col-md-3">
+            <label class="form-label">Action</label>
+            <select class="form-select" name="action" required>
+              <option value="insert">Insert</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+              <option value="load">Load</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Rotation ID (delete/load)</label>
+            <input class="form-control" name="rotation_id" placeholder="3">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Payload (insert/update)</label>
+            <textarea class="form-control" name="payload" rows="2" placeholder='{"ID":0,"Name":"Rotation",...}'></textarea>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-outline-primary" type="submit">Send Rotation Update</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">Categories & Genres</div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <h6>Categories</h6>
+            <ul class="list-group mb-3">
+              {% for category in rdj_categories %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ category.get('name', '—') }}</span>
+                <span class="text-muted small">ID {{ category.get('id', '—') }}</span>
+              </li>
+              {% else %}
+              <li class="list-group-item text-muted">No categories returned.</li>
+              {% endfor %}
+            </ul>
+            {% if can_rdj_write %}
+            <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_categories_save') }}">
+              <label class="form-label">Category Action</label>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <select class="form-select" name="action" required>
+                    <option value="insert">Insert</option>
+                    <option value="update">Update</option>
+                    <option value="delete">Delete</option>
+                  </select>
+                </div>
+                <div class="col-md-8">
+                  <input class="form-control" name="payload" placeholder='{"ID":0,"Name":"New Category"}'>
+                </div>
+              </div>
+              <button class="btn btn-outline-primary mt-2" type="submit">Send Category Update</button>
+            </form>
+            {% endif %}
+          </div>
+          <div class="col-md-6">
+            <h6>Genres</h6>
+            <ul class="list-group mb-3">
+              {% for genre in rdj_genres %}
+              <li class="list-group-item d-flex justify-content-between align-items-center">
+                <span>{{ genre.get('name', '—') }}</span>
+                <span class="text-muted small">ID {{ genre.get('id', '—') }}</span>
+              </li>
+              {% else %}
+              <li class="list-group-item text-muted">No genres returned.</li>
+              {% endfor %}
+            </ul>
+            {% if can_rdj_write %}
+            <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_genres_save') }}">
+              <label class="form-label">Genre Action</label>
+              <div class="row g-2">
+                <div class="col-md-4">
+                  <select class="form-select" name="action" required>
+                    <option value="insert">Insert</option>
+                    <option value="update">Update</option>
+                    <option value="delete">Delete</option>
+                  </select>
+                </div>
+                <div class="col-md-4">
+                  <input class="form-control" name="genre_id" placeholder="Genre ID (delete)">
+                </div>
+                <div class="col-md-4">
+                  <input class="form-control" name="payload" placeholder='{"ID":0,"Name":"Genre"}'>
+                </div>
+              </div>
+              <button class="btn btn-outline-primary mt-2" type="submit">Send Genre Update</button>
+            </form>
+            {% endif %}
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card mb-4">
+      <div class="card-header">Tracks</div>
+      <div class="card-body">
+        <form class="row g-3 align-items-end" method="get" action="{{ url_for('automation_bridge_plugin.manage') }}">
+          <div class="col-md-4">
+            <label class="form-label">Search keyword</label>
+            <input class="form-control" name="track_q" value="{{ track_query }}" placeholder="Artist/title">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Subcategory ID</label>
+            <input class="form-control" name="track_subcategory" value="{{ track_subcategory }}" placeholder="0">
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Genre ID</label>
+            <input class="form-control" name="track_genre" value="{{ track_genre }}" placeholder="0">
+          </div>
+          <div class="col-md-2">
+            <button class="btn btn-outline-primary w-100" type="submit">Search</button>
+          </div>
+        </form>
+
+        {% if rdj_track_item %}
+        <div class="alert alert-info mt-3">
+          <strong>Track {{ rdj_track_item.get('id', '') }}</strong> — {{ rdj_track_item.get('artist', '') }} - {{ rdj_track_item.get('title', '') }}
+        </div>
+        {% endif %}
+
+        <div class="table-responsive mt-3">
+          <table class="table table-sm align-middle">
+            <thead>
+              <tr>
+                <th>ID</th>
+                <th>Artist</th>
+                <th>Title</th>
+                <th>Album</th>
+                <th>Duration</th>
+                {% if can_rdj_write %}<th></th>{% endif %}
+              </tr>
+            </thead>
+            <tbody>
+              {% for track in rdj_track_results %}
+              <tr>
+                <td>{{ track.get('id', '—') }}</td>
+                <td>{{ track.get('artist', '—') }}</td>
+                <td>{{ track.get('title', '—') }}</td>
+                <td>{{ track.get('album', '—') }}</td>
+                <td>{{ track.get('duration', '—') }}</td>
+                {% if can_rdj_write %}
+                <td class="text-end">
+                  <form method="post" action="{{ url_for('automation_bridge_plugin.radiodj_playlist_action') }}">
+                    <input type="hidden" name="action" value="load_top">
+                    <input type="hidden" name="track_id" value="{{ track.get('id', '') }}">
+                    <button class="btn btn-sm btn-outline-primary">Load Top</button>
+                  </form>
+                </td>
+                {% endif %}
+              </tr>
+              {% else %}
+              <tr><td colspan="6" class="text-center text-muted">No tracks returned.</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+        </div>
+
+        {% if can_rdj_write %}
+        <div class="row g-3 mt-3">
+          <div class="col-md-4">
+            <form method="get" action="{{ url_for('automation_bridge_plugin.manage') }}">
+              <label class="form-label">Lookup Track ID</label>
+              <div class="input-group">
+                <input class="form-control" name="track_id" value="{{ track_id }}" placeholder="1234">
+                <button class="btn btn-outline-secondary" type="submit">Fetch</button>
+              </div>
+            </form>
+          </div>
+        </div>
+        <form class="row g-3 mt-3" method="post" action="{{ url_for('automation_bridge_plugin.radiodj_tracks_save') }}">
+          <div class="col-md-3">
+            <label class="form-label">Action</label>
+            <select class="form-select" name="action" required>
+              <option value="insert">Insert</option>
+              <option value="update">Update</option>
+              <option value="delete">Delete</option>
+            </select>
+          </div>
+          <div class="col-md-3">
+            <label class="form-label">Track ID (delete)</label>
+            <input class="form-control" name="track_id" placeholder="1234">
+          </div>
+          <div class="col-md-6">
+            <label class="form-label">Payload (insert/update)</label>
+            <textarea class="form-control" name="payload" rows="2" placeholder='{"ID":0,"Artist":"","Title":""}'></textarea>
+          </div>
+          <div class="col-12">
+            <button class="btn btn-outline-primary" type="submit">Send Track Update</button>
+          </div>
+        </form>
+        {% endif %}
+      </div>
+    </div>
+    {% endif %}
   </div>
   {% include '_footer.html' %}
 </body>

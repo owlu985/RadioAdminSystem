@@ -59,6 +59,8 @@ PERMISSION_GROUPS = [
             {"key": "plugins:manage", "label": "Manage plugins", "description": "Enable/disable and configure plugins."},
             {"key": "plugins:automation", "label": "Automation bridge", "description": "Use automation bridge tools."},
             {"key": "plugins:remote", "label": "Remote link", "description": "Create or join remote link sessions."},
+            {"key": "RDJ:read", "label": "RadioDJ read", "description": "View RadioDJ status, playlists, and library data."},
+            {"key": "RDJ:write", "label": "RadioDJ write", "description": "Manage RadioDJ playlists, rotations, categories, and tracks."},
         ],
     ),
     (

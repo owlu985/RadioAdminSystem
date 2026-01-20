@@ -22,6 +22,8 @@ This table summarizes the built-in roles and the permission scopes that can be g
 | audit:run | Audit tools: recording classification, explicit-content checks, stream/recorder health audits, and related dashboards. |
 | plugins:automation | Automation Bridge plugin (rule management, RadioDJ inserts). |
 | plugins:remote | Remote Studio Link plugin (session setup/removal). |
+| RDJ:read | RadioDJ read-only access (status, playlists, categories, tracks). |
+| RDJ:write | RadioDJ write access (playlists, rotations, categories, tracks, quick actions). |
 
 ## Notes
 - Admin-only routes currently accept users in roles `admin`, `manager`, or `ops`, or any user who has the `admin` scope explicitly assigned.
