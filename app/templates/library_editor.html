@@ -14,6 +14,12 @@
             max-height: 68vh;
             overflow: auto;
         }
+        .library-controls {
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
         .grid-card {
             border: 1px solid rgba(0,0,0,0.1);
             border-radius: 0.5rem;
@@ -81,47 +87,49 @@
                         </li>
                     </ul>
                 </div>
-                <div class="card-body library-pane">
-                    <div id="musicBrowser">
-                        <div class="mb-3">
-                            <div class="d-flex justify-content-between align-items-center mb-2">
-                                <div class="fw-semibold small text-uppercase text-muted">Browse</div>
-                                <div class="btn-group btn-group-sm" id="browseModeToggle" role="group" aria-label="Browse mode">
-                                    <button class="btn btn-outline-secondary active" data-browse="artist" type="button">Artist</button>
-                                    <button class="btn btn-outline-secondary" data-browse="genre" type="button">Genre</button>
+                <div class="card-body p-0">
+                    <div class="library-controls border-bottom p-3" id="musicControls">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold small text-uppercase text-muted">Browse</div>
+                            <div class="btn-group btn-group-sm" id="browseModeToggle" role="group" aria-label="Browse mode">
+                                <button class="btn btn-outline-secondary active" data-browse="artist" type="button">Artist</button>
+                                <button class="btn btn-outline-secondary" data-browse="genre" type="button">Genre</button>
+                            </div>
+                        </div>
+                        <input class="form-control form-control-sm" id="librarySearch" type="search" placeholder="Search artist, album, title, or genre">
+                    </div>
+                    <div class="library-pane p-3">
+                        <div id="musicBrowser">
+                            <div id="artistBrowser">
+                                <div class="mb-3">
+                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                    <div class="list-group list-group-flush" id="artistList"></div>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold small text-uppercase text-muted">Albums</div>
+                                    <div class="list-group list-group-flush" id="albumList"></div>
                                 </div>
                             </div>
-                            <input class="form-control form-control-sm" id="librarySearch" type="search" placeholder="Search artist, album, title, or genre">
+                            <div id="genreBrowser" class="d-none">
+                                <div class="mb-3">
+                                    <div class="fw-semibold small text-uppercase text-muted">Genres</div>
+                                    <div class="list-group list-group-flush" id="genreList"></div>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                    <div class="list-group list-group-flush" id="genreArtistList"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div id="artistBrowser">
+                        <div id="psaBrowser" class="d-none">
                             <div class="mb-3">
-                                <div class="fw-semibold small text-uppercase text-muted">Artists</div>
-                                <div class="list-group list-group-flush" id="artistList"></div>
+                                <div class="fw-semibold small text-uppercase text-muted">Collections</div>
+                                <div class="list-group list-group-flush" id="psaCategoryList"></div>
                             </div>
                             <div>
-                                <div class="fw-semibold small text-uppercase text-muted">Albums</div>
-                                <div class="list-group list-group-flush" id="albumList"></div>
+                                <div class="fw-semibold small text-uppercase text-muted">Items</div>
+                                <div class="list-group list-group-flush" id="psaItemList"></div>
                             </div>
-                        </div>
-                        <div id="genreBrowser" class="d-none">
-                            <div class="mb-3">
-                                <div class="fw-semibold small text-uppercase text-muted">Genres</div>
-                                <div class="list-group list-group-flush" id="genreList"></div>
-                            </div>
-                            <div>
-                                <div class="fw-semibold small text-uppercase text-muted">Artists</div>
-                                <div class="list-group list-group-flush" id="genreArtistList"></div>
-                            </div>
-                        </div>
-                    </div>
-                    <div id="psaBrowser" class="d-none">
-                        <div class="mb-3">
-                            <div class="fw-semibold small text-uppercase text-muted">Collections</div>
-                            <div class="list-group list-group-flush" id="psaCategoryList"></div>
-                        </div>
-                        <div>
-                            <div class="fw-semibold small text-uppercase text-muted">Items</div>
-                            <div class="list-group list-group-flush" id="psaItemList"></div>
                         </div>
                     </div>
                 </div>
@@ -277,6 +285,7 @@
     const sortLabel = document.getElementById('sortLabel');
     const librarySearch = document.getElementById('librarySearch');
     const trackFilterGroup = document.getElementById('trackFilter');
+    const musicControls = document.getElementById('musicControls');
 
     const formFields = {
         artist: document.getElementById('metaArtist'),
@@ -734,6 +743,7 @@
 
     const setMode = (mode) => {
         state.mode = mode;
+        musicControls.classList.toggle('d-none', mode !== 'music');
         document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
         document.getElementById('psaBrowser').classList.toggle('d-none', mode !== 'psa');
         trackFilterGroup.classList.toggle('d-none', mode !== 'music');
