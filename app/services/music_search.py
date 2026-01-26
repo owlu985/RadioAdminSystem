@@ -75,9 +75,16 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             continue
         prev = existing_files.get(full)
         if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
+            analysis = MusicAnalysis.query.filter_by(path=full).first()
+            if not analysis or _analysis_needs_stats(analysis):
+                tags = _read_tags(full)
+                _ensure_analysis(full, tags)
             new_files[full] = prev
             continue
         tags = _read_tags(full)
+        analysis = MusicAnalysis.query.filter_by(path=full).first()
+        if not analysis or _analysis_needs_stats(analysis):
+            _ensure_analysis(full, tags)
         rel_dir = os.path.relpath(os.path.dirname(full), root)
         folder = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
         search_blob = " ".join(filter(None, [
@@ -177,19 +184,30 @@ def build_library_editor_index() -> Dict:
             cues_by_path[cue.path] = cue_payload
     artists_map: Dict[str, Dict[str, Dict]] = {}
     genres_map: Dict[str, Dict] = {}
+    compilation_label = "Various Artists / Compilations"
     for entry in entries:
         path = entry.get("path") or ""
         title = entry.get("title") or os.path.splitext(os.path.basename(path))[0]
         artist = entry.get("artist") or "Unknown Artist"
+        album_artist = entry.get("album_artist") or ""
+        browse_artist = album_artist.strip() or artist
         album = entry.get("album") or "Unknown Album"
         year = entry.get("year")
         genre = entry.get("genre") or "Unknown Genre"
         cues = cues_by_path.get(path, {})
         is_recent = (entry.get("mtime") or 0) >= recent_cutoff
+        is_compilation = (
+            _is_compilation(album_artist)
+            or _is_compilation(artist)
+            or album_artist.strip().lower() in {"compilations", "compilation"}
+        )
+        if is_compilation:
+            browse_artist = compilation_label
         track_payload = {
             "title": title,
             "path": path,
             "artist": artist,
+            "album_artist": album_artist or None,
             "album": album,
             "year": year,
             "genre": genre,
@@ -199,7 +217,7 @@ def build_library_editor_index() -> Dict:
             "missing_cues": not bool(cues),
             "is_recent": is_recent,
         }
-        artist_bucket = artists_map.setdefault(artist, {})
+        artist_bucket = artists_map.setdefault(browse_artist, {})
         album_bucket = artist_bucket.setdefault(album, {"year": year, "genre": genre, "tracks": []})
         if not album_bucket.get("year") and year:
             album_bucket["year"] = year
@@ -209,10 +227,13 @@ def build_library_editor_index() -> Dict:
 
         genre_bucket = genres_map.setdefault(genre, {"tracks": [], "artists": set()})
         genre_bucket["tracks"].append(track_payload)
-        genre_bucket["artists"].add(artist)
+        genre_bucket["artists"].add(browse_artist)
 
     music_artists = []
-    for artist_name in sorted(artists_map.keys(), key=lambda name: name.lower()):
+    for artist_name in sorted(
+        artists_map.keys(),
+        key=lambda name: (name == compilation_label, name.lower()),
+    ):
         albums_map = artists_map[artist_name]
         albums_payload = []
         for album_name in sorted(albums_map.keys(), key=lambda name: name.lower()):
@@ -759,6 +780,15 @@ def _hash_file(path: str) -> Optional[str]:
         return None
 
 
+def _analysis_needs_stats(analysis: MusicAnalysis) -> bool:
+    return any(value is None for value in [
+        analysis.duration_seconds,
+        analysis.peak_db,
+        analysis.rms_db,
+        analysis.peaks,
+    ])
+
+
 def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
     existing = MusicAnalysis.query.filter_by(path=path).first()
     if existing:
@@ -767,6 +797,18 @@ def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
         existing.missing_tags = not (tags.get("artist") and tags.get("title") and tags.get("title") != base_title)
         if tags.get("bitrate"):
             existing.bitrate = tags["bitrate"]
+        if _analysis_needs_stats(existing):
+            duration_seconds, peak_db, rms_db, peaks = _audio_stats(path)
+            if duration_seconds is not None:
+                existing.duration_seconds = duration_seconds
+            if peak_db is not None:
+                existing.peak_db = peak_db
+            if rms_db is not None:
+                existing.rms_db = rms_db
+            if peaks:
+                existing.peaks = json.dumps(peaks)
+        if not existing.hash:
+            existing.hash = _hash_file(path)
         db.session.commit()
         return existing
     duration_seconds, peak_db, rms_db, peaks = _audio_stats(path)
