@@ -58,10 +58,10 @@
   </div>
 
   <div class="card mb-4">
-    <div class="card-header">Album clues & MoneyMusic</div>
+    <div class="card-header">Album clue</div>
     <div class="card-body">
       <div class="row g-3">
-        <div class="col-md-6">
+        <div class="col-12">
           <label class="form-label">Album clue (title/catalog/label)</label>
           <div class="input-group">
             <input type="text" id="album-query" class="form-control" placeholder="e.g., catalog number or album name">
@@ -69,15 +69,6 @@
           </div>
           <div class="form-text">Fetch matching rows from the archivist DB.</div>
           <div id="album-results" class="mt-2 small text-muted"></div>
-        </div>
-        <div class="col-md-6">
-          <label class="form-label">MoneyMusic price lookup</label>
-          <div class="input-group">
-            <input type="text" id="price-query" class="form-control" placeholder="Album, artist, catalog number">
-            <button class="btn btn-outline-secondary" type="button" onclick="lookupPrice()">Lookup</button>
-          </div>
-          <div class="form-text">Shows the PriceRange field from the archivist catalog.</div>
-          <div id="price-results" class="mt-2 small text-muted"></div>
         </div>
       </div>
     </div>
@@ -113,7 +104,7 @@
               <input type="number" id="track-ms" class="form-control" value="60000">
             </div>
           </div>
-          <button class="btn btn-primary mt-3" type="button" onclick="analyzeRip()">Analyze rip</button>
+          <button class="btn btn-primary mt-3" id="rip-analyze-button" type="button" onclick="analyzeRip()" disabled>Analyze rip</button>
           <div class="form-text">Suggests breakpoints while ignoring pops/crackles. Only works after an upload.</div>
           <div class="progress mt-2 d-none" id="rip-analyze-progress">
             <div class="progress-bar progress-bar-striped progress-bar-animated" role="progressbar" style="width:0%">Analyzing…</div>
@@ -247,6 +238,14 @@ const savedRips = {{ rip_results|tojson }};
 let currentSegments = [];
 let currentDuration = 0;
 let mbTracklist = [];
+let ripUploadReady = false;
+
+function setAnalyzeState(enabled) {
+  const analyzeButton = document.getElementById('rip-analyze-button');
+  if (!analyzeButton) return;
+  analyzeButton.disabled = !enabled;
+  analyzeButton.classList.toggle('disabled', !enabled);
+}
 
 function formatMs(ms) {
   const totalSeconds = Math.floor(ms / 1000);
@@ -266,22 +265,9 @@ async function lookupAlbum() {
     return;
   }
   target.innerText = data.map(r => {
-    const price = r.price_range ? ` · ${r.price_range}` : '';
+    const price = r.price_range ? ` · $${r.price_range}` : '';
     return `${r.artist || '-'} - ${r.title || r.album || ''} (${r.catalog_number || 'n/a'})${price}`;
   }).join('\n');
-}
-
-async function lookupPrice() {
-  const q = document.getElementById('price-query').value.trim();
-  if (!q) return;
-  const res = await fetch(`/api/archivist/album-info?q=${encodeURIComponent(q)}`);
-  const data = await res.json();
-  const target = document.getElementById('price-results');
-  if (!data.length) {
-    target.innerText = 'No matches.';
-    return;
-  }
-  target.innerText = data.map(r => `${r.artist || '-'} - ${r.album || r.title || ''}: ${r.price_range || 'n/a'}`).join('\n');
 }
 
 async function uploadRip(evt) {
@@ -291,6 +277,8 @@ async function uploadRip(evt) {
   const bar = document.getElementById('rip-upload-progress');
   const barFill = bar?.querySelector('.progress-bar');
   if (!fileInput.files.length) return;
+  setAnalyzeState(false);
+  ripUploadReady = false;
   const form = new FormData();
   form.append('rip_file', fileInput.files[0]);
   statusEl.textContent = 'Uploading…';
@@ -322,8 +310,12 @@ async function uploadRip(evt) {
     }
     if (data.status === 'ok') {
       statusEl.textContent = `Uploaded: ${fileInput.files[0].name}`;
+      ripUploadReady = true;
+      setAnalyzeState(true);
     } else {
       statusEl.textContent = data.message || 'Upload failed';
+      ripUploadReady = false;
+      setAnalyzeState(false);
     }
   });
   if (barFill) {
@@ -374,6 +366,9 @@ function renderSegments(segments, durationMs) {
 }
 
 async function analyzeRip() {
+  if (!ripUploadReady) {
+    return;
+  }
   const statusEl = document.getElementById('upload-status');
   const bar = document.getElementById('rip-analyze-progress');
   const barFill = bar?.querySelector('.progress-bar');
@@ -433,21 +428,29 @@ async function lookupMB() {
   const status = document.getElementById('mb-status');
   if (!title && !artist) return;
   status.textContent = 'Searching…';
-  const res = await fetch(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
-  const data = await res.json();
   const select = document.getElementById('mb-releases');
   select.innerHTML = '<option value="">Select a release variant…</option>';
-  data.forEach((rec, idx) => {
-    (rec.releases || []).forEach((rel) => {
-      const label = `${rec.title || ''} — ${rec.artist || ''} [${rel.format || 'format?'} | ${rel.date || 'n/a'}]`;
-      const opt = document.createElement('option');
-      opt.value = `${rec.musicbrainz_id}:${rel.id}:${idx}`;
-      opt.dataset.release = JSON.stringify(rel);
-      opt.textContent = label;
-      select.appendChild(opt);
+  try {
+    const res = await fetch(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
+    if (!res.ok) {
+      status.textContent = 'Search failed.';
+      return;
+    }
+    const data = await res.json();
+    data.forEach((rec, idx) => {
+      (rec.releases || []).forEach((rel) => {
+        const label = `${rec.title || ''} — ${rec.artist || ''} [${rel.format || 'format?'} | ${rel.date || 'n/a'}]`;
+        const opt = document.createElement('option');
+        opt.value = `${rec.musicbrainz_id}:${rel.id}:${idx}`;
+        opt.dataset.release = JSON.stringify(rel);
+        opt.textContent = label;
+        select.appendChild(opt);
+      });
     });
-  });
-  status.textContent = data.length ? `${data.length} release set(s) found.` : 'No results.';
+    status.textContent = data.length ? `${data.length} release set(s) found.` : 'No results.';
+  } catch (e) {
+    status.textContent = 'Search failed.';
+  }
 }
 
 function renderMBTracks() {
@@ -481,6 +484,15 @@ function loadSavedRip(id) {
   renderSegments(currentSegments, currentDuration);
   document.getElementById('upload-status').textContent = `Loaded saved analysis for ${saved.filename || 'rip'}.`;
 }
+
+document.addEventListener('DOMContentLoaded', () => {
+  setAnalyzeState(false);
+  const fileInput = document.getElementById('rip-file');
+  fileInput?.addEventListener('change', () => {
+    ripUploadReady = false;
+    setAnalyzeState(false);
+  });
+});
 </script>
 {% include '_footer.html' %}
 </body>
