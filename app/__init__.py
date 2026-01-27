@@ -71,6 +71,7 @@ def create_app(config_class=Config):
                     "OAUTH_CLIENT_ID",
                     "OAUTH_CLIENT_SECRET",
                     "OAUTH_ALLOWED_DOMAIN",
+                    "ADMIN_PASSWORD_HASH",
                     "DISCORD_OAUTH_CLIENT_ID",
                     "DISCORD_OAUTH_CLIENT_SECRET",
                     "DISCORD_ALLOWED_GUILD_ID",
