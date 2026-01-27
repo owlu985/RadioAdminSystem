@@ -88,6 +88,7 @@ from app.services.live_reads import upsert_cards, card_query, chunk_cards
 from app.services.archivist_db import import_archivist_csv, search_archivist
 from app.services.social_poster import send_social_post
 from app.oauth import oauth, init_oauth, ensure_oauth_initialized
+from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
 
 main_bp = Blueprint('main', __name__)
@@ -1799,8 +1800,17 @@ def master_login():
     """Password-only master admin login for emergency/owner access."""
 
     if request.method == 'POST':
-        password = request.form.get('password')
-        if password and password == current_app.config['ADMIN_PASSWORD']:
+        password = request.form.get('password') or ""
+        if current_app.config.get("OAUTH_ONLY"):
+            flash("Master admin login is disabled while OAuth-only mode is enabled.", "danger")
+            return redirect(url_for("main.login"))
+        configured_hash = current_app.config.get("ADMIN_PASSWORD_HASH")
+        configured_password = current_app.config.get("ADMIN_PASSWORD") or ""
+        if configured_hash:
+            is_valid = check_password_hash(configured_hash, password)
+        else:
+            is_valid = bool(password) and secrets.compare_digest(password, str(configured_password))
+        if is_valid:
             session['authenticated'] = True
             session['role'] = 'admin'
             session['display_name'] = current_app.config.get('ADMIN_USERNAME', 'Master Admin')
