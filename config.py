@@ -15,6 +15,7 @@ class Config:
     OUTPUT_FOLDER = os.path.join(DATA_ROOT, "recordings")
     ADMIN_USERNAME = "admin"
     ADMIN_PASSWORD = "admin"
+    ADMIN_PASSWORD_HASH = None
     DEFAULT_START_DATE = "2024-01-01"
     DEFAULT_END_DATE = "2024-01-01"
     AUTO_CREATE_SHOW_FOLDERS = False
