@@ -1,9 +1,8 @@
-import base64
 from datetime import date, datetime
 import json
 import os
 import time
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from flask import current_app, url_for
 
@@ -193,71 +192,6 @@ def save_asset_metadata(path: str, kind: str, payload: Dict) -> Dict[str, Option
     db.session.add(asset)
     db.session.commit()
     return _serialize_asset(asset)
-
-
-def export_asset_metadata(kind: Optional[str] = None) -> List[Dict[str, Optional[str]]]:
-    index = get_media_index()
-    rows: List[Dict[str, Optional[str]]] = []
-    for entry in index.get("files", {}).values():
-        entry_kind = entry.get("kind")
-        if entry_kind not in ASSET_METADATA_KINDS:
-            continue
-        if kind and entry_kind != kind:
-            continue
-        metadata = get_asset_metadata(entry["path"], entry_kind)
-        rows.append({
-            "kind": entry_kind,
-            "path": entry["path"],
-            "filename": entry.get("name"),
-            "title": metadata.get("title"),
-            "category": metadata.get("category"),
-            "expires_on": metadata.get("expires_on"),
-            "usage_rules": metadata.get("usage_rules"),
-        })
-    return rows
-
-
-def import_asset_metadata(rows: Iterable[Dict[str, Optional[str]]]) -> Dict[str, object]:
-    index = get_media_index()
-    path_lookup = {os.path.normpath(path): entry for path, entry in index.get("files", {}).items()}
-    updated = 0
-    skipped = 0
-    errors: List[str] = []
-    for row in rows:
-        kind = (row.get("kind") or "").strip().lower()
-        if kind not in ASSET_METADATA_KINDS:
-            errors.append(f"Unsupported kind: {row.get('kind')}")
-            continue
-        path = (row.get("path") or "").strip()
-        if not path:
-            filename = (row.get("filename") or "").strip()
-            match = next(
-                (entry for entry in path_lookup.values() if entry.get("name") == filename and entry.get("kind") == kind),
-                None,
-            )
-            if match:
-                path = match["path"]
-        norm_path = os.path.normpath(path) if path else ""
-        entry = path_lookup.get(norm_path)
-        if not entry:
-            skipped += 1
-            continue
-        try:
-            save_asset_metadata(entry["path"], kind, row)
-            updated += 1
-        except Exception as exc:
-            errors.append(f"{entry.get('name')}: {exc}")
-    return {"status": "ok", "updated": updated, "skipped": skipped, "errors": errors}
-
-
-def resolve_media_token(token: str) -> Optional[Dict]:
-    try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
-    except Exception:
-        return None
-    norm = os.path.normpath(decoded)
-    index = get_media_index()
-    return index.get("files", {}).get(norm)
 
 
 def get_media_index(refresh: bool = False) -> Dict:
