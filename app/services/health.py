@@ -33,15 +33,6 @@ def record_failure(job_name: str, reason: Optional[str] = None, restarted: bool 
     return job
 
 
-def record_restart(job_name: str) -> JobHealth:
-    job = _touch_job(job_name)
-    job.restart_count = (job.restart_count or 0) + 1
-    job.last_restart_at = datetime.utcnow()
-    db.session.commit()
-    logger.info("Job %s restarted", job_name)
-    return job
-
-
 def get_health_snapshot():
     jobs = JobHealth.query.all()
     return {

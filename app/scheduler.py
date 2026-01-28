@@ -1,7 +1,7 @@
 from apscheduler.schedulers.background import BackgroundScheduler
 from datetime import datetime, time, timedelta
 import time
-from sqlalchemy import inspect
+from app.db_utils import table_exists
 from flask import current_app
 from .logger import init_logger
 from .models import db, Show, MarathonEvent
@@ -47,7 +47,7 @@ def init_scheduler(app):
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
     try:
-        if 'show' in inspect(db.engine).get_table_names():
+        if table_exists("show"):
             scheduler.remove_all_jobs()
             for show in Show.query.all():
                 schedule_recording(show)

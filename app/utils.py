@@ -1,6 +1,7 @@
 from datetime import datetime, time, timedelta
 from flask import current_app as app
 from .logger import init_logger
+from .config_utils import normalize_optional_config
 from .models import Show, DJAbsence
 import threading
 import json
@@ -19,13 +20,6 @@ def update_user_config(updates):
 
     config_path = os.path.join(app.instance_path, 'user_config.json')
 
-    def _normalize_optional(val):
-        if val is None:
-            return None
-        if isinstance(val, str) and val.strip().lower() in {"", "none", "null"}:
-            return None
-        return val
-
     with config_lock:
         current_config = {}
         if os.path.exists(config_path):
@@ -37,26 +31,7 @@ def update_user_config(updates):
 
         current_config.update(updates)
 
-        optional_keys = {
-            "TEMPEST_API_KEY",
-            "OAUTH_CLIENT_ID",
-            "OAUTH_CLIENT_SECRET",
-            "OAUTH_ALLOWED_DOMAIN",
-            "DISCORD_OAUTH_CLIENT_ID",
-            "DISCORD_OAUTH_CLIENT_SECRET",
-            "DISCORD_ALLOWED_GUILD_ID",
-            "ALERTS_DISCORD_WEBHOOK",
-            "ALERTS_EMAIL_TO",
-            "ALERTS_EMAIL_FROM",
-            "ALERTS_SMTP_SERVER",
-            "ALERTS_SMTP_USERNAME",
-            "ALERTS_SMTP_PASSWORD",
-            "MUSICBRAINZ_USER_AGENT",
-        }
-
-        for key in optional_keys:
-            if key in current_config:
-                current_config[key] = _normalize_optional(current_config[key])
+        normalize_optional_config(current_config)
 
         try:
             with open(config_path, 'w') as f:

@@ -252,14 +252,6 @@ class NowPlayingState(db.Model):
     updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
 
 
-class IcecastStat(db.Model):
-    __tablename__ = "icecast_stat"
-
-    id = db.Column(db.Integer, primary_key=True)
-    listeners = db.Column(db.Integer, nullable=True)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
-
-
 class DJAbsence(db.Model):
     __tablename__ = "dj_absence"
 

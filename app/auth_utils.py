@@ -170,24 +170,6 @@ def login_required(f):
     return decorated_function
 
 
-def role_required(roles):
-    """Decorator for explicit role checks."""
-
-    def decorator(f):
-        @wraps(f)
-        def wrapped(*args, **kwargs):
-            if not session.get("authenticated"):
-                abort(403, description="Requires login")
-            if not _has_role(set(roles)):
-                role_list = ", ".join(sorted(set(roles)))
-                abort(403, description=f"Access required: role in [{role_list}]")
-            return f(*args, **kwargs)
-
-        return wrapped
-
-    return decorator
-
-
 def permission_required(perms):
     def decorator(f):
         @wraps(f)

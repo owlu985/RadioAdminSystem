@@ -172,58 +172,6 @@ def _spotify_playlist_id(playlist_url: str) -> Optional[str]:
     return None
 
 
-def _fetch_spotify_playlist(playlist_url: str) -> Dict:
-    playlist_id = _spotify_playlist_id(playlist_url)
-    if not playlist_id:
-        return {"error": "Unable to detect a Spotify playlist ID from that link."}
-    headers = {"User-Agent": "Mozilla/5.0"}
-    token_url = "https://open.spotify.com/get_access_token?reason=transport&productType=web_player"
-    try:
-        token_resp = requests.get(token_url, headers=headers, timeout=15)
-        token_resp.raise_for_status()
-        token_data = token_resp.json()
-    except (requests.RequestException, ValueError):
-        return {"error": "Unable to fetch Spotify access token."}
-
-    access_token = token_data.get("accessToken")
-    if not access_token:
-        return {"error": "Spotify access token missing."}
-
-    api_url = f"https://api.spotify.com/v1/playlists/{playlist_id}"
-    try:
-        resp = requests.get(
-            api_url,
-            headers={**headers, "Authorization": f"Bearer {access_token}"},
-            timeout=15,
-        )
-        resp.raise_for_status()
-        data = resp.json()
-    except (requests.RequestException, ValueError):
-        return {"error": "Unable to fetch playlist details from Spotify."}
-
-    tracks_block = data.get("tracks") or {}
-    items = tracks_block.get("items") or []
-    playlist_name = data.get("name") or "Spotify Playlist"
-    tracks = []
-    for item in items:
-        track = item.get("track") or {}
-        title = track.get("name")
-        artists = [artist.get("name") for artist in track.get("artists", []) if artist.get("name")]
-        album = (track.get("album") or {}).get("name")
-        if not title:
-            continue
-        tracks.append({"title": title, "artists": artists, "album": album})
-
-    if not tracks:
-        return {"error": "Spotify playlist contained no tracks."}
-
-    return {"name": playlist_name, "tracks": tracks, "id": playlist_id}
-
-
-def _match_score(query: str, candidate: str) -> float:
-    return difflib.SequenceMatcher(None, query, candidate).ratio()
-
-
 def parse_text_playlist(text: str) -> List[Dict]:
     entries = []
     for raw_line in text.splitlines():
