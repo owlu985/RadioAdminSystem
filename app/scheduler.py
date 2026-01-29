@@ -321,7 +321,19 @@ def _schedule_marathon_jobs(event: MarathonEvent):
                 "date",
                 id=job_id,
                 run_date=current,
-                args=[stream_url, (chunk_end - current).total_seconds(), output_file, user_config_path, event.id, chunk_end],
+                args=[
+                    stream_url,
+                    (chunk_end - current).total_seconds(),
+                    output_file,
+                    user_config_path,
+                    event.id,
+                    chunk_end,
+                    None,
+                    None,
+                    None,
+                    None,
+                    None,
+                ],
                 replace_existing=True,
             )
             job_ids.append(job_id)

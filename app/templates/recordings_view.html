@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="robots" content="noindex, nofollow">
+    <title>Recording Detail</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<div class="container mt-4">
+    <div class="d-flex flex-column flex-lg-row justify-content-between align-items-start align-items-lg-center mb-3 gap-3">
+        <div>
+            <h3 class="mb-1">Recording Detail</h3>
+            <p class="text-muted mb-0">Log entries and playback for {{ recording_name }}</p>
+        </div>
+        <div class="d-flex flex-wrap gap-2">
+            <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.recordings_file', token=token) }}" download>Download MP3</a>
+            {% if entries %}
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.recordings_log_download_csv', token=token) }}">CSV</a>
+                <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.recordings_log_download_docx', token=token) }}">DOCX</a>
+            {% endif %}
+            <a class="btn btn-sm btn-secondary" href="{{ url_for('main.recordings_manage') }}">Back</a>
+        </div>
+    </div>
+
+    <div class="card mb-4">
+        <div class="card-header">Player</div>
+        <div class="card-body">
+            <audio id="recordingAudio" preload="metadata">
+                <source src="{{ url_for('main.recordings_file', token=token) }}">
+            </audio>
+            <div class="d-flex flex-wrap align-items-center gap-2 mt-3">
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="skipBack">⏪ -30s</button>
+                <button class="btn btn-outline-primary btn-sm" type="button" id="playPause">Play</button>
+                <button class="btn btn-outline-secondary btn-sm" type="button" id="skipForward">+30s ⏩</button>
+                <label class="ms-2 small text-muted" for="playbackRate">Speed</label>
+                <select id="playbackRate" class="form-select form-select-sm" style="width: 110px;">
+                    <option value="0.75">0.75x</option>
+                    <option value="1" selected>1x</option>
+                    <option value="1.25">1.25x</option>
+                    <option value="1.5">1.5x</option>
+                    <option value="2">2x</option>
+                </select>
+                <span class="small text-muted ms-2">Tip: use ← / → to skip 30s</span>
+            </div>
+        </div>
+    </div>
+
+    <div class="card">
+        <div class="card-header">Log Entries</div>
+        <div class="card-body p-0">
+            {% if entries %}
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead>
+                            <tr>
+                                <th>Show Date</th>
+                                <th>Show Name</th>
+                                <th>DJ</th>
+                                <th>Time</th>
+                                <th>Type</th>
+                                <th>Title</th>
+                                <th>Artist</th>
+                                <th>Message</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for entry in entries %}
+                                <tr>
+                                    <td>{{ entry.show_date }}</td>
+                                    <td>{{ entry.show_name }}</td>
+                                    <td>{{ entry.dj }}</td>
+                                    <td>{{ entry.time }}</td>
+                                    <td>{{ entry.entry_type }}</td>
+                                    <td>{{ entry.title }}</td>
+                                    <td>{{ entry.artist }}</td>
+                                    <td>{{ entry.message }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <div class="p-3 text-muted">No log entries found for this recording.</div>
+            {% endif %}
+        </div>
+    </div>
+</div>
+
+<script>
+    const audio = document.getElementById('recordingAudio');
+    const playPause = document.getElementById('playPause');
+    const skipBack = document.getElementById('skipBack');
+    const skipForward = document.getElementById('skipForward');
+    const playbackRate = document.getElementById('playbackRate');
+    const SKIP_SECONDS = 30;
+
+    function updatePlayLabel() {
+        playPause.textContent = audio.paused ? 'Play' : 'Pause';
+    }
+
+    function skipBy(seconds) {
+        const target = Math.max(0, Math.min(audio.duration || 0, audio.currentTime + seconds));
+        if (!Number.isNaN(target)) {
+            audio.currentTime = target;
+        }
+    }
+
+    playPause.addEventListener('click', () => {
+        if (audio.paused) {
+            audio.play();
+        } else {
+            audio.pause();
+        }
+    });
+
+    audio.addEventListener('play', updatePlayLabel);
+    audio.addEventListener('pause', updatePlayLabel);
+    audio.addEventListener('ended', updatePlayLabel);
+
+    skipBack.addEventListener('click', () => skipBy(-SKIP_SECONDS));
+    skipForward.addEventListener('click', () => skipBy(SKIP_SECONDS));
+
+    playbackRate.addEventListener('change', () => {
+        audio.playbackRate = Number(playbackRate.value);
+    });
+
+    document.addEventListener('keydown', (event) => {
+        const tag = (event.target || {}).tagName;
+        if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') {
+            return;
+        }
+        if (event.key === 'ArrowLeft') {
+            event.preventDefault();
+            skipBy(-SKIP_SECONDS);
+        }
+        if (event.key === 'ArrowRight') {
+            event.preventDefault();
+            skipBy(SKIP_SECONDS);
+        }
+    });
+</script>
+</body>
+</html>
