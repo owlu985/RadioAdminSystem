@@ -134,6 +134,20 @@
                                 <label for="output_folder" class="form-label">Output Folder</label>
                                 <input type="text" name="output_folder" id="output_folder" class="form-control" value="{{ output_folder }}" required>
                             </div>
+                            <div class="mb-3">
+                                <label for="current_recording_period" class="form-label">Current Recording Period</label>
+                                <select class="form-select" id="current_recording_period" name="current_recording_period">
+                                    {% for period in recording_periods %}
+                                        <option value="{{ period }}" {% if current_recording_period == period %}selected{% endif %}>{{ period }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">New recordings and logs will be saved in this period's folder.</div>
+                            </div>
+                            <div class="mb-3">
+                                <label for="recording_periods" class="form-label">Recording Periods (one per line)</label>
+                                <textarea class="form-control" id="recording_periods" name="recording_periods" rows="4">{{ recording_periods | join('\n') }}</textarea>
+                                <div class="form-text">Add semesters or other periods here to make them available in the recordings list.</div>
+                            </div>
                             <div class="row g-3 mb-3">
                                 <div class="col-md-6">
                                     <label for="default_start_date" class="form-label">Default Start Date</label>
