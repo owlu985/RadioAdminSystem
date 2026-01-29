@@ -1,0 +1,23 @@
+<nav class="navbar navbar-expand-lg navbar-dark bg-dark mb-3">
+  <div class="container-fluid">
+    <a class="navbar-brand d-flex align-items-center" href="{{ url_for('main.archivist_page') }}">
+      <img src="{{ url_for('static', filename='logo.png') }}" alt="RAMS logo" class="me-2" style="max-height:40px; width:auto; object-fit:contain;">
+      <div class="d-flex flex-column lh-1 text-white">
+        <span class="fw-bold text-uppercase">{{ rams_name }}</span>
+        <small class="text-light">{{ station_name }}{% if station_slogan %} - {{ station_slogan }}{% endif %}</small>
+      </div>
+    </a>
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#sidecarNav" aria-controls="sidecarNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+    <div class="collapse navbar-collapse" id="sidecarNav">
+      <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.archivist_page') }}">Archivist</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.audit_page') }}">Audit</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.show_automator') }}">Show Automator</a></li>
+        <li class="nav-item"><a class="nav-link" href="{{ url_for('main.options') }}">Options</a></li>
+      </ul>
+    </div>
+  </div>
+</nav>
+{% include '_flash.html' %}
