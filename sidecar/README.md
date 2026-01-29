@@ -1,6 +1,6 @@
 # RAMS Sidecar (Desktop GUI)
 
-This sidecar launches the Archivist, Audit, and Show Automator tools in a lightweight desktop window using `pywebview`. The UI and behavior match the existing RAMS pages, but it runs as a local Windows-style desktop app and can be packaged with PyInstaller.
+This sidecar launches a lightweight desktop window using `pywebview` to manage the small set of options the sidecar itself needs. It runs as a local Windows-style desktop app and can be packaged with PyInstaller without bundling the main RAMS backend.
 
 The WinUI/.NET implementation has been removed; use the PyInstaller workflow below for a simpler Windows executable.
 
@@ -11,6 +11,8 @@ python -m sidecar
 ```
 
 The app starts a local server and opens it inside a desktop window. If the GUI cannot be initialized, it falls back to opening the app in a browser.
+
+Backend dependencies come from the repo `requirements.txt`; `sidecar/requirements.txt` only lists the GUI dependency (`pywebview`), and there is no separate sidecar backend requirements file.
 
 ## Configuration
 
@@ -27,15 +29,9 @@ From the repo root on Windows:
 ```powershell
 pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --noconfirm --onefile --name rams-sidecar --paths . --add-data "app;app" sidecar/app.py
-```
-
-If you prefer, run the helper script:
-
-```powershell
-.\sidecar\build_sidecar.ps1
+pyinstaller --noconfirm --onefile --name rams-sidecar --add-data "sidecar/templates;sidecar/templates" sidecar/app.py
 ```
 
 The executable will be written to `dist/rams-sidecar.exe`. Use this exe for distribution if you want to avoid the WinUI/.NET build path entirely.
 
-If you hit `ModuleNotFoundError: No module named 'app'`, the build is missing the repo `app/` package. Rebuild using the command above or the helper script so PyInstaller bundles the `app` package.
+If you change the entrypoint to `sidecar/app.py` directly, the bundled script can run without the `sidecar` package being on `sys.path` because the app falls back to local imports.
