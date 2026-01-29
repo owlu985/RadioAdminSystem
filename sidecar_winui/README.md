@@ -20,3 +20,5 @@ Run the script below from PowerShell to generate a single-file backend exe:
 ```
 
 Copy `sidecar_winui\dist\rams-sidecar-backend.exe` into the WinUI app output directory (next to `SidecarWinUI.exe`) so the WinUI launcher can start it automatically.
+
+If you need `msgspec` (optional dependency listed in the main requirements), install the Microsoft C++ Build Tools or use a Python version with prebuilt wheels (for example 3.12) before running the script.
