@@ -1215,18 +1215,27 @@ def dj_absence_submit():
                 flash("Absence submitted for approval.", "success")
                 return redirect(url_for("main.dj_absence_submit"))
 
+        dj_payload = [
+                {"id": d.id, "first_name": d.first_name, "last_name": d.last_name}
+                for d in djs
+        ]
+        dj_ids_by_name = {(d.first_name, d.last_name): d.id for d in djs}
+
+        def _show_host_ids(show: Show) -> list[int]:
+                host_ids = {d.id for d in show.djs}
+                primary_id = dj_ids_by_name.get((show.host_first_name, show.host_last_name))
+                if primary_id:
+                        host_ids.add(primary_id)
+                return sorted(host_ids)
+
         show_payload = [
                 {
                         "id": s.id,
                         "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
                         "schedule": f"{s.days_of_week} {s.start_time}-{s.end_time}",
-                        "hosts": [d.id for d in s.djs],
+                        "hosts": _show_host_ids(s),
                 }
                 for s in shows
-        ]
-        dj_payload = [
-                {"id": d.id, "first_name": d.first_name, "last_name": d.last_name}
-                for d in djs
         ]
         return render_template("absence_submit.html", shows=show_payload, djs=dj_payload)
 

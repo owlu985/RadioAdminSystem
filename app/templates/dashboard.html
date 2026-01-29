@@ -163,15 +163,22 @@
         if (state === 'dead_air') return '#dc3545';
         return '#6c757d';
     }
+    function formatListenerTime(ts) {
+        return new Date(ts).toLocaleTimeString([], {
+            hour: '2-digit',
+            minute: '2-digit',
+            timeZone: 'America/New_York'
+        });
+    }
     async function refreshListeners() {
         try {
             const res = await fetch('/api/icecast/analytics?hours=24');
             const data = await res.json();
             if (Array.isArray(data) && data.length) {
-                const last = data.slice(-5).map(d => `${new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}: ${d.listeners} (${d.state || 'n/a'})`);
-                document.getElementById('listenerHistory').textContent = 'Recent: ' + last.join(' • ');
+                const last = data.slice(-5).map(d => `${formatListenerTime(d.ts)}: ${d.listeners} (${d.state || 'n/a'})`);
+                document.getElementById('listenerHistory').textContent = 'Recent (ET): ' + last.join(' • ');
 
-                const labels = data.map(d => new Date(d.ts).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}));
+                const labels = data.map(d => formatListenerTime(d.ts));
                 const values = data.map(d => d.listeners || 0);
                 const pointColors = data.map(d => stateColor(d.state));
                 const ctx = document.getElementById('listenerChart').getContext('2d');
@@ -194,7 +201,7 @@
                             responsive: true,
                             plugins: {legend: {display: false}},
                             scales: {
-                                x: {title: {display: true, text: 'Time'}},
+                                x: {title: {display: true, text: 'Time (ET)'}},
                                 y: {title: {display: true, text: 'Listeners'}}
                             }
                         }
