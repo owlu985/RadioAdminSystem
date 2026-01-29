@@ -24,20 +24,33 @@ public sealed class BackendService
             return;
         }
 
-        var repoRoot = AppContext.BaseDirectory;
-        var backendPath = Path.GetFullPath(Path.Combine(repoRoot, "..", "..", "..", "..", "sidecar", "app.py"));
+        var appDir = AppContext.BaseDirectory;
+        var bundledExe = Path.Combine(appDir, "rams-sidecar-backend.exe");
+        if (File.Exists(bundledExe))
+        {
+            var startInfo = new ProcessStartInfo
+            {
+                FileName = bundledExe,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            };
+            _backend = Process.Start(startInfo);
+            return;
+        }
+
+        var backendPath = Path.GetFullPath(Path.Combine(appDir, "..", "..", "..", "..", "sidecar", "app.py"));
         if (!File.Exists(backendPath))
         {
             return;
         }
 
-        var startInfo = new ProcessStartInfo
+        var pythonStart = new ProcessStartInfo
         {
             FileName = "python",
             Arguments = $"\"{backendPath}\"",
             UseShellExecute = false,
             CreateNoWindow = true,
         };
-        _backend = Process.Start(startInfo);
+        _backend = Process.Start(pythonStart);
     }
 }

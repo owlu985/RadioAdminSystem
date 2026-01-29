@@ -10,4 +10,13 @@ This is a separate, native Windows UI rewrite of the RAMS sidecar. It uses WinUI
 - `Pages/OptionsPage`: native options page for music/spreadsheet paths.
 
 ## Notes
-The WinUI app expects Python to be available and will attempt to start `sidecar/app.py` as its backend. Ensure dependencies from the main repo are installed before running the WinUI app.
+The WinUI app will first look for a bundled backend executable named `rams-sidecar-backend.exe` next to the WinUI app. If it is not found, it falls back to launching `sidecar/app.py` with `python`.
+
+### Bundle the backend (no Python required at runtime)
+Run the script below from PowerShell to generate a single-file backend exe:
+
+```powershell
+.\sidecar_winui\build_backend.ps1
+```
+
+Copy `sidecar_winui\dist\rams-sidecar-backend.exe` into the WinUI app output directory (next to `SidecarWinUI.exe`) so the WinUI launcher can start it automatically.
