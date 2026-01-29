@@ -30,12 +30,6 @@ pip install pyinstaller
 pyinstaller --noconfirm --onefile --name rams-sidecar --paths . --add-data "app;app" sidecar/app.py
 ```
 
-If you prefer, run the helper script:
-
-```powershell
-.\sidecar\build_sidecar.ps1
-```
-
 The executable will be written to `dist/rams-sidecar.exe`. Use this exe for distribution if you want to avoid the WinUI/.NET build path entirely.
 
-If you hit `ModuleNotFoundError: No module named 'app'`, the build is missing the repo `app/` package. Rebuild using the command above or the helper script so PyInstaller bundles the `app` package.
+If you hit `ModuleNotFoundError: No module named 'app'`, the build is missing the repo `app/` package. Rebuild using the command above so PyInstaller bundles the `app` package.
