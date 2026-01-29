@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows10.0.19041.0</TargetFramework>
+    <UseWinUI>true</UseWinUI>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <RootNamespace>SidecarWinUI</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.5.240227000" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.22621.756" />
+    <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2210.55" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Assets\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
