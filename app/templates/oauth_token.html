@@ -8,7 +8,7 @@
         <div class="card-body">
             {% include '_flash.html' %}
             {% if token %}
-            <p class="text-muted">Copy this token for use in social posting. Do not share publicly.</p>
+            <p class="text-muted">Copy this token for troubleshooting OAuth flows. Do not share publicly.</p>
             <pre class="bg-light p-3 rounded"><code>{{ token | tojson(indent=2) }}</code></pre>
             {% else %}
             <div class="alert alert-warning">No token captured.</div>

@@ -268,26 +268,6 @@ def ensure_schema(app, logger) -> None:
                 )
                 """
             ))
-        if "social_post" not in insp.get_table_names():
-            conn.execute(text(
-                """
-                CREATE TABLE IF NOT EXISTS social_post (
-                    id INTEGER PRIMARY KEY,
-                    content TEXT NOT NULL,
-                    platforms TEXT,
-                    image_url VARCHAR(500),
-                    image_path VARCHAR(500),
-                    status VARCHAR(32) NOT NULL DEFAULT 'pending',
-                    result_log TEXT,
-                    created_at DATETIME NOT NULL,
-                    sent_at DATETIME
-                )
-                """
-            ))
-        else:
-            social_cols = {c['name'] for c in insp.get_columns('social_post')}
-            if 'image_path' not in social_cols:
-                conn.execute(text("ALTER TABLE social_post ADD COLUMN image_path VARCHAR(500)"))
         if "plugin" not in insp.get_table_names():
             conn.execute(text(
                 """
@@ -470,10 +450,5 @@ def ensure_schema(app, logger) -> None:
                 f,
                 indent=2,
             )
-
-    os.makedirs(
-        app.config.get("SOCIAL_UPLOAD_DIR", os.path.join(app.instance_path, "social_uploads")),
-        exist_ok=True,
-    )
 
     logger.info("Database schema ensure complete.")

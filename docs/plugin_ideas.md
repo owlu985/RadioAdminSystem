@@ -45,11 +45,6 @@ Below are suggestions for modular plugins and broader feature expansions that ca
 - **Album Rip Assistant**: Semi-automatic track-split helper that uses silence detection and metadata lookup to propose cuts.
 - **Spot & Bed Library**: Curated production beds/FX with licensing notes, usage suggestions, and loudness-checked stems.
 
-## Social & Outreach Plugins
-- **Multi-Network Poster**: Expand the social console to support scheduled posts, link-in-bio pages, and engagement snapshots.
-- **Event Landing Pages**: Microsite generator for concerts/remotes with maps, RSVP, and sponsor highlights driven by plugin config.
-- **Webhooks & Embeds**: Pluggable outbound webhooks for now-playing, alerts, and schedule updates; embeddable widgets for sites.
-
 ## Security & Access Plugins
 - **Granular Permissions**: Custom scopes per plugin feature, role templates, and per-token limits for automation bots.
 - **Session Insights**: Admin view of active sessions/devices with revoke controls and optional MFA prompts for privileged actions.
@@ -70,6 +65,5 @@ Use these as a menu: enable only what you need, and keep plugin code self-contai
 - **Programming**: “Sub finder” marketplace plugin so open shifts can be claimed; show prep cards surfaced on DJ Status.
 - **Production/Creative**: Multi-size promo/export templates with loudness presets; shared palette of approved beds/FX.
 - **News**: Assignment board with “ready to air” tags; versioned briefs with diff view; auto-publish to the website plugin.
-- **Social**: Scheduled queue with blackout windows and per-network cooldowns; engagement snapshots; link-in-bio generator.
 - **Archiving**: Fingerprint-based ingest plus checksum/bit-rot monitoring; digitization queue for tapes/vinyl.
 - **Management/Compliance**: PSA pacing heatmaps by daypart; consent/rights tracker for recorded interviews; compliance export bundles.

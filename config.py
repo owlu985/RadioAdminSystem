@@ -135,22 +135,6 @@ class Config:
     ARCHIVIST_DB_PATH = os.path.join(DATA_ROOT, "archivist_db.json")
     ARCHIVIST_UPLOAD_DIR = os.path.join(DATA_ROOT, "archivist_uploads")
 
-    # Social posting
-    SOCIAL_SEND_ENABLED = False
-    SOCIAL_DRY_RUN = True
-    SOCIAL_FACEBOOK_PAGE_TOKEN = None
-    SOCIAL_INSTAGRAM_TOKEN = None
-    SOCIAL_TWITTER_BEARER_TOKEN = None
-    SOCIAL_TWITTER_CONSUMER_KEY = None
-    SOCIAL_TWITTER_CONSUMER_SECRET = None
-    SOCIAL_TWITTER_ACCESS_TOKEN = None
-    SOCIAL_TWITTER_ACCESS_SECRET = None
-    SOCIAL_TWITTER_CLIENT_ID = None
-    SOCIAL_TWITTER_CLIENT_SECRET = None
-    SOCIAL_BLUESKY_HANDLE = None
-    SOCIAL_BLUESKY_PASSWORD = None
-    SOCIAL_UPLOAD_DIR = os.path.join(DATA_ROOT, "social_uploads")
-
     # Metadata enrichment
     MUSICBRAINZ_USER_AGENT = "RAMS/1.0 (support@example.com)"
 

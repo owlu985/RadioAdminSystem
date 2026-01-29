@@ -142,9 +142,8 @@ GET      /djs/&lt;id&gt;              (DJ profile)</code></pre>
 GET /api/oauth/x-token          (admin-only, returns the last Twitter/X OAuth token captured via PKCE flow)</code></pre>
     <p>Used for debugging OAuth flows (Google/Discord/Twitter); requires an authenticated admin session.</p>
 
-    <h4 class="mt-4">Social & Live Reads</h4>
-    <pre><code>GET/POST /production/live-reads          (card creation + print)
-GET/POST /social/post                   (multi-network posting console)</code></pre>
+    <h4 class="mt-4">Live Reads</h4>
+    <pre><code>GET/POST /production/live-reads          (card creation + print)</code></pre>
 
     <h4 class="mt-4">Settings, Backup, Auth</h4>
     <pre><code>GET/POST /settings                       (branding, OAuth, alerts, stream, etc.)
@@ -167,7 +166,6 @@ GET      /logout</code></pre>
         <li>Absences & DJs: <code>/dj/absence</code> (public form), <code>/absences</code> (manage/filter), <code>/djs</code> (list), <code>/djs/&lt;id&gt;</code> (profile), <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code>, <code>/djs/discipline</code>.</li>
         <li>Plugins & content: <code>/plugins</code> (admin list), <code>/plugins/website</code> (content/podcasts), <code>/plugins/automation-bridge</code>, <code>/plugins/remote-link</code>, <code>/api/plugins/website/content</code>.</li>
         <li>News & uploads: <code>/news/upload</code>, <code>/api/radiodj/import/news</code>, <code>/api/radiodj/import/community_calendar</code>.</li>
-        <li>Social posting: <code>/social/post</code>, <code>/api/oauth/x-token</code> (last X token), Twitter OAuth helper actions in Social settings.</li>
         <li>Settings/Auth: <code>/settings</code>, <code>/settings/export</code>, <code>/settings/import</code>, <code>/settings/backup-now</code>, <code>/settings/backup-data</code>, <code>/login</code>, <code>/login/master</code>, <code>/logout</code>, <code>/api/oauth/last-token</code>, <code>/api/oauth/x-token</code>.</li>
     </ul>
 

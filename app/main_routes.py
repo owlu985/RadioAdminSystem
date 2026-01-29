@@ -13,10 +13,8 @@ import secrets
 import random
 import base64
 import hashlib
-import requests
 import zipfile
 import re
-from urllib.parse import quote_plus
 from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
 from .utils import (
@@ -42,7 +40,6 @@ from .models import (
     LiveReadCard,
     ArchivistEntry,
     ArchivistRipResult,
-    SocialPost,
     LogSheet,
     DJHandoffNote,
     Plugin,
@@ -86,7 +83,6 @@ from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
 from app.services.archivist_db import import_archivist_csv, search_archivist
-from app.services.social_poster import send_social_post
 from app.oauth import oauth, init_oauth, ensure_oauth_initialized
 from werkzeug.security import check_password_hash
 from werkzeug.utils import secure_filename
@@ -1705,75 +1701,11 @@ def marathon_cancel(event_id: int):
     return redirect(url_for("main.marathon_page"))
 
 
-@main_bp.route("/social/uploads/<path:filename>")
-def social_upload(filename: str):
-    upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
-    return send_from_directory(upload_dir, filename, as_attachment=False)
-
-
 @main_bp.route("/djs/photos/<path:filename>")
 def dj_photo(filename: str):
     upload_dir = current_app.config.get("DJ_PHOTO_UPLOAD_DIR") or os.path.join(current_app.instance_path, "dj_photos")
     return send_from_directory(upload_dir, filename, as_attachment=False)
 
-
-@main_bp.route("/social/post", methods=["GET", "POST"])
-@permission_required({"social:post"})
-def social_post_page():
-    upload_dir = current_app.config.get("SOCIAL_UPLOAD_DIR") or os.path.join(current_app.instance_path, "social_uploads")
-    os.makedirs(upload_dir, exist_ok=True)
-
-    platform_tokens = {
-        "facebook": bool(current_app.config.get("SOCIAL_FACEBOOK_PAGE_TOKEN")),
-        "instagram": bool(current_app.config.get("SOCIAL_INSTAGRAM_TOKEN")),
-        "twitter": bool(
-            current_app.config.get("SOCIAL_TWITTER_BEARER_TOKEN")
-            or (
-                current_app.config.get("SOCIAL_TWITTER_CONSUMER_KEY")
-                and current_app.config.get("SOCIAL_TWITTER_CONSUMER_SECRET")
-                and current_app.config.get("SOCIAL_TWITTER_ACCESS_TOKEN")
-                and current_app.config.get("SOCIAL_TWITTER_ACCESS_SECRET")
-            )
-        ),
-        "bluesky": bool(current_app.config.get("SOCIAL_BLUESKY_HANDLE") and current_app.config.get("SOCIAL_BLUESKY_PASSWORD")),
-    }
-
-    if request.method == "POST":
-        content = (request.form.get("content") or "").strip()
-        image_url = (request.form.get("image_url") or "").strip() or None
-        platforms = request.form.getlist("platforms")
-        image_path = None
-
-        if not content:
-            flash("Please enter content for the post.", "warning")
-            return redirect(url_for("main.social_post_page"))
-        if not platforms:
-            platforms = [p for p, enabled in platform_tokens.items() if enabled] or ["facebook", "instagram", "twitter", "bluesky"]
-
-        file = request.files.get("image_file")
-        if file and file.filename:
-            fname = secure_filename(file.filename)
-            timestamp = datetime.utcnow().strftime("%Y%m%d%H%M%S%f")
-            stored_name = f"{timestamp}_{fname}"
-            file.save(os.path.join(upload_dir, stored_name))
-            image_path = stored_name
-            image_url = url_for("main.social_upload", filename=stored_name, _external=True)
-
-        post = SocialPost(content=content, image_url=image_url, image_path=image_path, platforms=json.dumps(platforms))
-        db.session.add(post)
-        db.session.commit()
-        statuses = send_social_post(post, current_app.config)
-        pretty = ", ".join(f"{k}:{v}" for k, v in statuses.items())
-        flash(f"Post queued ({pretty}).", "success")
-        return redirect(url_for("main.social_post_page"))
-
-    posts = SocialPost.query.order_by(SocialPost.created_at.desc()).limit(25).all()
-    for p in posts:
-        try:
-            p.status_map = json.loads(p.result_log) if p.result_log else {}
-        except json.JSONDecodeError:
-            p.status_map = {}
-    return render_template("social_post.html", posts=posts, config=current_app.config, platform_tokens=platform_tokens)
 
 @main_bp.route('/login', methods=['GET'])
 def login():
@@ -1838,101 +1770,6 @@ def login_oauth_google():
         nonce = secrets.token_urlsafe(16)
         session["oauth_google_nonce"] = nonce
         return client.authorize_redirect(redirect_uri, nonce=nonce)
-
-
-@main_bp.route("/social/oauth/twitter/start")
-@admin_required
-def social_oauth_twitter_start():
-        """Start a Twitter/X OAuth2 PKCE flow for social posting token capture (not login)."""
-
-        client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
-        if not client_id:
-                flash("Twitter client ID is required to start OAuth.", "danger")
-                return redirect(url_for("main.settings") + "#tab-social")
-
-        redirect_uri = url_for("main.social_oauth_twitter_callback", _external=True)
-        state = secrets.token_urlsafe(16)
-        verifier, challenge = _pkce_pair()
-        session["twitter_oauth_state"] = state
-        session["twitter_code_verifier"] = verifier
-
-        scopes = "tweet.read tweet.write offline.access"
-        auth_url = (
-            "https://twitter.com/i/oauth2/authorize?response_type=code"
-            f"&client_id={quote_plus(client_id)}"
-            f"&redirect_uri={quote_plus(redirect_uri)}"
-            f"&scope={quote_plus(scopes)}"
-            f"&state={quote_plus(state)}"
-            f"&code_challenge={quote_plus(challenge)}"
-            "&code_challenge_method=S256"
-        )
-        return redirect(auth_url)
-
-
-@main_bp.route("/social/oauth/twitter/callback")
-def social_oauth_twitter_callback():
-        """Handle Twitter/X OAuth2 callback and persist the user bearer token for social posting."""
-
-        state = request.args.get("state")
-        code = request.args.get("code")
-        expected_state = session.pop("twitter_oauth_state", None)
-        verifier = session.pop("twitter_code_verifier", None)
-
-        redirect_target = url_for("main.settings") + "#tab-social"
-
-        if not code:
-                flash("Missing OAuth code from Twitter.", "danger")
-                return redirect(redirect_target)
-
-        if not expected_state or state != expected_state:
-                flash("Invalid OAuth state for Twitter flow.", "danger")
-                return redirect(redirect_target)
-
-        client_id = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_ID"))
-        client_secret = _clean_optional(current_app.config.get("SOCIAL_TWITTER_CLIENT_SECRET"))
-        if not client_id or not verifier:
-                flash("Twitter OAuth is not configured correctly (client ID / PKCE).", "danger")
-                return redirect(redirect_target)
-
-        redirect_uri = url_for("main.social_oauth_twitter_callback", _external=True)
-        data = {
-            "client_id": client_id,
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": redirect_uri,
-            "code_verifier": verifier,
-        }
-        # Twitter's token endpoint expects Basic auth even for PKCE; for public
-        # clients the secret may be blank, but the header must still be present.
-        basic_token = base64.b64encode(f"{client_id}:{client_secret or ''}".encode()).decode()
-        headers = {
-            "Content-Type": "application/x-www-form-urlencoded",
-            "Authorization": f"Basic {basic_token}",
-        }
-        try:
-            resp = requests.post(
-                "https://api.twitter.com/2/oauth2/token",
-                data=data,
-                headers=headers,
-                timeout=20,
-            )
-            resp.raise_for_status()
-            token = resp.json()
-            session["last_oauth_token"] = _serialize_oauth_token(token, "twitter")
-            session["last_oauth_token_twitter"] = session["last_oauth_token"]
-
-            bearer = token.get("access_token")
-            if bearer:
-                update_user_config({"SOCIAL_TWITTER_BEARER_TOKEN": bearer})
-                flash("Twitter/X OAuth token captured and saved to Social settings for posting.", "success")
-            else:
-                flash("Twitter/X OAuth token response did not include an access token.", "warning")
-
-            return redirect(redirect_target)
-        except Exception as exc:  # noqa: BLE001
-            logger.error(f"Twitter OAuth exchange failed: {exc}")
-            flash("Twitter OAuth token exchange failed. Check credentials and try again.", "danger")
-            return redirect(redirect_target)
 
 
 @main_bp.route("/login/oauth/google/callback")
@@ -2395,9 +2232,6 @@ ALLOWED_SETTINGS_KEYS = [
     'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'ICECAST_IGNORED_IPS', 'SELF_HEAL_ENABLED',
     'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
     'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
-    'SOCIAL_SEND_ENABLED', 'SOCIAL_DRY_RUN', 'SOCIAL_FACEBOOK_PAGE_TOKEN', 'SOCIAL_INSTAGRAM_TOKEN',
-    'SOCIAL_TWITTER_BEARER_TOKEN', 'SOCIAL_TWITTER_CONSUMER_KEY', 'SOCIAL_TWITTER_CONSUMER_SECRET',
-    'SOCIAL_TWITTER_ACCESS_TOKEN', 'SOCIAL_TWITTER_ACCESS_SECRET', 'SOCIAL_TWITTER_CLIENT_ID', 'SOCIAL_TWITTER_CLIENT_SECRET', 'SOCIAL_BLUESKY_HANDLE', 'SOCIAL_BLUESKY_PASSWORD', 'SOCIAL_UPLOAD_DIR',
     'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
     'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH', 'IMAGING_LIBRARY_PATH',
     'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
@@ -2501,20 +2335,6 @@ def settings():
                 'NAS_MUSIC_ROOT': _clean_optional(request.form.get('music_library_path', '').strip()),
                 'RADIODJ_API_BASE_URL': _clean_optional(request.form.get('radiodj_api_base_url', '').strip()),
                 'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
-                'SOCIAL_SEND_ENABLED': 'social_send_enabled' in request.form,
-                'SOCIAL_DRY_RUN': 'social_dry_run' in request.form,
-                'SOCIAL_FACEBOOK_PAGE_TOKEN': _clean_optional(request.form.get('social_facebook_page_token', '').strip()),
-                'SOCIAL_INSTAGRAM_TOKEN': _clean_optional(request.form.get('social_instagram_token', '').strip()),
-                'SOCIAL_TWITTER_BEARER_TOKEN': _clean_optional(request.form.get('social_twitter_bearer_token', '').strip()),
-                'SOCIAL_TWITTER_CONSUMER_KEY': _clean_optional(request.form.get('social_twitter_consumer_key', '').strip()),
-                'SOCIAL_TWITTER_CONSUMER_SECRET': _clean_optional(request.form.get('social_twitter_consumer_secret', '').strip()),
-                'SOCIAL_TWITTER_ACCESS_TOKEN': _clean_optional(request.form.get('social_twitter_access_token', '').strip()),
-                'SOCIAL_TWITTER_ACCESS_SECRET': _clean_optional(request.form.get('social_twitter_access_secret', '').strip()),
-                'SOCIAL_TWITTER_CLIENT_ID': _clean_optional(request.form.get('social_twitter_client_id', '').strip()),
-                'SOCIAL_TWITTER_CLIENT_SECRET': _clean_optional(request.form.get('social_twitter_client_secret', '').strip()),
-                'SOCIAL_BLUESKY_HANDLE': _clean_optional(request.form.get('social_bluesky_handle', '').strip()),
-                'SOCIAL_BLUESKY_PASSWORD': _clean_optional(request.form.get('social_bluesky_password', '').strip()),
-                'SOCIAL_UPLOAD_DIR': _clean_optional(request.form.get('social_upload_dir', '').strip()) or config.get('SOCIAL_UPLOAD_DIR'),
                 'AUDIO_HOST_UPLOAD_DIR': request.form.get('audio_host_upload_dir', current_app.config.get('AUDIO_HOST_UPLOAD_DIR')).strip(),
                 'AUDIO_HOST_BACKDROP_DEFAULT': request.form.get('audio_host_backdrop_default', current_app.config.get('AUDIO_HOST_BACKDROP_DEFAULT', '')).strip(),
             }
@@ -2601,20 +2421,6 @@ def settings():
         'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
         'imaging_library_path': config.get('IMAGING_LIBRARY_PATH', ''),
         'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
-        'social_send_enabled': config.get('SOCIAL_SEND_ENABLED', False),
-        'social_dry_run': config.get('SOCIAL_DRY_RUN', True),
-        'social_facebook_page_token': _clean_optional(config.get('SOCIAL_FACEBOOK_PAGE_TOKEN', '')) or '',
-        'social_instagram_token': _clean_optional(config.get('SOCIAL_INSTAGRAM_TOKEN', '')) or '',
-        'social_twitter_bearer_token': _clean_optional(config.get('SOCIAL_TWITTER_BEARER_TOKEN', '')) or '',
-        'social_twitter_consumer_key': _clean_optional(config.get('SOCIAL_TWITTER_CONSUMER_KEY', '')) or '',
-        'social_twitter_consumer_secret': _clean_optional(config.get('SOCIAL_TWITTER_CONSUMER_SECRET', '')) or '',
-        'social_twitter_access_token': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_TOKEN', '')) or '',
-        'social_twitter_access_secret': _clean_optional(config.get('SOCIAL_TWITTER_ACCESS_SECRET', '')) or '',
-        'social_twitter_client_id': _clean_optional(config.get('SOCIAL_TWITTER_CLIENT_ID', '')) or '',
-        'social_twitter_client_secret': _clean_optional(config.get('SOCIAL_TWITTER_CLIENT_SECRET', '')) or '',
-        'social_bluesky_handle': _clean_optional(config.get('SOCIAL_BLUESKY_HANDLE', '')) or '',
-        'social_bluesky_password': _clean_optional(config.get('SOCIAL_BLUESKY_PASSWORD', '')) or '',
-        'social_upload_dir': config.get('SOCIAL_UPLOAD_DIR', ''),
         'audio_host_upload_dir': config.get('AUDIO_HOST_UPLOAD_DIR', ''),
         'audio_host_backdrop_default': config.get('AUDIO_HOST_BACKDROP_DEFAULT', ''),
     }
