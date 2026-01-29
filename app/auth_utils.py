@@ -64,9 +64,8 @@ PERMISSION_GROUPS = [
         ],
     ),
     (
-        "Social & Alerts",
+        "Alerts",
         [
-            {"key": "social:post", "label": "Social posting", "description": "Create and send social posts."},
             {"key": "alerts:manage", "label": "Manage alerts", "description": "Configure alert thresholds and destinations."},
         ],
     ),
@@ -91,7 +90,6 @@ ROLE_PERMISSIONS = {
         "plugins:manage",
         "plugins:automation",
         "plugins:remote",
-        "social:post",
         "alerts:manage",
         "settings:edit",
         "users:manage",
