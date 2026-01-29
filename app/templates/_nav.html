@@ -35,8 +35,9 @@
               <ul class="dropdown-menu">
               {% if can_view('schedule:view') %}<li><a class="dropdown-item" href="{{ url_for('main.shows') }}">Schedule</a></li>{% endif %}
               <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
-              {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('logs.manage_logs') }}">Log Manager</a></li>{% endif %}
-              {% if can_view('logs:view') %}<li><a class="dropdown-item" href="{{ url_for('main.recordings_manage') }}">Recordings Manager</a></li>{% endif %}
+              {% if can_view('logs:view') %}
+                <li><a class="dropdown-item" href="{{ url_for('main.recordings_manage') }}">Recordings & Logs</a></li>
+              {% endif %}
               {% if can_view('dj:absence') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>{% endif %}
             </ul>
           </li>

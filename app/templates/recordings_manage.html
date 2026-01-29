@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="robots" content="noindex, nofollow">
-    <title>Recordings Manager</title>
+    <title>Recordings & Logs</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
 </head>
 <body>
@@ -12,13 +12,13 @@
 <div class="container mt-4">
     <div class="d-flex justify-content-between align-items-center mb-3">
         <div>
-            <h3 class="mb-1">Recordings Manager</h3>
-            <p class="text-muted mb-0">Find, preview, and download show recordings.</p>
+            <h3 class="mb-1">Recordings & Logs</h3>
+            <p class="text-muted mb-0">Find, preview, and download show recordings with their logs.</p>
         </div>
     </div>
 
     <div class="help-tip mb-3">
-        Filter by show or DJ to narrow the list. Use the download button to grab a zip of all matching recordings.
+        Filter by show or DJ to narrow the list. Use the download button to grab a zip of all matching recordings (and logs, if available).
     </div>
 
     <div class="card mb-4">
@@ -64,7 +64,9 @@
                                 <th>File</th>
                                 <th>Last modified</th>
                                 <th>Preview</th>
+                                <th>View</th>
                                 <th>Download</th>
+                                <th>Logs</th>
                             </tr>
                         </thead>
                         <tbody>
@@ -79,7 +81,21 @@
                                         </audio>
                                     </td>
                                     <td>
+                                        <a class="btn btn-sm btn-outline-secondary" href="{{ url_for('main.recordings_view', token=rec.token) }}">View</a>
+                                    </td>
+                                    <td>
                                         <a class="btn btn-sm btn-outline-primary" href="{{ url_for('main.recordings_file', token=rec.token) }}" download>Download</a>
+                                    </td>
+                                    <td>
+                                        {% if rec.has_log %}
+                                            <div class="btn-group btn-group-sm" role="group">
+                                                <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_view', token=rec.token) }}">HTML</a>
+                                                <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_log_download_csv', token=rec.token) }}">CSV</a>
+                                                <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_log_download_docx', token=rec.token) }}">DOCX</a>
+                                            </div>
+                                        {% else %}
+                                            <span class="text-muted small">No log</span>
+                                        {% endif %}
                                     </td>
                                 </tr>
                             {% endfor %}

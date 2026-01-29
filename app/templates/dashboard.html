@@ -16,7 +16,7 @@
         </div>
         <div>
             <a href="{{ url_for('main.shows') }}" class="btn btn-sm btn-outline-primary">Show Schedule</a>
-            <a href="{{ url_for('logs.manage_logs') }}" class="btn btn-sm btn-outline-primary">Log Manager</a>
+            <a href="{{ url_for('main.recordings_manage') }}" class="btn btn-sm btn-outline-primary">Recordings & Logs</a>
             <a href="{{ url_for('logs.submit_log') }}" class="btn btn-sm btn-outline-secondary" target="_blank">Public Logger</a>
             <a href="{{ url_for('news.upload_news') }}" class="btn btn-sm btn-outline-primary">Upload News</a>
             <a href="{{ url_for('main.list_djs') }}" class="btn btn-sm btn-outline-primary">DJs</a>
@@ -99,7 +99,7 @@
         <div class="card-body">
             <ul class="mb-0">
                 <li><a href="{{ url_for('main.shows') }}">Manage show recorder schedule</a></li>
-                <li><a href="{{ url_for('logs.manage_logs') }}">View/Export station logs</a></li>
+                <li><a href="{{ url_for('main.recordings_manage') }}">View recordings & logs</a></li>
                 <li><a href="{{ url_for('logs.submit_log') }}" target="_blank">Public logger form</a></li>
                 <li><a href="{{ url_for('main.dj_absence_submit') }}" target="_blank">Submit DJ absence</a> | <a href="{{ url_for('main.manage_absences') }}">Review absences</a></li>
                 <li><a href="{{ url_for('main.show_automator') }}" rel="nofollow">Show automator (noindex)</a></li>

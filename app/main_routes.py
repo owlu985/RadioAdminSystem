@@ -78,6 +78,7 @@ from app.services.dj_library import (
     match_youtube_playlist,
 )
 from app.services.audit import audit_recordings, audit_explicit_music
+from app.services.log_export import build_docx, read_log_csv, recording_csv_path
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.settings_backup import backup_settings, backup_data_snapshot
@@ -409,6 +410,8 @@ class RecordingEntry:
     safe_name: str
     filename: str
     full_path: str
+    log_csv_path: str
+    has_log: bool
     token: str
     size_bytes: int
     modified_at: datetime
@@ -461,12 +464,16 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
                 continue
             display = show_map.get(safe_label, safe_label.replace("_", " "))
             stat = os.stat(full)
+            log_path = recording_csv_path(full)
+            has_log = os.path.isfile(log_path)
             entries.append(
                 RecordingEntry(
                     display_name=display,
                     safe_name=safe_label,
                     filename=filename,
                     full_path=full,
+                    log_csv_path=log_path,
+                    has_log=has_log,
                     token=base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8"),
                     size_bytes=stat.st_size,
                     modified_at=datetime.fromtimestamp(stat.st_mtime),
@@ -474,6 +481,18 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
             )
     entries.sort(key=lambda item: item.modified_at, reverse=True)
     return entries
+
+
+def _resolve_recording_path(token: str) -> str | None:
+    try:
+        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+    except Exception:
+        return None
+    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
+    root = os.path.normcase(os.path.abspath(os.path.normpath(_recordings_root())))
+    if not full.startswith(root) or not os.path.isfile(full):
+        return None
+    return full
 
 
 @main_bp.route("/psa/player")
@@ -645,16 +664,68 @@ def recordings_manage():
 @main_bp.route("/recordings/file/<path:token>")
 @permission_required({"logs:view"})
 def recordings_file(token: str):
-    try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
-    except Exception:
-        abort(404)
-    full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
-    root = os.path.normcase(os.path.abspath(os.path.normpath(_recordings_root())))
-    if not full.startswith(root) or not os.path.isfile(full):
+    full = _resolve_recording_path(token)
+    if not full:
         abort(404)
     resp = send_file(full, conditional=True)
     resp.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return resp
+
+
+@main_bp.route("/recordings/view/<path:token>")
+@permission_required({"logs:view"})
+def recordings_view(token: str):
+    full = _resolve_recording_path(token)
+    if not full:
+        abort(404)
+    csv_path = recording_csv_path(full)
+    entries = read_log_csv(csv_path) if os.path.isfile(csv_path) else []
+    recording_name = os.path.basename(full)
+    return render_template(
+        "recordings_view.html",
+        entries=entries,
+        recording_name=recording_name,
+        token=token,
+    )
+
+
+@main_bp.route("/recordings/logs/view/<path:token>")
+@permission_required({"logs:view"})
+def recordings_log_view(token: str):
+    return redirect(url_for("main.recordings_view", token=token))
+
+
+@main_bp.route("/recordings/logs/download/csv/<path:token>")
+@permission_required({"logs:view"})
+def recordings_log_download_csv(token: str):
+    full = _resolve_recording_path(token)
+    if not full:
+        abort(404)
+    csv_path = recording_csv_path(full)
+    if not os.path.isfile(csv_path):
+        abort(404)
+    return send_file(
+        csv_path,
+        as_attachment=True,
+        download_name=f"{os.path.splitext(os.path.basename(full))[0]}.csv",
+        mimetype="text/csv",
+    )
+
+
+@main_bp.route("/recordings/logs/download/docx/<path:token>")
+@permission_required({"logs:view"})
+def recordings_log_download_docx(token: str):
+    full = _resolve_recording_path(token)
+    if not full:
+        abort(404)
+    csv_path = recording_csv_path(full)
+    if not os.path.isfile(csv_path):
+        abort(404)
+    entries = read_log_csv(csv_path)
+    payload = build_docx(entries)
+    resp = make_response(payload)
+    resp.headers["Content-Disposition"] = f"attachment; filename={os.path.splitext(os.path.basename(full))[0]}.docx"
+    resp.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
     return resp
 
 
@@ -685,6 +756,9 @@ def recordings_download():
         for entry in entries:
             arcname = os.path.join(entry.display_name.replace(" ", "_"), entry.filename)
             archive.write(entry.full_path, arcname=arcname)
+            if entry.has_log:
+                log_arcname = os.path.join(entry.display_name.replace(" ", "_"), os.path.basename(entry.log_csv_path))
+                archive.write(entry.log_csv_path, arcname=log_arcname)
 
     response = send_file(
         tmp_path,
