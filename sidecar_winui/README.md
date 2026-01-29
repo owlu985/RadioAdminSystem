@@ -24,9 +24,20 @@ Copy `sidecar_winui\dist\rams-sidecar-backend.exe` into the WinUI app output dir
 If you need `msgspec` (optional dependency listed in the main requirements), install the Microsoft C++ Build Tools or use a Python version with prebuilt wheels (for example 3.12) before running the script.
 
 ## Build the WinUI exe (no win10 RID required)
+Run the helper script (recommended):
+```powershell
+.\sidecar_winui\build_winui.ps1
+```
+
+Or run the publish command directly:
 ```powershell
 dotnet publish sidecar_winui\SidecarWinUI\SidecarWinUI.csproj -c Release -r win-x64
 ```
+
+If the build fails during `XamlCompiler.exe`, ensure these are installed:
+- .NET 8 SDK
+- Windows 10/11 SDK (10.0.22621 or newer)
+- Visual Studio 2022 Build Tools with the **.NET desktop build tools** workload
 
 ## Build an installer (Inno Setup)
 1. Install Inno Setup.
