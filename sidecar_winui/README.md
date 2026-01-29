@@ -22,3 +22,13 @@ Run the script below from PowerShell to generate a single-file backend exe:
 Copy `sidecar_winui\dist\rams-sidecar-backend.exe` into the WinUI app output directory (next to `SidecarWinUI.exe`) so the WinUI launcher can start it automatically.
 
 If you need `msgspec` (optional dependency listed in the main requirements), install the Microsoft C++ Build Tools or use a Python version with prebuilt wheels (for example 3.12) before running the script.
+
+## Build the WinUI exe (no win10 RID required)
+```powershell
+dotnet publish sidecar_winui\SidecarWinUI\SidecarWinUI.csproj -c Release -r win-x64
+```
+
+## Build an installer (Inno Setup)
+1. Install Inno Setup.
+2. Ensure the WinUI publish output exists and `sidecar_winui\dist\rams-sidecar-backend.exe` exists.
+3. Open `sidecar_winui\installer\SidecarWinUI.iss` in Inno Setup and build the installer.
