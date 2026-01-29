@@ -1,0 +1,51 @@
+<Page
+    x:Class="SidecarWinUI.Pages.AuditPage"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+    xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+    mc:Ignorable="d">
+    <ScrollViewer>
+        <StackPanel Spacing="16" Padding="16">
+            <TextBlock Text="Audits" FontSize="22" FontWeight="SemiBold" />
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="Recording Classification Audit" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="RecordingsFolderBox" Width="360" PlaceholderText="Optional recordings folder" />
+                    <Button Content="Run audit" Click="OnRunRecordingsAudit" />
+                </StackPanel>
+                <ProgressBar x:Name="RecordingsProgress" Height="6" Minimum="0" Maximum="100" />
+                <TextBlock x:Name="RecordingsStatus" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="Explicit Music Audit" FontWeight="SemiBold" />
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBox x:Name="RateLimitBox" Width="100" Text="3.1" />
+                    <TextBox x:Name="MaxFilesBox" Width="100" Text="500" />
+                    <CheckBox x:Name="LyricsCheckBox" Content="Lyrics check" />
+                    <Button Content="Run audit" Click="OnRunExplicitAudit" />
+                </StackPanel>
+                <ProgressBar x:Name="ExplicitProgress" Height="6" Minimum="0" Maximum="100" />
+                <TextBlock x:Name="ExplicitStatus" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="Recent audit runs" FontWeight="SemiBold" />
+                <Button Content="Refresh" Click="OnRefreshRuns" Width="120" />
+                <ListView x:Name="AuditRuns" Height="160" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="Recording Audit Results" FontWeight="SemiBold" />
+                <ListView x:Name="RecordingsResults" Height="180" />
+            </StackPanel>
+
+            <StackPanel Spacing="8">
+                <TextBlock Text="Explicit Music Audit Results" FontWeight="SemiBold" />
+                <ListView x:Name="ExplicitResults" Height="180" />
+            </StackPanel>
+        </StackPanel>
+    </ScrollViewer>
+</Page>
