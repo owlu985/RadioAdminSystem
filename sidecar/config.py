@@ -1,10 +1,23 @@
+import importlib.util
 import os
-
-from config import Config as BaseConfig
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 DEFAULT_DATA_ROOT = os.path.join(INSTANCE_DIR, "data")
+ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
+
+
+def _load_base_config():
+    config_path = os.path.join(ROOT_DIR, "config.py")
+    spec = importlib.util.spec_from_file_location("rams_config", config_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"Unable to load base config from {config_path}")
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module.Config
+
+
+BaseConfig = _load_base_config()
 
 
 class Config(BaseConfig):
