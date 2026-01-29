@@ -1,5 +1,6 @@
 import json
 import os
+import sys
 from datetime import datetime
 
 from flask import Blueprint, Flask, flash, redirect, render_template, request, url_for
@@ -38,18 +39,28 @@ def _apply_sidecar_config(app: Flask, payload: dict) -> None:
             app.config[key] = payload[key]
 
 
-def create_app(config_class=Config) -> Flask:
-    sidecar_templates = os.path.join(os.path.dirname(__file__), "templates")
+def _template_root() -> str:
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        return os.path.join(bundle_root, "sidecar", "templates")
+    return os.path.join(os.path.dirname(__file__), "templates")
 
-    app = Flask("rams_sidecar", instance_path=INSTANCE_DIR, instance_relative_config=False)
+
+def create_app(config_class=Config) -> Flask:
+    sidecar_templates = _template_root()
+
+    app = Flask(
+        "rams_sidecar",
+        instance_path=INSTANCE_DIR,
+        instance_relative_config=False,
+        template_folder=sidecar_templates,
+    )
     app.config.from_object(config_class)
 
     os.makedirs(app.instance_path, exist_ok=True)
     data_root = app.config.get("DATA_ROOT")
     if data_root:
         os.makedirs(data_root, exist_ok=True)
-
-    app.template_folder = sidecar_templates
 
     stored = _load_sidecar_config()
     _apply_sidecar_config(app, stored)

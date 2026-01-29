@@ -29,7 +29,7 @@ From the repo root on Windows:
 ```powershell
 pip install -r requirements.txt
 pip install pyinstaller
-pyinstaller --noconfirm --onefile --name rams-sidecar --add-data "sidecar/templates;sidecar/templates" sidecar/app.py
+pyinstaller --noconfirm --onefile --windowed --name rams-sidecar --add-data "sidecar/templates;sidecar/templates" sidecar/gui.py
 ```
 
 The executable will be written to `dist/rams-sidecar.exe`. Use this exe for distribution if you want to avoid the WinUI/.NET build path entirely.
