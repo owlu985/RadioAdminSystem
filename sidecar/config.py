@@ -1,5 +1,7 @@
 import importlib.util
 import os
+import secrets
+import sys
 
 BASE_DIR = os.path.abspath(os.path.dirname(__file__))
 INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
@@ -9,12 +11,35 @@ ROOT_DIR = os.path.abspath(os.path.join(BASE_DIR, ".."))
 
 def _load_base_config():
     config_path = os.path.join(ROOT_DIR, "config.py")
-    spec = importlib.util.spec_from_file_location("rams_config", config_path)
-    if spec is None or spec.loader is None:
-        raise RuntimeError(f"Unable to load base config from {config_path}")
-    module = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(module)
-    return module.Config
+    if os.path.exists(config_path):
+        spec = importlib.util.spec_from_file_location("rams_config", config_path)
+        if spec is None or spec.loader is None:
+            raise RuntimeError(f"Unable to load base config from {config_path}")
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        return module.Config
+
+    bundle_root = getattr(sys, "_MEIPASS", None)
+    if bundle_root:
+        bundled_config = os.path.join(bundle_root, "config.py")
+        if os.path.exists(bundled_config):
+            spec = importlib.util.spec_from_file_location("rams_config", bundled_config)
+            if spec is None or spec.loader is None:
+                raise RuntimeError(f"Unable to load base config from {bundled_config}")
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+            return module.Config
+
+    class FallbackConfig:
+        SECRET_KEY = secrets.token_hex(16)
+        BIND_HOST = "127.0.0.1"
+        BIND_PORT = 5055
+        STATION_NAME = ""
+        STATION_SLOGAN = ""
+        THEME_DEFAULT = "system"
+        FONT_SCALE_PERCENT = 100
+
+    return FallbackConfig
 
 
 BaseConfig = _load_base_config()
