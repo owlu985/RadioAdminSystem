@@ -25,7 +25,7 @@
         <div class="card-header">Filters</div>
         <div class="card-body">
             <form method="get" class="row g-3 align-items-end">
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">Show</label>
                     <select class="form-select" name="show_id">
                         <option value="">All shows</option>
@@ -34,7 +34,7 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-4">
+                <div class="col-md-3">
                     <label class="form-label">DJ</label>
                     <select class="form-select" name="dj_id">
                         <option value="">All DJs</option>
@@ -43,24 +43,44 @@
                         {% endfor %}
                     </select>
                 </div>
-                <div class="col-md-4 d-flex gap-2">
+                <div class="col-md-3">
+                    <label class="form-label">Period</label>
+                    <select class="form-select" name="period">
+                        <option value="{{ all_periods_value }}" {% if selected_period == all_periods_value %}selected{% endif %}>All periods</option>
+                        {% for period in periods %}
+                            <option value="{{ period }}" {% if selected_period == period %}selected{% endif %}>{{ period }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="col-md-3 d-flex gap-2">
                     <button class="btn btn-primary" type="submit">Apply filters</button>
                     <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_manage') }}">Clear</a>
-                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show_id=selected_show_id, dj_id=selected_dj_id) }}">Download all</a>
+                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show_id=selected_show_id, dj_id=selected_dj_id, period=selected_period) }}">Download all</a>
                 </div>
             </form>
         </div>
     </div>
 
     <div class="card">
-        <div class="card-header">Recordings</div>
+        <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
+            <span>Recordings</span>
+            <button class="btn btn-sm btn-outline-success" type="submit" form="recordingsDownloadForm" id="downloadSelectedBtn" disabled>Download selected</button>
+        </div>
         <div class="card-body p-0">
             {% if recordings %}
                 <div class="table-responsive">
-                    <table class="table table-hover mb-0">
+                    <form method="post" action="{{ url_for('main.recordings_download') }}" id="recordingsDownloadForm">
+                        <input type="hidden" name="show_id" value="{{ selected_show_id }}">
+                        <input type="hidden" name="dj_id" value="{{ selected_dj_id }}">
+                        <input type="hidden" name="period" value="{{ selected_period }}">
+                        <table class="table table-hover mb-0">
                         <thead>
                             <tr>
+                                <th>
+                                    <input class="form-check-input" type="checkbox" id="selectAllRecordings" aria-label="Select all recordings">
+                                </th>
                                 <th>Show</th>
+                                <th>Period</th>
                                 <th>File</th>
                                 <th>Last modified</th>
                                 <th>Preview</th>
@@ -72,7 +92,11 @@
                         <tbody>
                             {% for rec in recordings %}
                                 <tr>
+                                    <td>
+                                        <input class="form-check-input recording-checkbox" type="checkbox" name="tokens" value="{{ rec.token }}" aria-label="Select recording {{ rec.filename }}">
+                                    </td>
                                     <td>{{ rec.display_name }}</td>
+                                    <td>{{ rec.period_label }}</td>
                                     <td>{{ rec.filename }}</td>
                                     <td>{{ rec.modified_at.strftime('%Y-%m-%d %H:%M') }}</td>
                                     <td>
@@ -100,7 +124,8 @@
                                 </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
+                        </table>
+                    </form>
                 </div>
             {% else %}
                 <div class="p-3 text-muted">No recordings match your filters.</div>
@@ -108,5 +133,31 @@
         </div>
     </div>
 </div>
+<script>
+    const selectAll = document.getElementById('selectAllRecordings');
+    const checkboxes = document.querySelectorAll('.recording-checkbox');
+    const downloadBtn = document.getElementById('downloadSelectedBtn');
+
+    function updateDownloadState() {
+        const anyChecked = Array.from(checkboxes).some((box) => box.checked);
+        downloadBtn.disabled = !anyChecked;
+        if (selectAll) {
+            selectAll.checked = checkboxes.length > 0 && Array.from(checkboxes).every((box) => box.checked);
+        }
+    }
+
+    if (selectAll) {
+        selectAll.addEventListener('change', (event) => {
+            checkboxes.forEach((box) => {
+                box.checked = event.target.checked;
+            });
+            updateDownloadState();
+        });
+    }
+
+    checkboxes.forEach((box) => {
+        box.addEventListener('change', updateDownloadState);
+    });
+</script>
 </body>
 </html>

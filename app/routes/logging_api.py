@@ -10,6 +10,7 @@ from app.services.log_export import (
     recording_csv_path,
     write_log_csv,
 )
+from app.services.recording_periods import recordings_period_root
 from app.logger import init_logger
 from app.auth_utils import admin_required
 
@@ -109,9 +110,7 @@ def submit_log():
                 )
             )
 
-        output_root = current_app.config.get("OUTPUT_FOLDER") or os.path.join(
-            current_app.instance_path, "recordings"
-        )
+        output_root = recordings_period_root()
         recording_base = build_recording_base_path(
             output_root=output_root,
             show_name=show_name,
