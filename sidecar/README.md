@@ -33,3 +33,5 @@ pyinstaller --noconfirm --onefile --name rams-sidecar --add-data "sidecar/templa
 ```
 
 The executable will be written to `dist/rams-sidecar.exe`. Use this exe for distribution if you want to avoid the WinUI/.NET build path entirely.
+
+If you change the entrypoint to `sidecar/app.py` directly, the bundled script can run without the `sidecar` package being on `sys.path` because the app falls back to local imports.

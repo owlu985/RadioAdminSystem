@@ -4,7 +4,10 @@ from datetime import datetime
 
 from flask import Blueprint, Flask, flash, redirect, render_template, request, url_for
 
-from sidecar.config import Config, INSTANCE_DIR
+try:
+    from sidecar.config import Config, INSTANCE_DIR
+except ModuleNotFoundError:  # pragma: no cover - fallback for bundled script entrypoints
+    from config import Config, INSTANCE_DIR
 
 
 def _instance_config_path() -> str:
