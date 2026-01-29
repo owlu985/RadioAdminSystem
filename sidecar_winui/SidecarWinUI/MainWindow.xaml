@@ -1,0 +1,21 @@
+<Window
+    x:Class="SidecarWinUI.MainWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:pages="using:SidecarWinUI.Pages"
+    Title="RAMS Sidecar (Native)"
+    Width="1280"
+    Height="860">
+    <NavigationView x:Name="RootNav"
+                    IsBackButtonVisible="Collapsed"
+                    PaneDisplayMode="Left"
+                    SelectionChanged="OnSelectionChanged">
+        <NavigationView.MenuItems>
+            <NavigationViewItem Content="Archivist" Tag="Archivist" Icon="Library" />
+            <NavigationViewItem Content="Audit" Tag="Audit" Icon="Document" />
+            <NavigationViewItem Content="Show Automator" Tag="ShowAutomator" Icon="Play" />
+            <NavigationViewItem Content="Options" Tag="Options" Icon="Setting" />
+        </NavigationView.MenuItems>
+        <Frame x:Name="ContentFrame" />
+    </NavigationView>
+</Window>
