@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 
 import requests
 
-from app.services.music_search import get_music_index
+from app.services.library.music_search import get_music_index
 
 
 def _normalize(value: Optional[str]) -> str:

@@ -131,13 +131,21 @@
             if (s.status === 'completed' || s.status === 'error') {
                 wrap.style.display = 'none';
                 status.textContent = s.status === 'error' ? (s.error || 'error') : 'Completed';
-                renderResults(resultsContainerId, s.results || [], action);
+                if (s.results_url) {
+                    await loadAuditResults(s.results_url, resultsContainerId, action);
+                }
                 loadAuditRuns();
                 return;
             }
             setTimeout(poll, 2000);
         };
         poll();
+    }
+
+    async function loadAuditResults(resultsUrl, containerId, action) {
+        const res = await fetch(resultsUrl);
+        const data = await res.json();
+        renderResults(containerId, data.results || [], action);
     }
 
     function renderResults(containerId, results, action) {
@@ -191,7 +199,10 @@
                 <td>${run.status}</td>
                 <td>${run.created_at}</td>
                 <td>${run.completed_at || ''}</td>
-                <td><button class="btn btn-sm btn-outline-primary" onclick="loadAuditRun(${run.id})">Load</button></td>
+                <td class="text-end">
+                    ${run.results_url ? `<button class="btn btn-sm btn-outline-primary" onclick="loadAuditRun(${run.id})">Load</button>` : ''}
+                    ${run.results_url ? `<button class="btn btn-sm btn-outline-danger ms-2" onclick="deleteAuditRun(${run.id})">Delete</button>` : ''}
+                </td>
             </tr>
         `).join('');
     }
@@ -199,11 +210,21 @@
     async function loadAuditRun(runId) {
         const res = await fetch(`/api/audit/runs/${runId}`);
         const data = await res.json();
-        if (data.action === 'recordings') {
-            renderResults('recResults', data.results || [], 'recordings');
-        } else if (data.action === 'explicit') {
-            renderResults('expResults', data.results || [], 'explicit');
+        const target = data.action === 'recordings' ? 'recResults' : 'expResults';
+        if (data.results_url) {
+            await loadAuditResults(data.results_url, target, data.action);
+        } else {
+            renderResults(target, data.results || [], data.action);
         }
+    }
+
+    async function deleteAuditRun(runId) {
+        const res = await fetch(`/api/audit/runs/${runId}/results`, { method: 'DELETE' });
+        if (!res.ok) {
+            alert('Unable to delete results.');
+            return;
+        }
+        loadAuditRuns();
     }
 
     document.getElementById('recordingsForm').addEventListener('submit', function(e) {

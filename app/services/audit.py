@@ -10,11 +10,21 @@ from typing import List, Dict
 from datetime import datetime
 from flask import current_app
 from app.services.detection import analyze_audio
-from app.services.music_search import _walk_music, _read_tags
+from app.services.library.music_search import _walk_music, _read_tags
 from app.models import AuditRun, db
 
 audit_jobs: Dict[str, Dict] = {}
 FCC_WORDS = ["fuck", "shit", "piss", "cunt", "cock", "tit", "dick"]
+
+
+def _audit_results_dir(app) -> str:
+    base = app.config.get("AUDIT_RESULTS_DIR") or os.path.join(app.instance_path, "audit_results")
+    os.makedirs(base, exist_ok=True)
+    return base
+
+
+def _audit_results_path(app, run_id: int) -> str:
+    return os.path.join(_audit_results_dir(app), f"audit_run_{run_id}.json")
 
 
 def _min_rate_limit(rate_limit_s: float) -> float:
@@ -174,7 +184,6 @@ def _run_job(app, job_id: str, action: str, params: dict):
                         "automation_ratio": res.automation_ratio,
                     })
                     audit_jobs[job_id]["progress"] = idx + 1
-                audit_jobs[job_id]["results"] = results
             elif action == "explicit":
                 rate = params.get("rate", 0.5)
                 max_files = params.get("max_files")
@@ -217,10 +226,18 @@ def _run_job(app, job_id: str, action: str, params: dict):
                         "lyrics_error": lyrics_result["error"] if lyrics_result else None,
                     })
                     audit_jobs[job_id]["progress"] = idx + 1
-                audit_jobs[job_id]["results"] = results
+
+            results_path = _audit_results_path(app, audit_run.id)
+            with open(results_path, "w", encoding="utf-8") as fh:
+                json.dump(results, fh, ensure_ascii=False, indent=2)
             audit_jobs[job_id]["status"] = "completed"
+            audit_jobs[job_id]["results_path"] = results_path
+            audit_jobs[job_id]["results_count"] = len(results)
             audit_run.status = "completed"
-            audit_run.results_json = json.dumps(audit_jobs[job_id]["results"], ensure_ascii=False)
+            audit_run.results_json = json.dumps(
+                {"results_path": results_path, "results_count": len(results)},
+                ensure_ascii=False,
+            )
             audit_run.completed_at = datetime.utcnow()
             db.session.commit()
     except Exception as exc:  # noqa: BLE001
@@ -240,7 +257,8 @@ def start_audit_job(action: str, params: dict) -> str:
         "status": "queued",
         "progress": 0,
         "total": 0,
-        "results": None,
+        "results_path": None,
+        "results_count": 0,
         "audit_run_id": None,
     }
     # capture the real Flask app for background work
@@ -258,12 +276,24 @@ def list_audit_runs(limit: int = 20) -> List[Dict]:
     runs = AuditRun.query.order_by(AuditRun.created_at.desc()).limit(limit).all()
     payload = []
     for run in runs:
+        results_path = None
+        results_count = None
+        if run.results_json:
+            try:
+                results_meta = json.loads(run.results_json)
+                if isinstance(results_meta, dict):
+                    results_path = results_meta.get("results_path")
+                    results_count = results_meta.get("results_count")
+            except json.JSONDecodeError:
+                results_path = None
         payload.append({
             "id": run.id,
             "action": run.action,
             "status": run.status,
             "created_at": run.created_at.isoformat(),
             "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            "has_results": bool(results_path),
+            "results_count": results_count,
         })
     return payload
 
@@ -273,11 +303,24 @@ def get_audit_run(run_id: int) -> Dict | None:
     if not run:
         return None
     results = None
+    results_path = None
+    results_count = None
     if run.results_json:
         try:
-            results = json.loads(run.results_json)
+            payload = json.loads(run.results_json)
+            if isinstance(payload, dict) and payload.get("results_path"):
+                results_path = payload.get("results_path")
+                results_count = payload.get("results_count")
+            else:
+                results = payload
         except json.JSONDecodeError:
             results = run.results_json
+    if results_path and os.path.exists(results_path):
+        try:
+            with open(results_path, "r", encoding="utf-8") as fh:
+                results = json.load(fh)
+        except Exception:  # noqa: BLE001
+            results = None
     params = None
     if run.params_json:
         try:
@@ -292,4 +335,29 @@ def get_audit_run(run_id: int) -> Dict | None:
         "completed_at": run.completed_at.isoformat() if run.completed_at else None,
         "params": params,
         "results": results,
+        "results_path": results_path,
+        "results_count": results_count,
     }
+
+
+def get_audit_results_path(run: AuditRun) -> str | None:
+    if not run.results_json:
+        return None
+    try:
+        payload = json.loads(run.results_json)
+    except json.JSONDecodeError:
+        return None
+    if isinstance(payload, dict):
+        return payload.get("results_path")
+    return None
+
+
+def load_audit_results(run: AuditRun) -> list | dict | None:
+    results_path = get_audit_results_path(run)
+    if not results_path or not os.path.exists(results_path):
+        return None
+    try:
+        with open(results_path, "r", encoding="utf-8") as fh:
+            return json.load(fh)
+    except Exception:  # noqa: BLE001
+        return None

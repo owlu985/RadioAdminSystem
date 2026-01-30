@@ -5,6 +5,10 @@ INSTANCE_DIR = os.path.join(BASE_DIR, "instance")
 DEFAULT_DATA_ROOT = os.path.join(INSTANCE_DIR, "data")
 
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    return str(os.getenv(name, default)).strip().lower() in {"1", "true", "yes", "on"}
+
+
 class Config:
     SECRET_KEY = "a_not_so_secure_fallback_key"
     SQLALCHEMY_DATABASE_URI = f'sqlite:///{os.path.join(INSTANCE_DIR, "app.db")}'
@@ -110,6 +114,7 @@ class Config:
     MEDIA_ASSETS_ROOT = os.path.join(NAS_ROOT, "assets")
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")
     TRANSCODE_ALAC_TO_MP3 = True
+    TRANSCODE_CACHE_RETENTION_HOURS = 48
     AUDIO_HOST_UPLOAD_DIR = os.path.join(DATA_ROOT, "hosted_audio")
     AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(DATA_ROOT, "hosted_audio_default.jpg")
     RADIODJ_IMPORT_FOLDER = os.path.join(DATA_ROOT, "radiodj_imports")
@@ -122,6 +127,7 @@ class Config:
     AUDIT_ITUNES_RATE_LIMIT_SECONDS = 3.1
     AUDIT_MUSIC_MAX_FILES = 500
     AUDIT_LYRICS_CHECK_ENABLED = False
+    AUDIT_RESULTS_DIR = os.path.join(DATA_ROOT, "audit_results")
 
     # Branding
     STATION_NAME = "WLMC"
@@ -152,3 +158,13 @@ class Config:
     DISCORD_OAUTH_CLIENT_ID = None
     DISCORD_OAUTH_CLIENT_SECRET = None
     DISCORD_ALLOWED_GUILD_ID = None  # optional: require membership in this guild
+
+    # WSGI / startup safety toggles
+    WSGI_SAFE_MODE = _env_flag("RAMS_WSGI_SAFE_MODE", "0")
+    RUN_SCHEMA_SETUP_ON_STARTUP = _env_flag("RAMS_RUN_SCHEMA_SETUP_ON_STARTUP", "1")
+    RUN_MIGRATIONS_ON_STARTUP = _env_flag("RAMS_RUN_MIGRATIONS_ON_STARTUP", "1")
+    RUN_CLEANUP_ON_STARTUP = _env_flag("RAMS_RUN_CLEANUP_ON_STARTUP", "1")
+    RUN_SCHEDULER_ON_STARTUP = _env_flag("RAMS_RUN_SCHEDULER_ON_STARTUP", "1")
+    RUN_UTILS_ON_STARTUP = _env_flag("RAMS_RUN_UTILS_ON_STARTUP", "1")
+    RUN_OAUTH_INIT_ON_STARTUP = _env_flag("RAMS_RUN_OAUTH_INIT_ON_STARTUP", "1")
+    RUN_PLUGIN_LOAD_ON_STARTUP = _env_flag("RAMS_RUN_PLUGIN_LOAD_ON_STARTUP", "1")

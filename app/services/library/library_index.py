@@ -8,7 +8,7 @@ from typing import Dict
 
 from flask import current_app
 
-from app.services import music_search
+from app.services.library import music_search
 
 _library_index_state: Dict[str, object] = {
     "status": "idle",

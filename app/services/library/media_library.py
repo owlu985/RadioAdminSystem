@@ -7,7 +7,7 @@ from typing import Dict, List, Optional, Tuple
 from flask import current_app, url_for
 
 from app.models import ImagingAsset, PsaAsset, db
-from app.services.music_search import load_cue  # type: ignore[attr-defined]
+from app.services.library.music_search import load_cue  # type: ignore[attr-defined]
 
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")

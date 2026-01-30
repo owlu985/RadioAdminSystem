@@ -19,6 +19,19 @@ from .rate_limit import rate_limit_check
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+
+    def _startup_enabled(flag: str, default: bool = True) -> bool:
+        value = app.config.get(flag, default)
+        if not app.config.get("WSGI_SAFE_MODE", False):
+            return value
+        if flag in {
+            "RUN_SCHEMA_SETUP_ON_STARTUP",
+            "RUN_MIGRATIONS_ON_STARTUP",
+            "RUN_CLEANUP_ON_STARTUP",
+            "RUN_SCHEDULER_ON_STARTUP",
+        }:
+            return False
+        return value
     
     user_config_path = os.path.join(app.instance_path, 'user_config.json')
     logs_dir = app.config.get("LOGS_DIR") or os.path.join(app.instance_path, 'logs')
@@ -27,7 +40,7 @@ def create_app(config_class=Config):
     data_root = app.config.get("DATA_ROOT")
 
     if not os.path.exists(app.instance_path):
-        os.mkdir(app.instance_path)
+        os.makedirs(app.instance_path, exist_ok=True)
     if data_root and not os.path.exists(data_root):
         os.makedirs(data_root, exist_ok=True)
     if not os.path.exists(logs_dir):
@@ -47,12 +60,15 @@ def create_app(config_class=Config):
 #Load/Generate secret key and user config
     if not os.path.exists(user_config_path):
         try:
-            with open(user_config_path, 'w') as f:
-                secret_key = secrets.token_hex(16)
-                default_config = {
-                    "SECRET_KEY": secret_key
-                }
-                json.dump(default_config, f, indent=4)
+            secret_key = secrets.token_hex(16)
+            default_config = {"SECRET_KEY": secret_key}
+            try:
+                fd = os.open(user_config_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL)
+            except FileExistsError:
+                fd = None
+            if fd is not None:
+                with os.fdopen(fd, "w") as f:
+                    json.dump(default_config, f, indent=4)
                 app.config['SECRET_KEY'] = secret_key
         except Exception as e:
             initial_logger.error(f"Error creating user config: {e}")
@@ -68,56 +84,62 @@ def create_app(config_class=Config):
 #Init Database
     try:
         db.init_app(app)
-        
-        with app.app_context():
-            ensure_schema(app, initial_logger)
+
+        if _startup_enabled("RUN_SCHEMA_SETUP_ON_STARTUP", True):
+            with app.app_context():
+                ensure_schema(app, initial_logger)
 
         Migrate(app, db)
 
-        with app.app_context():
-            from flask_migrate import upgrade, init, migrate
-            migrations_dir = os.path.join(app.instance_path, 'migrations')
-            if not os.path.exists(migrations_dir):
-                try:
-                    init(directory=migrations_dir)
-                    migrate(message="Initial migration", directory=migrations_dir)
-                    upgrade(directory=migrations_dir)
-                except Exception as e:
-                    initial_logger.logger.error(f"Error during migrations: {e}")
+        if _startup_enabled("RUN_MIGRATIONS_ON_STARTUP", True):
+            with app.app_context():
+                from flask_migrate import upgrade, init, migrate
+                migrations_dir = os.path.join(app.instance_path, 'migrations')
+                if not os.path.exists(migrations_dir):
+                    try:
+                        init(directory=migrations_dir)
+                        migrate(message="Initial migration", directory=migrations_dir)
+                        upgrade(directory=migrations_dir)
+                    except Exception as e:
+                        initial_logger.logger.error(f"Error during migrations: {e}")
     except Exception as e:
         initial_logger.error(f"Error initializing the database: {e}")
 
 #Delete past shows
-    try:
-        with app.app_context():
-            past_shows = Show.query.filter(Show.end_date < datetime.now().date()).all()
-            initial_logger.info(f"Past shows: {past_shows}")
-            if not past_shows:
-                initial_logger.info("No past shows to delete on Init.")
-            else:
-                for show in past_shows:
-                    db.session.delete(show)
-                db.session.commit()
-                initial_logger.info(f"{past_shows} shows deleted on Init.")
-    except Exception as e:
-        initial_logger.error(f"Error deleting past shows on Init: {e}")
+    if _startup_enabled("RUN_CLEANUP_ON_STARTUP", True):
+        try:
+            with app.app_context():
+                past_shows = Show.query.filter(Show.end_date < datetime.now().date()).all()
+                initial_logger.info(f"Past shows: {past_shows}")
+                if not past_shows:
+                    initial_logger.info("No past shows to delete on Init.")
+                else:
+                    for show in past_shows:
+                        db.session.delete(show)
+                    db.session.commit()
+                    initial_logger.info(f"{past_shows} shows deleted on Init.")
+        except Exception as e:
+            initial_logger.error(f"Error deleting past shows on Init: {e}")
 
 #Init Scheduler and Utils
-    try:
-        init_scheduler(app)
-    except Exception as e:
-        initial_logger.error(f"Error initializing scheduler: {e}")
+    if _startup_enabled("RUN_SCHEDULER_ON_STARTUP", True):
+        try:
+            init_scheduler(app)
+        except Exception as e:
+            initial_logger.error(f"Error initializing scheduler: {e}")
 
-    try:
-        init_utils()
-    except Exception as e:
-        initial_logger.error(f"Error initializing utils: {e}")
+    if _startup_enabled("RUN_UTILS_ON_STARTUP", True):
+        try:
+            init_utils()
+        except Exception as e:
+            initial_logger.error(f"Error initializing utils: {e}")
 
 # Init OAuth (optional)
-    try:
-        init_oauth(app)
-    except Exception as e:
-        initial_logger.error(f"Error initializing OAuth: {e}")
+    if _startup_enabled("RUN_OAUTH_INIT_ON_STARTUP", True):
+        try:
+            init_oauth(app)
+        except Exception as e:
+            initial_logger.error(f"Error initializing OAuth: {e}")
 
 #Init Show pausing restart roll over
     try:
@@ -131,12 +153,15 @@ def create_app(config_class=Config):
     
     from app.services.show_run_service import start_show_run, end_show_run  # noqa: F401
     from app.main_routes import main_bp
+    from app.routes import auth as auth_routes  # noqa: F401
+    from app.routes import dashboard as dashboard_routes  # noqa: F401
     from app.routes.api import api_bp
     from app.routes.logging_api import logs_bp
     from app.routes.news import news_bp
 
-    with app.app_context():
-        load_plugins(app)
+    if _startup_enabled("RUN_PLUGIN_LOAD_ON_STARTUP", True):
+        with app.app_context():
+            load_plugins(app)
 
     app.register_blueprint(main_bp)
     app.register_blueprint(api_bp)
