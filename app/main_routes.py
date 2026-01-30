@@ -410,7 +410,7 @@ ALL_PERIODS_VALUE = "__all__"
 
 
 def _recordings_root() -> str:
-    return recordings_base_root()
+    return recordings_base_root(create=False)
 
 
 @dataclass

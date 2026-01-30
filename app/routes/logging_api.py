@@ -110,7 +110,7 @@ def submit_log():
                 )
             )
 
-        output_root = recordings_period_root()
+        output_root = recordings_period_root(create=True)
         recording_base = build_recording_base_path(
             output_root=output_root,
             show_name=show_name,

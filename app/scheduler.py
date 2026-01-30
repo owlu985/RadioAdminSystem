@@ -249,7 +249,7 @@ def schedule_recording(show):
     elif show.host_first_name or show.host_last_name:
         hosts = [f"{show.host_first_name} {show.host_last_name}".strip()]
 
-    output_root = recordings_period_root()
+    output_root = recordings_period_root(create=True)
 
     if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:
         show_folder = os.path.join(output_root, display_name)
@@ -299,7 +299,7 @@ def schedule_recording(show):
 
 def _schedule_marathon_jobs(event: MarathonEvent):
     stream_url = flask_app.config["STREAM_URL"]
-    base_folder = os.path.join(recordings_period_root(), "Marathons", event.safe_name)
+    base_folder = os.path.join(recordings_period_root(create=True), "Marathons", event.safe_name)
     os.makedirs(base_folder, exist_ok=True)
     user_config_path = os.path.join(flask_app.instance_path, "user_config.json")
 

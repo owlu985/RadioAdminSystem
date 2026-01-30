@@ -70,17 +70,19 @@ def period_folder_name(period: str) -> str:
     return period.replace("/", "_").replace("\\", "_").strip()
 
 
-def recordings_base_root() -> str:
+def recordings_base_root(*, create: bool = False) -> str:
     root = current_app.config.get("OUTPUT_FOLDER") or os.path.join(current_app.instance_path, "recordings")
-    os.makedirs(root, exist_ok=True)
+    if create:
+        os.makedirs(root, exist_ok=True)
     return root
 
 
-def recordings_period_root(period: str | None = None) -> str:
+def recordings_period_root(period: str | None = None, *, create: bool = True) -> str:
     if period is None:
         period = current_recording_period()
-    base = recordings_base_root()
+    base = recordings_base_root(create=create)
     folder = period_folder_name(period)
     full = os.path.join(base, folder)
-    os.makedirs(full, exist_ok=True)
+    if create:
+        os.makedirs(full, exist_ok=True)
     return full
