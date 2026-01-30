@@ -13,6 +13,7 @@ class Config:
     DATA_ROOT = os.getenv("RAMS_DATA_ROOT") or DEFAULT_DATA_ROOT
     LOGS_DIR = os.path.join(DATA_ROOT, "logs")
     OUTPUT_FOLDER = os.path.join(DATA_ROOT, "recordings")
+    RECORDING_PERIODS_PATH = os.path.join(DATA_ROOT, "recording_periods.json")
     ADMIN_USERNAME = "admin"
     ADMIN_PASSWORD = "admin"
     ADMIN_PASSWORD_HASH = None

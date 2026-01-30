@@ -6,6 +6,7 @@ from flask import current_app
 from .logger import init_logger
 from .models import db, Show, MarathonEvent
 from app.services.detection import probe_and_record
+from app.services.recording_periods import recordings_period_root
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
@@ -248,12 +249,14 @@ def schedule_recording(show):
     elif show.host_first_name or show.host_last_name:
         hosts = [f"{show.host_first_name} {show.host_last_name}".strip()]
 
+    output_root = recordings_period_root(create=True)
+
     if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:
-        show_folder = os.path.join(current_app.config['OUTPUT_FOLDER'], display_name)
+        show_folder = os.path.join(output_root, display_name)
         if not os.path.exists(show_folder):
             os.mkdir(show_folder)
     else:
-        show_folder = current_app.config['OUTPUT_FOLDER']
+        show_folder = output_root
 
     output_file = os.path.join(show_folder, safe_name)
     user_config_path = os.path.join(current_app.instance_path, 'user_config.json')
@@ -296,7 +299,7 @@ def schedule_recording(show):
 
 def _schedule_marathon_jobs(event: MarathonEvent):
     stream_url = flask_app.config["STREAM_URL"]
-    base_folder = os.path.join(flask_app.config["OUTPUT_FOLDER"], "Marathons", event.safe_name)
+    base_folder = os.path.join(recordings_period_root(create=True), "Marathons", event.safe_name)
     os.makedirs(base_folder, exist_ok=True)
     user_config_path = os.path.join(flask_app.instance_path, "user_config.json")
 

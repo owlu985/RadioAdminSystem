@@ -79,6 +79,14 @@ from app.services.dj_library import (
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.log_export import build_docx, read_log_csv, recording_csv_path
+from app.services.recording_periods import (
+    UNASSIGNED_PERIOD_LABEL,
+    current_recording_period,
+    load_recording_periods,
+    save_recording_periods,
+    period_folder_name,
+    recordings_base_root,
+)
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
 from app.services.settings_backup import backup_settings, backup_data_snapshot
@@ -398,10 +406,11 @@ def _media_roots() -> list[tuple[str, str]]:
     return roots
 
 
+ALL_PERIODS_VALUE = "__all__"
+
+
 def _recordings_root() -> str:
-    root = current_app.config.get("OUTPUT_FOLDER") or os.path.join(current_app.instance_path, "recordings")
-    os.makedirs(root, exist_ok=True)
-    return root
+    return recordings_base_root(create=False)
 
 
 @dataclass
@@ -415,6 +424,7 @@ class RecordingEntry:
     token: str
     size_bytes: int
     modified_at: datetime
+    period_label: str
 
 
 def _safe_show_map() -> dict[str, str]:
@@ -433,8 +443,65 @@ def _parse_recording_label(filename: str) -> str | None:
     return None
 
 
-def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) -> list[RecordingEntry]:
-    root = _recordings_root()
+def _period_folder_map(periods: list[str]) -> dict[str, str]:
+    return {period_folder_name(period): period for period in periods}
+
+
+def _period_label_for_path(path: str, base_root: str, period_map: dict[str, str]) -> str:
+    rel = os.path.relpath(os.path.dirname(path), base_root)
+    if rel == ".":
+        return UNASSIGNED_PERIOD_LABEL
+    folder = rel.split(os.sep, 1)[0]
+    return period_map.get(folder, folder)
+
+
+def _build_recording_entry(
+    *,
+    full: str,
+    show_map: dict[str, str],
+    base_root: str,
+    period_map: dict[str, str],
+    period_folders: set[str],
+    root: str,
+) -> RecordingEntry:
+    filename = os.path.basename(full)
+    safe_label = _parse_recording_label(filename) or os.path.splitext(filename)[0]
+    if os.path.normpath(os.path.abspath(os.path.dirname(full))) != os.path.normpath(os.path.abspath(root)):
+        folder_name = os.path.basename(os.path.dirname(full))
+        if folder_name not in period_folders:
+            safe_label = folder_name.replace(" ", "_")
+    display = show_map.get(safe_label, safe_label.replace("_", " "))
+    stat = os.stat(full)
+    log_path = recording_csv_path(full)
+    has_log = os.path.isfile(log_path)
+    return RecordingEntry(
+        display_name=display,
+        safe_name=safe_label,
+        filename=filename,
+        full_path=full,
+        log_csv_path=log_path,
+        has_log=has_log,
+        token=base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8"),
+        size_bytes=stat.st_size,
+        modified_at=datetime.fromtimestamp(stat.st_mtime),
+        period_label=_period_label_for_path(full, base_root, period_map),
+    )
+
+
+def _collect_recordings(
+    show_id: int | None = None,
+    dj_id: int | None = None,
+    period: str | None = None,
+) -> list[RecordingEntry]:
+    base_root = _recordings_root()
+    periods = load_recording_periods().get("periods", [])
+    period_map = _period_folder_map(periods)
+    period_folders = set(period_map.keys())
+    root = base_root
+    if period and period != ALL_PERIODS_VALUE:
+        root = os.path.join(base_root, period_folder_name(period))
+        if not os.path.isdir(root):
+            return []
     show_map = _safe_show_map()
     allowed_safe_names: set[str] | None = None
 
@@ -456,27 +523,27 @@ def _collect_recordings(show_id: int | None = None, dj_id: int | None = None) ->
             if not filename.lower().endswith((".mp3", ".wav", ".m4a", ".aac")):
                 continue
             full = os.path.join(current_root, filename)
+            if (
+                period
+                and period != ALL_PERIODS_VALUE
+                and not os.path.normcase(os.path.abspath(full)).startswith(os.path.normcase(os.path.abspath(root)))
+            ):
+                continue
             safe_label = _parse_recording_label(filename) or os.path.splitext(filename)[0]
-            if current_root != root:
+            if os.path.normpath(os.path.abspath(current_root)) != os.path.normpath(os.path.abspath(root)):
                 folder_name = os.path.basename(current_root)
-                safe_label = folder_name.replace(" ", "_")
+                if folder_name not in period_folders:
+                    safe_label = folder_name.replace(" ", "_")
             if allowed_safe_names is not None and safe_label not in allowed_safe_names:
                 continue
-            display = show_map.get(safe_label, safe_label.replace("_", " "))
-            stat = os.stat(full)
-            log_path = recording_csv_path(full)
-            has_log = os.path.isfile(log_path)
             entries.append(
-                RecordingEntry(
-                    display_name=display,
-                    safe_name=safe_label,
-                    filename=filename,
-                    full_path=full,
-                    log_csv_path=log_path,
-                    has_log=has_log,
-                    token=base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8"),
-                    size_bytes=stat.st_size,
-                    modified_at=datetime.fromtimestamp(stat.st_mtime),
+                _build_recording_entry(
+                    full=full,
+                    show_map=show_map,
+                    base_root=base_root,
+                    period_map=period_map,
+                    period_folders=period_folders,
+                    root=root,
                 )
             )
     entries.sort(key=lambda item: item.modified_at, reverse=True)
@@ -645,7 +712,12 @@ def dj_handoff_notes():
 def recordings_manage():
     show_id = request.args.get("show_id", type=int)
     dj_id = request.args.get("dj_id", type=int)
-    entries = _collect_recordings(show_id=show_id, dj_id=dj_id)
+    period_param = request.args.get("period") or current_recording_period()
+    periods_payload = load_recording_periods()
+    periods = periods_payload.get("periods", [])
+    if period_param not in periods and period_param != ALL_PERIODS_VALUE:
+        period_param = current_recording_period()
+    entries = _collect_recordings(show_id=show_id, dj_id=dj_id, period=period_param)
     shows = [
         {"id": show.id, "display": show_display_title(show)}
         for show in Show.query.order_by(Show.show_name, Show.host_last_name).all()
@@ -658,6 +730,9 @@ def recordings_manage():
         djs=djs,
         selected_show_id=show_id,
         selected_dj_id=dj_id,
+        selected_period=period_param,
+        periods=periods,
+        all_periods_value=ALL_PERIODS_VALUE,
     )
 
 
@@ -729,15 +804,44 @@ def recordings_log_download_docx(token: str):
     return resp
 
 
-@main_bp.route("/recordings/download")
+@main_bp.route("/recordings/download", methods=["GET", "POST"])
 @permission_required({"logs:view"})
 def recordings_download():
-    show_id = request.args.get("show_id", type=int)
-    dj_id = request.args.get("dj_id", type=int)
-    entries = _collect_recordings(show_id=show_id, dj_id=dj_id)
+    show_id = request.values.get("show_id", type=int)
+    dj_id = request.values.get("dj_id", type=int)
+    period_param = request.values.get("period") or current_recording_period()
+    periods = load_recording_periods().get("periods", [])
+    period_map = _period_folder_map(periods)
+    period_folders = set(period_map.keys())
+    if period_param not in periods and period_param != ALL_PERIODS_VALUE:
+        period_param = current_recording_period()
+    entries: list[RecordingEntry] = []
+    if request.method == "POST":
+        tokens = request.form.getlist("tokens")
+        if not tokens:
+            flash("Select at least one recording to download.", "warning")
+            return redirect(url_for("main.recordings_manage", show_id=show_id, dj_id=dj_id, period=period_param))
+        show_map = _safe_show_map()
+        base_root = _recordings_root()
+        for token in tokens:
+            full = _resolve_recording_path(token)
+            if not full:
+                continue
+            entries.append(
+                _build_recording_entry(
+                    full=full,
+                    show_map=show_map,
+                    base_root=base_root,
+                    period_map=period_map,
+                    period_folders=period_folders,
+                    root=base_root,
+                )
+            )
+    else:
+        entries = _collect_recordings(show_id=show_id, dj_id=dj_id, period=period_param)
     if not entries:
         flash("No recordings found for that filter.", "warning")
-        return redirect(url_for("main.recordings_manage", show_id=show_id, dj_id=dj_id))
+        return redirect(url_for("main.recordings_manage", show_id=show_id, dj_id=dj_id, period=period_param))
     label = "recordings"
     if show_id:
         show = Show.query.get(show_id)
@@ -754,10 +858,15 @@ def recordings_download():
 
     with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
         for entry in entries:
-            arcname = os.path.join(entry.display_name.replace(" ", "_"), entry.filename)
+            period_folder = entry.period_label.replace(" ", "_")
+            arcname = os.path.join(period_folder, entry.display_name.replace(" ", "_"), entry.filename)
             archive.write(entry.full_path, arcname=arcname)
             if entry.has_log:
-                log_arcname = os.path.join(entry.display_name.replace(" ", "_"), os.path.basename(entry.log_csv_path))
+                log_arcname = os.path.join(
+                    period_folder,
+                    entry.display_name.replace(" ", "_"),
+                    os.path.basename(entry.log_csv_path),
+                )
                 archive.write(entry.log_csv_path, arcname=log_arcname)
 
     response = send_file(
@@ -2423,6 +2532,10 @@ def settings():
             }
 
             update_user_config(updated_settings)
+            recording_periods_raw = request.form.get("recording_periods", "")
+            recording_periods = [line.strip() for line in recording_periods_raw.splitlines() if line.strip()]
+            current_period = request.form.get("current_recording_period") or None
+            save_recording_periods(periods=recording_periods, current=current_period)
             # Re-register OAuth providers with new credentials without restart
             try:
                 init_oauth(current_app)
@@ -2506,6 +2619,8 @@ def settings():
         'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
         'audio_host_upload_dir': config.get('AUDIO_HOST_UPLOAD_DIR', ''),
         'audio_host_backdrop_default': config.get('AUDIO_HOST_BACKDROP_DEFAULT', ''),
+        'recording_periods': load_recording_periods().get("periods", []),
+        'current_recording_period': current_recording_period(),
     }
 
     logger.info(f'Rendering settings page.')
