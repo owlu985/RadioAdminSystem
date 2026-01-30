@@ -12,7 +12,7 @@ from app.services.health import record_failure
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
-from app.services.library_index import start_library_index_job
+from app.services.library.library_index import start_library_index_job
 from .utils import update_user_config, show_display_title, show_primary_host
 from datetime import date as date_cls
 import ffmpeg
@@ -44,6 +44,7 @@ def init_scheduler(app):
             schedule_settings_backup()
             schedule_radiodj_now_playing()
             schedule_library_index_job()
+            schedule_transcode_cache_cleanup()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -516,6 +517,22 @@ def schedule_news_rotation():
         logger.error(f"Error scheduling news rotation job: {e}")
 
 
+def schedule_transcode_cache_cleanup():
+    if flask_app is None:
+        return
+    try:
+        scheduler.add_job(
+            run_transcode_cache_cleanup_job,
+            "interval",
+            hours=24,
+            id="transcode_cache_cleanup_job",
+            replace_existing=True,
+        )
+        logger.info("Transcode cache cleanup job scheduled.")
+    except Exception as e:  # noqa: BLE001
+        logger.error(f"Error scheduling transcode cache cleanup: {e}")
+
+
 def run_news_rotation_job():
     if flask_app is None:
         return
@@ -602,3 +619,29 @@ def run_library_index_job():
         return
     with flask_app.app_context():
         start_library_index_job()
+
+
+def run_transcode_cache_cleanup_job():
+    if flask_app is None:
+        return
+    retention_hours = flask_app.config.get("TRANSCODE_CACHE_RETENTION_HOURS", 48)
+    cutoff = datetime.utcnow() - timedelta(hours=retention_hours)
+    cache_dir = os.path.join(flask_app.instance_path, "transcodes")
+    if not os.path.exists(cache_dir):
+        return
+    removed = 0
+    for entry in os.scandir(cache_dir):
+        if not entry.is_file():
+            continue
+        try:
+            mtime = datetime.utcfromtimestamp(entry.stat().st_mtime)
+        except OSError:
+            continue
+        if mtime <= cutoff:
+            try:
+                os.remove(entry.path)
+                removed += 1
+            except OSError:
+                continue
+    if removed:
+        logger.info("Removed %s expired transcode cache file(s).", removed)

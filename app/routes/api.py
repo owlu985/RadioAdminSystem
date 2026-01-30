@@ -24,6 +24,7 @@ from app.models import (
     PressFeature,
     WebsiteBanner,
     PodcastEpisode,
+    AuditRun,
     DJAbsence,
     HostedAudio,
     MarathonEvent,
@@ -47,8 +48,9 @@ from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
 from app.services.detection import probe_stream
 from app.services import api_cache
 from app.services.show_automator import QueueItem, ShowAutomatorService, plan_automation_step
+from app.services.serialization import deserialize_json_field
 from app.services.stream_monitor import fetch_icecast_listeners, recent_icecast_stats
-from app.services.music_search import (
+from app.services.library.music_search import (
     auto_fill_missing_cues,
     search_music,
     get_music_index,
@@ -64,7 +66,7 @@ from app.services.music_search import (
     cover_art_candidates,
     enrich_metadata_external,
 )
-from app.services.media_library import list_media, load_media_meta, save_media_meta
+from app.services.library.media_library import list_media, load_media_meta, save_media_meta
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -72,11 +74,19 @@ from app.services.archivist_db import (
     delete_album_rip_upload,
     cleanup_album_tmp,
 )
-from app.services.library_index import get_library_index_status, start_library_index_job
+from app.services.library.library_index import get_library_index_status, start_library_index_job
 from app.db_utils import ensure_playback_session_schema
 from sqlalchemy import func
 from app.logger import init_logger
-from app.services.audit import start_audit_job, get_audit_status, list_audit_runs, get_audit_run
+from app.auth_utils import permission_required
+from app.services.audit import (
+    get_audit_results_path,
+    load_audit_results,
+    start_audit_job,
+    get_audit_status,
+    list_audit_runs,
+    get_audit_run,
+)
 import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
@@ -85,23 +95,6 @@ _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "fetched_at": None,
     "payload": None,
 }
-
-
-def _deserialize_metadata(raw: str | None) -> dict | None:
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"raw": raw}
-
-def _deserialize_cues(raw: str | None) -> dict | None:
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except json.JSONDecodeError:
-        return {"raw": raw}
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
@@ -114,8 +107,8 @@ def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
         "title": item.title,
         "artist": item.artist,
         "duration": item.duration,
-        "metadata": _deserialize_metadata(item.item_metadata),
-        "cues": _deserialize_cues(item.cues),
+        "metadata": deserialize_json_field(item.item_metadata),
+        "cues": deserialize_json_field(item.cues),
         "created_at": item.created_at.isoformat(),
     }
 
@@ -131,13 +124,13 @@ def _serialize_now_playing(state: NowPlayingState | None) -> dict | None:
         "title": state.title,
         "artist": state.artist,
         "duration": state.duration,
-        "metadata": _deserialize_metadata(state.item_metadata),
+        "metadata": deserialize_json_field(state.item_metadata),
         "status": state.status,
         "started_at": state.started_at.isoformat() if state.started_at else None,
         "cue_in": state.cue_in,
         "cue_out": state.cue_out,
         "fade_out": state.fade_out,
-        "cues": _deserialize_cues(state.cues),
+        "cues": deserialize_json_field(state.cues),
         "updated_at": state.updated_at.isoformat(),
     }
 
@@ -1522,6 +1515,7 @@ def library_index_refresh():
 
 
 @api_bp.route("/audit/start", methods=["POST"])
+@permission_required({"audit:run"})
 def start_audit():
     data = request.get_json(silent=True) or {}
     action = data.get("action")
@@ -1539,22 +1533,54 @@ def start_audit():
 
 
 @api_bp.route("/audit/status/<job_id>")
+@permission_required({"audit:run"})
 def audit_status(job_id):
-    return jsonify(get_audit_status(job_id))
+    payload = get_audit_status(job_id)
+    run_id = payload.get("audit_run_id")
+    if payload.get("results_path") and run_id:
+        payload["results_url"] = url_for("api.audit_run_results", run_id=run_id)
+    return jsonify(payload)
 
 
 @api_bp.route("/audit/runs")
+@permission_required({"audit:run"})
 def audit_runs():
     limit = request.args.get("limit", default=20, type=int)
-    return jsonify(list_audit_runs(limit=limit))
+    runs = list_audit_runs(limit=limit)
+    for run in runs:
+        if run.get("has_results"):
+            run["results_url"] = url_for("api.audit_run_results", run_id=run["id"])
+    return jsonify(runs)
 
 
 @api_bp.route("/audit/runs/<int:run_id>")
+@permission_required({"audit:run"})
 def audit_run_detail(run_id):
     run = get_audit_run(run_id)
     if not run:
         return jsonify({"status": "error", "message": "not found"}), 404
+    if run.get("results_path"):
+        run["results_url"] = url_for("api.audit_run_results", run_id=run_id)
     return jsonify(run)
+
+
+@api_bp.route("/audit/runs/<int:run_id>/results", methods=["GET", "DELETE"])
+@permission_required({"audit:run"})
+def audit_run_results(run_id):
+    run = db.session.get(AuditRun, run_id)
+    if not run:
+        return jsonify({"status": "error", "message": "not found"}), 404
+    if request.method == "DELETE":
+        results_path = get_audit_results_path(run)
+        if results_path and os.path.exists(results_path):
+            os.remove(results_path)
+        run.results_json = None
+        db.session.commit()
+        return jsonify({"status": "ok"})
+    results = load_audit_results(run)
+    if results is None:
+        return jsonify({"status": "error", "message": "results not found"}), 404
+    return jsonify({"status": "ok", "results": results})
 
 
 @api_bp.route("/djs")
