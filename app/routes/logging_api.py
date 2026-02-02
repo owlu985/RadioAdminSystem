@@ -53,6 +53,7 @@ def submit_log():
             dj_first = dj_obj.first_name
             dj_last = dj_obj.last_name
 
+        show_obj = None
         if show_id:
             show_obj = Show.query.get(show_id)
             if show_obj:
@@ -111,11 +112,19 @@ def submit_log():
             )
 
         output_root = recordings_period_root(create=True)
+        folder_name = None
+        if show_id and show_obj:
+            primary = show_primary_host(show_obj)
+            if primary:
+                folder_name = f"{primary[0]} {primary[1]}".strip()
+        if not folder_name:
+            folder_name = f"{dj_first} {dj_last}".strip() or None
         recording_base = build_recording_base_path(
             output_root=output_root,
             show_name=show_name,
             show_date=show_date,
             auto_create_show_folders=current_app.config.get("AUTO_CREATE_SHOW_FOLDERS", False),
+            folder_name=folder_name,
         )
         recording_path = f"{recording_base}.mp3"
         csv_path = recording_csv_path(recording_path)

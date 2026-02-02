@@ -26,19 +26,25 @@ def recording_csv_path(recording_path: str) -> str:
     return f"{base}.csv"
 
 
+def _safe_folder_name(value: str) -> str:
+    return value.replace("/", "_").replace("\\", "_").strip()
+
+
 def build_recording_base_path(
     *,
     output_root: str,
     show_name: str,
     show_date: date,
     auto_create_show_folders: bool,
+    folder_name: str | None = None,
 ) -> str:
-    safe_display = show_name.replace("/", "_").replace("\\", "_")
+    safe_display = _safe_folder_name(show_name)
     safe_name = safe_display.replace(" ", "_")
     suffix = show_date.strftime("%m-%d-%y")
     folder = output_root
     if auto_create_show_folders:
-        folder = os.path.join(output_root, safe_display)
+        target_folder = _safe_folder_name(folder_name) if folder_name else safe_display
+        folder = os.path.join(output_root, target_folder)
     filename = f"{safe_name}_{suffix}_RAWDATA"
     return os.path.join(folder, filename)
 
