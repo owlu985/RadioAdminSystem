@@ -252,12 +252,14 @@ def schedule_recording(show):
 
     output_root = recordings_period_root(create=True)
 
-    if current_app.config['AUTO_CREATE_SHOW_FOLDERS']:
-        show_folder = os.path.join(output_root, display_name)
-        if not os.path.exists(show_folder):
-            os.mkdir(show_folder)
+    primary_host = show_primary_host(show)
+    if primary_host:
+        primary_host_label = f"{primary_host[0]} {primary_host[1]}".strip()
     else:
-        show_folder = output_root
+        primary_host_label = f"{show.host_first_name or ''} {show.host_last_name or ''}".strip() or display_name
+    show_folder = os.path.join(output_root, primary_host_label)
+    if not os.path.exists(show_folder):
+        os.mkdir(show_folder)
 
     output_file = os.path.join(show_folder, safe_name)
     user_config_path = os.path.join(current_app.instance_path, 'user_config.json')

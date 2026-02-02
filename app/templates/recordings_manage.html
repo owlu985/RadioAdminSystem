@@ -27,19 +27,19 @@
             <form method="get" class="row g-3 align-items-end">
                 <div class="col-md-3">
                     <label class="form-label">Show</label>
-                    <select class="form-select" name="show_id">
+                    <select class="form-select" name="show">
                         <option value="">All shows</option>
                         {% for show in shows %}
-                            <option value="{{ show.id }}" {% if selected_show_id == show.id %}selected{% endif %}>{{ show.display }}</option>
+                            <option value="{{ show }}" {% if selected_show == show %}selected{% endif %}>{{ show }}</option>
                         {% endfor %}
                     </select>
                 </div>
                 <div class="col-md-3">
                     <label class="form-label">DJ</label>
-                    <select class="form-select" name="dj_id">
+                    <select class="form-select" name="dj">
                         <option value="">All DJs</option>
                         {% for dj in djs %}
-                            <option value="{{ dj.id }}" {% if selected_dj_id == dj.id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
+                            <option value="{{ dj }}" {% if selected_dj == dj %}selected{% endif %}>{{ dj }}</option>
                         {% endfor %}
                     </select>
                 </div>
@@ -52,10 +52,18 @@
                         {% endfor %}
                     </select>
                 </div>
+                <div class="col-md-3">
+                    <label class="form-label">Group by</label>
+                    <select class="form-select" name="group_by">
+                        <option value="both" {% if selected_group_by == "both" %}selected{% endif %}>Show + DJ</option>
+                        <option value="show" {% if selected_group_by == "show" %}selected{% endif %}>Show</option>
+                        <option value="dj" {% if selected_group_by == "dj" %}selected{% endif %}>DJ</option>
+                    </select>
+                </div>
                 <div class="col-md-3 d-flex gap-2">
                     <button class="btn btn-primary" type="submit">Apply filters</button>
                     <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_manage') }}">Clear</a>
-                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show_id=selected_show_id, dj_id=selected_dj_id, period=selected_period) }}">Download all</a>
+                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by) }}">Download all</a>
                 </div>
             </form>
         </div>
@@ -70,9 +78,10 @@
             {% if recordings %}
                 <div class="table-responsive">
                     <form method="post" action="{{ url_for('main.recordings_download') }}" id="recordingsDownloadForm">
-                        <input type="hidden" name="show_id" value="{{ selected_show_id }}">
-                        <input type="hidden" name="dj_id" value="{{ selected_dj_id }}">
+                        <input type="hidden" name="show" value="{{ selected_show }}">
+                        <input type="hidden" name="dj" value="{{ selected_dj }}">
                         <input type="hidden" name="period" value="{{ selected_period }}">
+                        <input type="hidden" name="group_by" value="{{ selected_group_by }}">
                         <table class="table table-hover mb-0">
                         <thead>
                             <tr>
@@ -80,6 +89,7 @@
                                     <input class="form-check-input" type="checkbox" id="selectAllRecordings" aria-label="Select all recordings">
                                 </th>
                                 <th>Show</th>
+                                <th>DJ</th>
                                 <th>Period</th>
                                 <th>File</th>
                                 <th>Last modified</th>
@@ -95,7 +105,8 @@
                                     <td>
                                         <input class="form-check-input recording-checkbox" type="checkbox" name="tokens" value="{{ rec.token }}" aria-label="Select recording {{ rec.filename }}">
                                     </td>
-                                    <td>{{ rec.display_name }}</td>
+                                    <td>{{ rec.show_name }}</td>
+                                    <td>{{ rec.dj_name }}</td>
                                     <td>{{ rec.period_label }}</td>
                                     <td>{{ rec.filename }}</td>
                                     <td>{{ rec.modified_at.strftime('%Y-%m-%d %H:%M') }}</td>
