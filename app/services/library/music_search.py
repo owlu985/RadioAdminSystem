@@ -60,6 +60,19 @@ def _write_music_index_file(payload: Dict) -> None:
         json.dump(payload, fh)
 
 
+
+
+def _get_analysis_by_path(path: str) -> Optional[MusicAnalysis]:
+    try:
+        return MusicAnalysis.query.filter_by(path=path).first()
+    except UnicodeEncodeError:
+        current_app.logger.warning(
+            "Skipping MusicAnalysis lookup for non-UTF8-safe path: %r",
+            path,
+        )
+        return None
+
+
 def build_music_index(existing: Optional[Dict] = None) -> Dict:
     root = current_app.config.get("NAS_MUSIC_ROOT")
     if not root or not os.path.exists(root):
@@ -75,14 +88,14 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             continue
         prev = existing_files.get(full)
         if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
-            analysis = MusicAnalysis.query.filter_by(path=full).first()
+            analysis = _get_analysis_by_path(full)
             if not analysis or _analysis_needs_stats(analysis):
                 tags = _read_tags(full)
                 _ensure_analysis(full, tags)
             new_files[full] = prev
             continue
         tags = _read_tags(full)
-        analysis = MusicAnalysis.query.filter_by(path=full).first()
+        analysis = _get_analysis_by_path(full)
         if not analysis or _analysis_needs_stats(analysis):
             _ensure_analysis(full, tags)
         rel_dir = os.path.relpath(os.path.dirname(full), root)
@@ -790,7 +803,7 @@ def _analysis_needs_stats(analysis: MusicAnalysis) -> bool:
 
 
 def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
-    existing = MusicAnalysis.query.filter_by(path=path).first()
+    existing = _get_analysis_by_path(path)
     if existing:
         existing.updated_at = datetime.utcnow()
         base_title = os.path.splitext(os.path.basename(path))[0]
@@ -832,7 +845,7 @@ def _ensure_analysis(path: str, tags: Dict) -> MusicAnalysis:
 
 
 def _augment_with_analysis(tags: Dict) -> Dict:
-    analysis = MusicAnalysis.query.filter_by(path=tags["path"]).first()
+    analysis = _get_analysis_by_path(tags["path"])
     if not analysis:
         analysis = _ensure_analysis(tags["path"], tags)
     payload = tags.copy()
@@ -1029,7 +1042,7 @@ def search_music(
             "album": entry.get("album"),
             "composer": entry.get("composer"),
         }
-        analysis = MusicAnalysis.query.filter_by(path=path).first()
+        analysis = _get_analysis_by_path(path)
         payload = tags.copy()
         payload.update({
             "duration_seconds": analysis.duration_seconds if analysis else None,
