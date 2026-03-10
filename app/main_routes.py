@@ -7,6 +7,7 @@ from mutagen.mp4 import MP4  # type: ignore
 import ffmpeg
 import json
 import csv
+import math
 import os
 import subprocess
 import secrets
@@ -200,6 +201,7 @@ def _media_roots() -> list[tuple[str, str]]:
 ALL_PERIODS_VALUE = "__all__"
 DEFAULT_GROUP_BY = "both"
 GROUP_BY_VALUES = {"show", "dj", "both"}
+RECORDINGS_PAGE_SIZE = 15
 
 
 def _recordings_root() -> str:
@@ -302,9 +304,8 @@ def _extract_recording_names(
     base_root: str,
     period_folders: set[str],
 ) -> tuple[str, str]:
-    tags = _read_recording_tags(full)
-    show_name = _parse_id3_show_name(tags)
-    dj_name = (tags.get("artist") or "").strip() or None
+    show_name = None
+    dj_name = None
 
     parts = _path_parts(full, base_root)
     period_folder = None
@@ -325,10 +326,10 @@ def _extract_recording_names(
         elif period_folder is None:
             dj_folder = remaining[0]
 
-    if not dj_name and dj_folder:
+    if dj_folder:
         dj_name = dj_folder.replace("_", " ").strip()
 
-    if not show_name and show_folder:
+    if show_folder:
         show_name = show_folder.replace("_", " ").strip()
 
     if not show_name:
@@ -337,6 +338,13 @@ def _extract_recording_names(
         show_name = safe_label.replace("_", " ").strip()
         if not dj_name and safe_label:
             dj_name = safe_label.replace("_", " ").strip()
+
+    if not show_name or not dj_name:
+        tags = _read_recording_tags(full)
+        if not show_name:
+            show_name = _parse_id3_show_name(tags)
+        if not dj_name:
+            dj_name = (tags.get("artist") or "").strip() or None
 
     return show_name or "Unknown", dj_name or "Unknown"
 
@@ -595,6 +603,7 @@ def recordings_manage():
     dj_filter = (request.args.get("dj") or "").strip() or None
     period_param = request.args.get("period") or current_recording_period()
     group_by = _normalize_group_by(request.args.get("group_by"))
+    page = max(request.args.get("page", 1, type=int), 1)
     periods_payload = load_recording_periods()
     periods = periods_payload.get("periods", [])
     if period_param not in periods and period_param != ALL_PERIODS_VALUE:
@@ -603,15 +612,25 @@ def recordings_manage():
     available_entries = _collect_recordings(period=period_param)
     shows = sorted({entry.show_name for entry in available_entries})
     djs = sorted({entry.dj_name for entry in available_entries})
+    total_entries = len(entries)
+    total_pages = max(math.ceil(total_entries / RECORDINGS_PAGE_SIZE), 1)
+    if page > total_pages:
+        page = total_pages
+    page_start = (page - 1) * RECORDINGS_PAGE_SIZE
+    page_entries = entries[page_start: page_start + RECORDINGS_PAGE_SIZE]
     return render_template(
         "recordings_manage.html",
-        recordings=entries,
+        recordings=page_entries,
         shows=shows,
         djs=djs,
         selected_show=show_filter or "",
         selected_dj=dj_filter or "",
         selected_period=period_param,
         selected_group_by=group_by,
+        current_page=page,
+        total_pages=total_pages,
+        page_size=RECORDINGS_PAGE_SIZE,
+        total_entries=total_entries,
         periods=periods,
         all_periods_value=ALL_PERIODS_VALUE,
     )
