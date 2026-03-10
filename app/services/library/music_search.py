@@ -536,14 +536,14 @@ def _read_tags(path: str) -> Dict:
                                 break
 
                 atom_map = {
-                    "title": ["©nam", "----:com.apple.iTunes:TITLE"],
-                    "artist": ["©ART", "----:com.apple.iTunes:ARTIST"],
+                    "title": ["\u00a9nam", "----:com.apple.iTunes:TITLE"],
+                    "artist": ["\u00a9ART", "----:com.apple.iTunes:ARTIST"],
                     "album_artist": ["aART", "----:com.apple.iTunes:ALBUMARTIST"],
-                    "album": ["©alb", "----:com.apple.iTunes:ALBUM"],
-                    "composer": ["©wrt", "----:com.apple.iTunes:COMPOSER"],
+                    "album": ["\u00a9alb", "----:com.apple.iTunes:ALBUM"],
+                    "composer": ["\u00a9wrt", "----:com.apple.iTunes:COMPOSER"],
                     "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
-                    "year": ["©day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
-                    "genre": ["©gen", "gnre", "----:com.apple.iTunes:GENRE"],
+                    "year": ["\u00a9day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "genre": ["\u00a9gen", "gnre", "----:com.apple.iTunes:GENRE"],
                     "track": ["trkn"],
                     "disc": ["disk"],
                     "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
@@ -614,13 +614,13 @@ def _read_tags(path: str) -> Dict:
                         if not text_val:
                             continue
                         lkey = str(key).lower()
-                        if not data.get("title") and any(hint in lkey for hint in ["©nam", "title", "name"]):
+                        if not data.get("title") and any(hint in lkey for hint in ["\u00a9nam", "title", "name"]):
                             data["title"] = text_val
-                        if not data.get("artist") and any(hint in lkey for hint in ["©art", "artist", "aart"]):
+                        if not data.get("artist") and any(hint in lkey for hint in ["\u00a9art", "artist", "aart"]):
                             data["artist"] = text_val
                         if not data.get("album_artist") and any(hint in lkey for hint in ["aart", "albumartist"]):
                             data["album_artist"] = text_val
-                        if not data.get("album") and any(hint in lkey for hint in ["©alb", "album"]):
+                        if not data.get("album") and any(hint in lkey for hint in ["\u00a9alb", "album"]):
                             data["album"] = text_val
                         if not data.get("isrc") and "isrc" in lkey:
                             data["isrc"] = text_val
@@ -1151,13 +1151,13 @@ def update_metadata(path: str, updates: Dict, cover_art_bytes: Optional[bytes] =
 
             mp4 = MP4(path)
             atom_map = {
-                "title": "©nam",
-                "artist": "©ART",
-                "album": "©alb",
-                "composer": "©wrt",
+                "title": "\u00a9nam",
+                "artist": "\u00a9ART",
+                "album": "\u00a9alb",
+                "composer": "\u00a9wrt",
                 "isrc": "----:com.apple.iTunes:ISRC",
-                "year": "©day",
-                "genre": "©gen",
+                "year": "\u00a9day",
+                "genre": "\u00a9gen",
                 "copyright": "cprt",
             }
 
