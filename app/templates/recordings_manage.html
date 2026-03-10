@@ -65,13 +65,14 @@
                     <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_manage') }}">Clear</a>
                     <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by) }}">Download all</a>
                 </div>
+                <input type="hidden" name="page" value="1">
             </form>
         </div>
     </div>
 
     <div class="card">
         <div class="card-header d-flex flex-wrap align-items-center justify-content-between gap-2">
-            <span>Recordings</span>
+            <span>Recordings <small class="text-muted">({{ total_entries }} total, {{ page_size }} per page)</small></span>
             <button class="btn btn-sm btn-outline-success" type="submit" form="recordingsDownloadForm" id="downloadSelectedBtn" disabled>Download selected</button>
         </div>
         <div class="card-body p-0">
@@ -141,6 +142,26 @@
             {% else %}
                 <div class="p-3 text-muted">No recordings match your filters.</div>
             {% endif %}
+                </div>
+                {% if total_pages > 1 %}
+                    <div class="border-top p-3">
+                        <nav aria-label="Recordings pagination">
+                            <ul class="pagination pagination-sm mb-0">
+                                <li class="page-item {% if current_page <= 1 %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=current_page-1) }}">Previous</a>
+                                </li>
+                                {% for page_number in range(1, total_pages + 1) %}
+                                    <li class="page-item {% if page_number == current_page %}active{% endif %}">
+                                        <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=page_number) }}">{{ page_number }}</a>
+                                    </li>
+                                {% endfor %}
+                                <li class="page-item {% if current_page >= total_pages %}disabled{% endif %}">
+                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=current_page+1) }}">Next</a>
+                                </li>
+                            </ul>
+                        </nav>
+                    </div>
+                {% endif %}
         </div>
     </div>
 </div>
