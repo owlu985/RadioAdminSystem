@@ -1267,6 +1267,21 @@ def edit_dj(dj_id):
     return render_template("dj_form.html", dj=dj, shows=shows)
 
 
+@main_bp.route("/djs/<int:dj_id>/delete", methods=["POST"])
+@admin_required
+def delete_dj(dj_id):
+    dj = DJ.query.get_or_404(dj_id)
+    name = f"{dj.first_name} {dj.last_name}".strip()
+
+    dj.shows = []
+    DJDisciplinary.query.filter_by(dj_id=dj.id).delete(synchronize_session=False)
+    db.session.delete(dj)
+    db.session.commit()
+
+    flash(f"Removed DJ: {name}.", "success")
+    return redirect(url_for("main.list_djs"))
+
+
 @main_bp.route("/dj/absence", methods=["GET", "POST"])
 def dj_absence_submit():
         shows = Show.query.order_by(Show.show_name).all()
