@@ -172,7 +172,11 @@ def build_library_editor_index() -> Dict:
         "fade_in",
         "fade_out",
     )
-    paths = [entry.get("path") for entry in entries if entry.get("path")]
+    paths = [
+        entry.get("path")
+        for entry in entries
+        if entry.get("path") and _is_utf8_encodable(entry.get("path"))
+    ]
     cues_by_path: Dict[str, Dict[str, float]] = {}
     if paths:
         for cue in MusicCue.query.filter(MusicCue.path.in_(paths)).all():
@@ -304,6 +308,14 @@ def build_library_editor_index() -> Dict:
         "psa_imaging": psa_imaging,
         "generated_at": time.time(),
     }
+
+
+def _is_utf8_encodable(value: str) -> bool:
+    try:
+        value.encode("utf-8")
+    except UnicodeEncodeError:
+        return False
+    return True
 
 
 def _read_tags(path: str) -> Dict:
