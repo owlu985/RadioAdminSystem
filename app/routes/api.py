@@ -9,7 +9,7 @@ import json
 import base64
 import io
 from typing import Optional
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote_from_bytes
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -635,7 +635,8 @@ def recent_tracks():
         path = match.get("path") if match else None
         cover_url = None
         if path:
-            cover_url = f"/api/music/cover-image?path={quote(path)}"
+            encoded_path = quote_from_bytes(os.fsencode(path))
+            cover_url = f"/api/music/cover-image?path={encoded_path}"
         payload.append({
             "title": title or None,
             "artist": artist or None,
