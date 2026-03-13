@@ -350,6 +350,14 @@ def _quote_music_path(path: str) -> Optional[str]:
     return quote_from_bytes(raw_path)
 
 
+def _sanitize_text(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.encode("utf-8", "replace").decode("utf-8")
+
+
 def _icecast_update_url() -> Optional[str]:
     status_url = current_app.config.get("ICECAST_STATUS_URL")
     list_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
@@ -633,18 +641,18 @@ def recent_tracks():
     index_entries = list(index.get("files", {}).values())
     lookup: dict[tuple[str, str], dict] = {}
     for entry in index_entries:
-        title = (entry.get("title") or "").strip().lower()
-        artist = (entry.get("artist") or "").strip().lower()
+        title = _sanitize_text(entry.get("title")).strip().lower()
+        artist = _sanitize_text(entry.get("artist")).strip().lower()
         if title and artist and (title, artist) not in lookup:
             lookup[(title, artist)] = entry
     payload = []
     for entry in entries:
-        title = entry.title or ""
-        artist = entry.artist or ""
+        title = _sanitize_text(entry.title)
+        artist = _sanitize_text(entry.artist)
         key = (title.strip().lower(), artist.strip().lower())
         match = lookup.get(key)
-        album = match.get("album") if match else None
-        path = match.get("path") if match else None
+        album = _sanitize_text(match.get("album")) if match else ""
+        path = _sanitize_text(match.get("path")) if match else ""
         cover_url = None
         if path:
             encoded_path = _quote_music_path(path)
@@ -653,7 +661,7 @@ def recent_tracks():
         payload.append({
             "title": title or None,
             "artist": artist or None,
-            "album": album,
+            "album": album or None,
             "cover_url": cover_url,
             "played_at": entry.timestamp.isoformat(),
         })
