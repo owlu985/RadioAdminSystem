@@ -172,14 +172,25 @@ def build_library_editor_index() -> Dict:
         "fade_in",
         "fade_out",
     )
-    paths = sorted({
+    normalized_paths = {
         _utf8_safe_text(entry.get("path"))
         for entry in entries
         if entry.get("path")
-    })
+    }
+    paths = sorted(normalized_paths)
     cues_by_path: Dict[str, Dict[str, float]] = {}
     if paths:
-        for cue in MusicCue.query.filter(MusicCue.path.in_(paths)).all():
+        try:
+            cues = MusicCue.query.filter(MusicCue.path.in_(paths)).all()
+        except UnicodeEncodeError:
+            # Some backends can still fail to encode malformed surrogate
+            # code points in bound params. Fallback to an unfiltered scan
+            # and match normalized paths in Python.
+            cues = [
+                cue for cue in MusicCue.query.all()
+                if _utf8_safe_text(cue.path) in normalized_paths
+            ]
+        for cue in cues:
             cue_payload = {
                 field: getattr(cue, field)
                 for field in cue_fields
