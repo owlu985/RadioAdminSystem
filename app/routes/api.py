@@ -9,7 +9,7 @@ import json
 import base64
 import io
 from typing import Optional
-from urllib.parse import urlparse, quote
+from urllib.parse import urlparse, quote_from_bytes
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -338,6 +338,26 @@ def _safe_music_path(path: str) -> Optional[str]:
     return full if os.path.exists(full) else None
 
 
+def _quote_music_path(path: str) -> Optional[str]:
+    if not path:
+        return None
+    try:
+        raw_path = os.fsencode(path)
+    except UnicodeEncodeError:
+        # Fallback for malformed surrogate code points that may appear in
+        # metadata-derived paths.
+        raw_path = path.encode("utf-8", "surrogatepass")
+    return quote_from_bytes(raw_path)
+
+
+def _sanitize_text(value: Optional[str]) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.encode("utf-8", "replace").decode("utf-8")
+
+
 def _icecast_update_url() -> Optional[str]:
     status_url = current_app.config.get("ICECAST_STATUS_URL")
     list_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
@@ -621,25 +641,27 @@ def recent_tracks():
     index_entries = list(index.get("files", {}).values())
     lookup: dict[tuple[str, str], dict] = {}
     for entry in index_entries:
-        title = (entry.get("title") or "").strip().lower()
-        artist = (entry.get("artist") or "").strip().lower()
+        title = _sanitize_text(entry.get("title")).strip().lower()
+        artist = _sanitize_text(entry.get("artist")).strip().lower()
         if title and artist and (title, artist) not in lookup:
             lookup[(title, artist)] = entry
     payload = []
     for entry in entries:
-        title = entry.title or ""
-        artist = entry.artist or ""
+        title = _sanitize_text(entry.title)
+        artist = _sanitize_text(entry.artist)
         key = (title.strip().lower(), artist.strip().lower())
         match = lookup.get(key)
-        album = match.get("album") if match else None
-        path = match.get("path") if match else None
+        album = _sanitize_text(match.get("album")) if match else ""
+        path = _sanitize_text(match.get("path")) if match else ""
         cover_url = None
         if path:
-            cover_url = f"/api/music/cover-image?path={quote(path)}"
+            encoded_path = _quote_music_path(path)
+            if encoded_path:
+                cover_url = f"/api/music/cover-image?path={encoded_path}"
         payload.append({
             "title": title or None,
             "artist": artist or None,
-            "album": album,
+            "album": album or None,
             "cover_url": cover_url,
             "played_at": entry.timestamp.isoformat(),
         })
