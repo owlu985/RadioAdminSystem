@@ -21,6 +21,8 @@ try:
 except Exception:  # noqa: BLE001
     AudioSegment = None
 
+from sqlalchemy.exc import DBAPIError, StatementError
+
 from app.models import db, MusicAnalysis, MusicCue
 
 
@@ -154,6 +156,27 @@ def _library_media_roots() -> List[Tuple[str, str]]:
     return roots
 
 
+def _is_surrogate_encode_error(exc: BaseException) -> bool:
+    seen = set()
+    stack = [exc]
+    while stack:
+        current = stack.pop()
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        if isinstance(current, UnicodeEncodeError):
+            return True
+        if isinstance(current, (DBAPIError, StatementError)) and getattr(current, "orig", None):
+            stack.append(current.orig)
+        cause = getattr(current, "__cause__", None)
+        if cause is not None:
+            stack.append(cause)
+        context = getattr(current, "__context__", None)
+        if context is not None:
+            stack.append(context)
+    return False
+
+
 def build_library_editor_index() -> Dict:
     index = get_music_index()
     entries = list(index.get("files", {}).values())
@@ -182,10 +205,12 @@ def build_library_editor_index() -> Dict:
     if paths:
         try:
             cues = MusicCue.query.filter(MusicCue.path.in_(paths)).all()
-        except UnicodeEncodeError:
-            # Some backends can still fail to encode malformed surrogate
-            # code points in bound params. Fallback to an unfiltered scan
-            # and match normalized paths in Python.
+        except Exception as exc:
+            if not _is_surrogate_encode_error(exc):
+                raise
+            # Some backends can fail to encode malformed surrogate code
+            # points in bound params. Fallback to an unfiltered scan and
+            # match normalized paths in Python.
             cues = [
                 cue for cue in MusicCue.query.all()
                 if _utf8_safe_text(cue.path) in normalized_paths
