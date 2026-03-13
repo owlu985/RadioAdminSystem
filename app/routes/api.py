@@ -338,6 +338,18 @@ def _safe_music_path(path: str) -> Optional[str]:
     return full if os.path.exists(full) else None
 
 
+def _quote_music_path(path: str) -> Optional[str]:
+    if not path:
+        return None
+    try:
+        raw_path = os.fsencode(path)
+    except UnicodeEncodeError:
+        # Fallback for malformed surrogate code points that may appear in
+        # metadata-derived paths.
+        raw_path = path.encode("utf-8", "surrogatepass")
+    return quote_from_bytes(raw_path)
+
+
 def _icecast_update_url() -> Optional[str]:
     status_url = current_app.config.get("ICECAST_STATUS_URL")
     list_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
@@ -635,8 +647,9 @@ def recent_tracks():
         path = match.get("path") if match else None
         cover_url = None
         if path:
-            encoded_path = quote_from_bytes(os.fsencode(path))
-            cover_url = f"/api/music/cover-image?path={encoded_path}"
+            encoded_path = _quote_music_path(path)
+            if encoded_path:
+                cover_url = f"/api/music/cover-image?path={encoded_path}"
         payload.append({
             "title": title or None,
             "artist": artist or None,
