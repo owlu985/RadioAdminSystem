@@ -172,20 +172,27 @@ def build_library_editor_index() -> Dict:
         "fade_in",
         "fade_out",
     )
-    paths = [
-        entry.get("path")
+    normalized_paths = {
+        _utf8_safe_text(entry.get("path"))
         for entry in entries
-        if entry.get("path") and _is_utf8_encodable(entry.get("path"))
-    ]
+        if entry.get("path")
+    }
     cues_by_path: Dict[str, Dict[str, float]] = {}
-    if paths:
-        for cue in MusicCue.query.filter(MusicCue.path.in_(paths)).all():
+    if normalized_paths:
+        # Avoid path-bound SQL params entirely: certain malformed surrogate
+        # values can still trigger DBAPI utf-8 encode errors at execute time
+        # despite prior normalization.
+        cues = MusicCue.query.all()
+        for cue in cues:
+            normalized_cue_path = _utf8_safe_text(cue.path)
+            if normalized_cue_path not in normalized_paths:
+                continue
             cue_payload = {
                 field: getattr(cue, field)
                 for field in cue_fields
                 if getattr(cue, field) is not None
             }
-            cues_by_path[cue.path] = cue_payload
+            cues_by_path[normalized_cue_path] = cue_payload
     artists_map: Dict[str, Dict[str, Dict]] = {}
     genres_map: Dict[str, Dict] = {}
     compilation_label = "Various Artists / Compilations"
@@ -198,7 +205,7 @@ def build_library_editor_index() -> Dict:
         album = entry.get("album") or "Unknown Album"
         year = entry.get("year")
         genre = entry.get("genre") or "Unknown Genre"
-        cues = cues_by_path.get(path, {})
+        cues = cues_by_path.get(_utf8_safe_text(path), {})
         is_recent = (entry.get("mtime") or 0) >= recent_cutoff
         is_compilation = (
             _is_compilation(album_artist)
@@ -310,12 +317,12 @@ def build_library_editor_index() -> Dict:
     }
 
 
-def _is_utf8_encodable(value: str) -> bool:
-    try:
-        value.encode("utf-8")
-    except UnicodeEncodeError:
-        return False
-    return True
+def _utf8_safe_text(value: object) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.encode("utf-8", "replace").decode("utf-8")
 
 
 def _read_tags(path: str) -> Dict:
