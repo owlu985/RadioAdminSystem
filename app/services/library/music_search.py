@@ -200,28 +200,22 @@ def build_library_editor_index() -> Dict:
         for entry in entries
         if entry.get("path")
     }
-    paths = sorted(normalized_paths)
     cues_by_path: Dict[str, Dict[str, float]] = {}
-    if paths:
-        try:
-            cues = MusicCue.query.filter(MusicCue.path.in_(paths)).all()
-        except Exception as exc:
-            if not _is_surrogate_encode_error(exc):
-                raise
-            # Some backends can fail to encode malformed surrogate code
-            # points in bound params. Fallback to an unfiltered scan and
-            # match normalized paths in Python.
-            cues = [
-                cue for cue in MusicCue.query.all()
-                if _utf8_safe_text(cue.path) in normalized_paths
-            ]
+    if normalized_paths:
+        # Avoid path-bound SQL params entirely: certain malformed surrogate
+        # values can still trigger DBAPI utf-8 encode errors at execute time
+        # despite prior normalization.
+        cues = MusicCue.query.all()
         for cue in cues:
+            normalized_cue_path = _utf8_safe_text(cue.path)
+            if normalized_cue_path not in normalized_paths:
+                continue
             cue_payload = {
                 field: getattr(cue, field)
                 for field in cue_fields
                 if getattr(cue, field) is not None
             }
-            cues_by_path[_utf8_safe_text(cue.path)] = cue_payload
+            cues_by_path[normalized_cue_path] = cue_payload
     artists_map: Dict[str, Dict[str, Dict]] = {}
     genres_map: Dict[str, Dict] = {}
     compilation_label = "Various Artists / Compilations"
