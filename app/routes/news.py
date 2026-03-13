@@ -2,7 +2,7 @@ import gzip
 import os
 import shutil
 from datetime import datetime, date, timedelta
-from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, Response
+from flask import Blueprint, render_template, request, flash, redirect, url_for, current_app, Response, send_file
 from werkzeug.utils import secure_filename
 from app.auth_utils import admin_required, permission_required
 from app.logger import init_logger
@@ -421,7 +421,7 @@ def get_audio(news_key, date_str):
     if not os.path.exists(path):
         flash("Audio not found.", "warning")
         return redirect(url_for("news.news_dashboard"))
-    return current_app.send_file(path)
+    return send_file(path)
 
 
 @news_bp.route("/script/<news_key>/<date_str>")
@@ -449,4 +449,4 @@ def get_script(news_key, date_str):
     if safe_name.endswith(".gz"):
         content = _script_text(path)
         return Response(content, mimetype="text/plain")
-    return current_app.send_file(path)
+    return send_file(path)
