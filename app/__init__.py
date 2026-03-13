@@ -2,6 +2,7 @@ import os
 import json
 import secrets
 import traceback
+from typing import Any
 from flask import Flask, render_template
 from config import Config
 from .models import db, Show
@@ -12,9 +13,65 @@ from .db_utils import ensure_schema
 from .oauth import init_oauth, oauth
 from .logger import init_logger
 from flask_migrate import Migrate
+from sqlalchemy import event
 from datetime import datetime, timedelta
 from .scheduler import init_scheduler, pause_shows_until
 from .rate_limit import rate_limit_check
+
+
+
+def _utf8_safe_text(value: Any) -> str:
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        value = str(value)
+    return value.encode("utf-8", "replace").decode("utf-8")
+
+
+def _sanitize_db_params(value: Any) -> Any:
+    if isinstance(value, str):
+        return _utf8_safe_text(value)
+    if isinstance(value, dict):
+        return {k: _sanitize_db_params(v) for k, v in value.items()}
+    if isinstance(value, tuple):
+        return tuple(_sanitize_db_params(v) for v in value)
+    if isinstance(value, list):
+        return [_sanitize_db_params(v) for v in value]
+    return value
+
+
+def _install_utf8_query_safety(app: Flask) -> None:
+    if app.extensions.get("utf8_query_safety_installed"):
+        return
+
+    @event.listens_for(db.engine, "before_cursor_execute", retval=True)
+    def _sanitize_sql_params(conn, cursor, statement, parameters, context, executemany):
+        try:
+            sanitized_statement = _utf8_safe_text(statement)
+            sanitized_parameters = _sanitize_db_params(parameters)
+            return sanitized_statement, sanitized_parameters
+        except Exception as exc:  # noqa: BLE001
+            app.logger.warning("UTF-8 query sanitization failed: %s", exc)
+            return statement, parameters
+
+    app.extensions["utf8_query_safety_installed"] = True
+
+
+def _install_wsgi_utf8_safety(app: Flask) -> None:
+    if app.extensions.get("utf8_wsgi_safety_installed"):
+        return
+
+    original_wsgi_app = app.wsgi_app
+
+    def _safe_wsgi_app(environ, start_response):
+        for key, value in list(environ.items()):
+            if not isinstance(value, str):
+                continue
+            environ[key] = _utf8_safe_text(value)
+        return original_wsgi_app(environ, start_response)
+
+    app.wsgi_app = _safe_wsgi_app
+    app.extensions["utf8_wsgi_safety_installed"] = True
 
 def create_app(config_class=Config):
     app = Flask(__name__)
@@ -84,6 +141,8 @@ def create_app(config_class=Config):
 #Init Database
     try:
         db.init_app(app)
+        with app.app_context():
+            _install_utf8_query_safety(app)
 
         if _startup_enabled("RUN_SCHEMA_SETUP_ON_STARTUP", True):
             with app.app_context():
@@ -194,6 +253,7 @@ def create_app(config_class=Config):
             500,
         )
 
+    _install_wsgi_utf8_safety(app)
 
     initial_logger.info("Application startup complete.")
 
