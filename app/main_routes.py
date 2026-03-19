@@ -46,6 +46,7 @@ from .models import (
     WebsiteContent,
     PodcastEpisode,
     MarathonEvent,
+    MusicAnalysis,
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func, tuple_
@@ -68,6 +69,7 @@ from app.services.library.music_search import (
     save_cue,
     update_metadata,
     build_library_editor_index,
+    _read_tags,
 )
 from app.services.library.dj_library import (
     build_dj_library_index,
@@ -1630,7 +1632,25 @@ def music_cue_page():
     path = request.values.get("path")
     if not path:
         return render_template("music_edit.html", track=None, error="Missing path for cue editor")
-    track = get_track(path)
+    raw_track = _read_tags(path)
+    track = raw_track.copy() if raw_track else None
+    analysis = MusicAnalysis.query.filter_by(path=path).first()
+    analysis_ready = bool(analysis and analysis.peaks and analysis.duration_seconds is not None)
+    if track and analysis:
+        track.update({
+            "duration_seconds": analysis.duration_seconds,
+            "peak_db": analysis.peak_db,
+            "rms_db": analysis.rms_db,
+            "peaks": json.loads(analysis.peaks) if analysis.peaks else None,
+            "bitrate": track.get("bitrate") or analysis.bitrate,
+            "hash": analysis.hash,
+            "missing_tags": analysis.missing_tags,
+        })
+    elif track:
+        track.setdefault("duration_seconds", None)
+        track.setdefault("peak_db", None)
+        track.setdefault("rms_db", None)
+        track.setdefault("peaks", None)
     try:
         safe_path = _safe_music_path(path)
     except Exception:
@@ -1649,6 +1669,7 @@ def music_cue_page():
         "outro": cue_obj.outro if cue_obj else None,
         "cue_out": cue_obj.cue_out if cue_obj else None,
     }
+    cue_ready = cue_obj is not None
     if request.method == "POST":
         payload = {}
         for field in [
@@ -1674,7 +1695,8 @@ def music_cue_page():
         cue.update(payload)
         flash("CUE points saved.", "success")
         return redirect(url_for("main.music_cue_page", path=path))
-    return render_template("music_cue.html", track=track, cue=cue)
+    needs_generation = bool(track and (not analysis_ready or not cue_ready))
+    return render_template("music_cue.html", track=track, cue=cue, needs_generation=needs_generation)
 
 
 @main_bp.route("/audit", methods=["GET", "POST"])

@@ -1131,7 +1131,9 @@ def music_cue():
     if not path:
         return jsonify({"status": "error", "message": "path required"}), 400
     if request.method == "GET":
+        include_track = request.args.get("include_track") in {"1", "true", "yes"}
         cue = load_cue(path)
+        had_existing_cue = cue is not None
         cue_payload = {
             "cue_in": cue.cue_in if cue else None,
             "intro": cue.intro if cue else None,
@@ -1146,7 +1148,16 @@ def music_cue():
             "fade_out": cue.fade_out if cue else None,
         }
         cue_payload = auto_fill_missing_cues(path, cue_payload)
-        return jsonify({"path": path, "cue": cue_payload})
+        response = {
+            "path": path,
+            "cue": cue_payload,
+            "generated_cues": (not had_existing_cue) and any(value is not None for value in cue_payload.values()),
+        }
+        if include_track:
+            track = get_track(path)
+            response["track"] = track
+            response["generated_waveform"] = bool(track and track.get("peaks"))
+        return jsonify(response)
     payload = request.get_json(force=True, silent=True) or {}
     cue = save_cue(path, payload)
     return jsonify({"status": "ok", "cue": {
