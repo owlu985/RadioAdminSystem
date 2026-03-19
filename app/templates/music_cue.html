@@ -18,6 +18,8 @@
         .cue-btn.active {box-shadow:0 0 0 2px rgba(13,110,253,0.35); background:#000; color:#fff;}
         .cue-btn.active .text-muted {color:#fff !important;}
         .control-buttons .btn {min-width:90px;}
+        .loading-overlay {position:absolute; inset:12px; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:10px; background:rgba(255,255,255,0.92); border-radius:8px; z-index:4;}
+        .loading-overlay.hidden {display:none;}
     </style>
 </head>
 <body>
@@ -36,6 +38,11 @@
             <label class="mb-0">Zoom <input type="range" min="1" max="6" value="1" id="zoom" style="vertical-align:middle"></label>
         </div>
         <div class="mt-2 position-relative wave-container" id="wave">
+            <div id="loadingOverlay" class="loading-overlay{% if not needs_generation %} hidden{% endif %}">
+                <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
+                <div class="fw-semibold">Loading waveform and starter cues…</div>
+                <div class="text-muted small text-center">This only appears the first time we need to generate missing cue data for this track.</div>
+            </div>
             <div id="waveInner" class="wave-inner">
                 <canvas id="waveCanvas" height="210" style="width:100%; height:210px;"></canvas>
                 <div id="needle" class="marker" style="left:0; background:#dc3545; width:2px;"></div>
@@ -93,7 +100,10 @@
     const markersLayer = document.getElementById('markers');
     const zoomControl = document.getElementById('zoom');
     const waveCanvas = document.getElementById('waveCanvas');
-    const peaksData = {{ track.peaks|default({})|tojson }};
+    const loadingOverlay = document.getElementById('loadingOverlay');
+    const trackPath = {{ track.path|tojson if track else 'null' }};
+    let peaksData = {{ track.peaks|default({})|tojson }};
+    const initialNeedsGeneration = {{ needs_generation|default(false)|tojson }};
     const fields = ['cue_in','intro','loop_in','loop_out','hook_in','hook_out','start_next','outro','cue_out'];
     const colorMap = {
         cue_in: '#0d6efd',
@@ -121,6 +131,11 @@
         return `${min}:${sec}.${ms.toString().padStart(2,'0')}`;
     }
 
+    function setLoading(isLoading) {
+        if (!loadingOverlay) return;
+        loadingOverlay.classList.toggle('hidden', !isLoading);
+    }
+
     function selectCue(key) {
         selectedCue = key;
         fields.forEach(f => {
@@ -137,6 +152,17 @@
                 el.style.color = colorMap[key];
             }
         });
+    }
+
+    function applyCuePayload(cuePayload) {
+        if (!cuePayload) return;
+        fields.forEach(field => {
+            const input = document.getElementById(field);
+            if (!input) return;
+            const value = cuePayload[field];
+            input.value = value == null || Number.isNaN(Number(value)) ? '' : Number(value).toFixed(2);
+        });
+        updateMarkers();
     }
 
     function setCueValue() {
@@ -163,9 +189,7 @@
         player.currentTime = updated;
         updateNeedle();
         updateMarkers();
-        if (wasPlaying) {
-            player.play().catch(() => {});
-        }
+        if (wasPlaying) player.play().catch(() => {});
     }
 
     function togglePlay() {
@@ -173,14 +197,38 @@
         if (player.paused) player.play(); else player.pause();
     }
 
+    function normalizePeakArray(source) {
+        return Array.isArray(source)
+            ? source.map(value => {
+                const parsed = parseFloat(value);
+                return Number.isFinite(parsed) ? Math.max(0, Math.min(1, parsed)) : 0;
+            })
+            : [];
+    }
+
+    function drawChannel(ctx, values, yTop, channelHeight, gradient) {
+        if (!values.length) return;
+        const width = baseWidth;
+        const centerY = yTop + (channelHeight / 2);
+        const barWidth = Math.max(1, width / values.length);
+        ctx.fillStyle = gradient;
+        values.forEach((value, index) => {
+            const x = Math.min(width - barWidth, index * barWidth);
+            const amp = Math.max(1, value * (channelHeight / 2));
+            ctx.fillRect(x, centerY - amp, Math.max(1, Math.ceil(barWidth)), amp * 2);
+        });
+    }
+
     function drawWaveform() {
-        if (!waveCanvas || !peaksData) return;
-        const peakLen = (peaksData.mono?.length || peaksData.left?.length || peaksData.right?.length || 0);
+        if (!waveCanvas) return;
+        const mono = normalizePeakArray(peaksData?.mono || peaksData?.left || peaksData || []);
+        const right = normalizePeakArray(peaksData?.right || []);
+        const longestChannel = Math.max(mono.length, right.length, 0);
         const waveStyle = wave ? getComputedStyle(wave) : null;
         const paddingLeft = waveStyle ? parseFloat(waveStyle.paddingLeft) || 0 : 0;
         const paddingRight = waveStyle ? parseFloat(waveStyle.paddingRight) || 0 : 0;
         const availableWidth = Math.max(0, (wave?.clientWidth || 0) - paddingLeft - paddingRight);
-        baseWidth = Math.max(availableWidth || 1200, peakLen ? Math.min(peakLen, 8000) : 1200);
+        baseWidth = Math.max(availableWidth || 1200, longestChannel || 1200);
         const ratio = window.devicePixelRatio || 1;
         const cssWidth = baseWidth;
         const cssHeight = waveCanvas.height;
@@ -193,75 +241,42 @@
         markersLayer.style.minWidth = `${cssWidth}px`;
         const ctx = waveCanvas.getContext('2d');
         ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
-        const width = cssWidth;
-        const height = cssHeight;
-        ctx.clearRect(0,0,width,height);
-        const mono = peaksData.mono || peaksData.left || peaksData || [];
-        const right = peaksData.right || [];
-        const data = Array.isArray(mono) ? mono : [];
-        if (!data.length) {
+        ctx.clearRect(0, 0, cssWidth, cssHeight);
+        ctx.fillStyle = '#f1f3f5';
+        ctx.fillRect(0, 0, cssWidth, cssHeight);
+        if (!mono.length && !right.length) {
             ctx.fillStyle = '#6c757d';
-            ctx.fillText('Waveform unavailable', 10, height/2);
+            ctx.fillText('Waveform unavailable', 10, cssHeight / 2);
             return;
         }
-        ctx.fillStyle = '#f1f3f5';
-        ctx.fillRect(0, 0, width, height);
         ctx.strokeStyle = 'rgba(0,0,0,0.08)';
         ctx.beginPath();
-        ctx.moveTo(0, height/2);
-        ctx.lineTo(width, height/2);
+        ctx.moveTo(0, cssHeight / 2);
+        ctx.lineTo(cssWidth, cssHeight / 2);
         ctx.stroke();
-        const len = data.length;
-        const step = Math.max(1, Math.floor(len / (width * 1.5)));
-        const mid = height/2;
-        const leftGrad = ctx.createLinearGradient(0,0,width,0);
-        leftGrad.addColorStop(0,'#0d6efd');
-        leftGrad.addColorStop(1,'#0dcaf0');
-        const rightGrad = ctx.createLinearGradient(0,0,width,0);
-        rightGrad.addColorStop(0,'#6610f2');
-        rightGrad.addColorStop(1,'#d63384');
+
+        const leftGrad = ctx.createLinearGradient(0, 0, cssWidth, 0);
+        leftGrad.addColorStop(0, '#0d6efd');
+        leftGrad.addColorStop(1, '#0dcaf0');
+        const rightGrad = ctx.createLinearGradient(0, 0, cssWidth, 0);
+        rightGrad.addColorStop(0, '#6610f2');
+        rightGrad.addColorStop(1, '#d63384');
+        const channelHeight = (cssHeight / 2) - 12;
+        drawChannel(ctx, mono, 8, channelHeight, leftGrad);
+        drawChannel(ctx, right.length ? right : mono, cssHeight / 2 + 4, channelHeight, rightGrad);
+
         ctx.strokeStyle = 'rgba(0,0,0,0.06)';
         ctx.font = '10px sans-serif';
         if (player && player.duration) {
             for (let t = 0; t <= player.duration; t += 30) {
-                const x = (t / player.duration) * width;
+                const x = (t / player.duration) * cssWidth;
                 ctx.beginPath();
                 ctx.moveTo(x, 0);
-                ctx.lineTo(x, height);
+                ctx.lineTo(x, cssHeight);
                 ctx.stroke();
                 ctx.fillStyle = '#adb5bd';
-                const label = `${Math.floor(t/60)}:${(t%60).toString().padStart(2,'0')}`;
-                ctx.fillText(label, x + 2, 12);
-            }
-        }
-        for (let i=0,x=0;i<len;i+=step, x++) {
-            let min = 1.0;
-            let max = -1.0;
-            for (let j = 0; j < step; j++) {
-                const idx = i + j;
-                const datum = parseFloat(data[idx]);
-                if (Number.isNaN(datum)) continue;
-                if (datum < min) min = datum;
-                if (datum > max) max = datum;
-            }
-            if (min === 1.0 && max === -1.0) continue;
-            const h = Math.min(mid-10, Math.max(Math.abs(min), Math.abs(max)) * mid);
-            ctx.fillStyle = leftGrad;
-            ctx.fillRect(x, mid-h, 1, h);
-            if (right.length) {
-                let minR = 1.0;
-                let maxR = -1.0;
-                for (let j = 0; j < step; j++) {
-                    const idx = i + j;
-                    const datum = parseFloat(right[idx]);
-                    if (Number.isNaN(datum)) continue;
-                    if (datum < minR) minR = datum;
-                    if (datum > maxR) maxR = datum;
-                }
-                if (minR === 1.0 && maxR === -1.0) continue;
-                const hr = Math.min(mid-10, Math.max(Math.abs(minR), Math.abs(maxR)) * mid);
-                ctx.fillStyle = rightGrad;
-                ctx.fillRect(x, mid+1, 1, hr);
+                const label = `${Math.floor(t / 60)}:${(t % 60).toString().padStart(2, '0')}`;
+                ctx.fillText(label, Math.min(cssWidth - 32, x + 2), 12);
             }
         }
     }
@@ -272,10 +287,7 @@
         const styles = getComputedStyle(wave);
         const paddingLeft = parseFloat(styles.paddingLeft) || 0;
         const width = Math.max(1, (waveInner.clientWidth || wave.clientWidth || 1));
-        return {
-            x: rect.left + paddingLeft,
-            width,
-        };
+        return { x: rect.left + paddingLeft, width };
     }
 
     function applyZoom() {
@@ -297,9 +309,10 @@
         if (!player || !player.duration || !markersLayer) return;
         markersLayer.innerHTML = '';
         fields.forEach(f => {
-            const val = parseFloat(document.getElementById(f)?.value || '');
+            const raw = document.getElementById(f)?.value || '';
+            const val = parseFloat(raw);
             const display = document.getElementById(`time-${f}`);
-            if (display) display.textContent = val ? `(${fmt(val)})` : '';
+            if (display) display.textContent = raw !== '' && !isNaN(val) ? `(${fmt(val)})` : '';
             if (!isNaN(val) && val >= 0 && val <= player.duration) {
                 const pct = (val / player.duration) * 100;
                 const marker = document.createElement('div');
@@ -307,7 +320,7 @@
                 marker.style.left = pct + '%';
                 marker.style.background = colorMap[f] || '#0d6efd';
                 marker.style.pointerEvents = 'none';
-                
+
                 const handle = document.createElement('div');
                 handle.className = 'handle';
                 handle.style.left = pct + '%';
@@ -357,7 +370,28 @@
         document.removeEventListener('pointerup', endDrag);
     }
 
-    wave.addEventListener('click', (ev) => {
+    async function hydrateCueEditor() {
+        if (!trackPath) return;
+        if (!initialNeedsGeneration) return;
+        setLoading(true);
+        try {
+            const res = await fetch(`/api/music/cue?path=${encodeURIComponent(trackPath)}&include_track=1`);
+            if (!res.ok) throw new Error('Failed to generate cue data.');
+            const payload = await res.json();
+            if (payload.track && payload.track.peaks) peaksData = payload.track.peaks;
+            applyCuePayload(payload.cue || {});
+            drawWaveform();
+            applyZoom();
+            updateMarkers();
+        } catch (error) {
+            console.error(error);
+            alert('Unable to load waveform and starter cues for this track.');
+        } finally {
+            setLoading(false);
+        }
+    }
+
+    wave?.addEventListener('click', (ev) => {
         if (!player || !player.duration) return;
         const metrics = getWaveMetrics();
         const pct = Math.max(0, Math.min(1, (ev.clientX - metrics.x + wave.scrollLeft) / metrics.width));
@@ -365,7 +399,7 @@
         updateNeedle();
     });
 
-    needle.addEventListener('pointerdown', (ev) => {
+    needle?.addEventListener('pointerdown', (ev) => {
         dragNeedle = true;
         ev.preventDefault();
         document.addEventListener('pointermove', onDrag);
@@ -377,11 +411,11 @@
         player.addEventListener('loadedmetadata', () => {
             updateNeedle();
             updateMarkers();
+            drawWaveform();
+            applyZoom();
         });
     }
-    if (zoomControl && waveCanvas) {
-        zoomControl.addEventListener('input', applyZoom);
-    }
+    if (zoomControl && waveCanvas) zoomControl.addEventListener('input', applyZoom);
     window.addEventListener('resize', () => {
         drawWaveform();
         applyZoom();
@@ -392,6 +426,7 @@
     drawWaveform();
     applyZoom();
     updateMarkers();
+    hydrateCueEditor();
 </script>
 </body>
 </html>
