@@ -71,8 +71,8 @@
               <option value="rejected" {% if user.approval_status=='rejected' %}selected{% endif %}>Rejected</option>
             </select>
             <div class="text-muted small">
-              Requested {{ user.requested_at.strftime('%Y-%m-%d') if user.requested_at else 'n/a' }}
-              {% if user.approved_at %}<br>Approved {{ user.approved_at.strftime('%Y-%m-%d') }}{% endif %}
+              Requested {{ user.requested_at|date_local if user.requested_at else 'n/a' }}
+              {% if user.approved_at %}<br>Approved {{ user.approved_at|date_local }}{% endif %}
             </div>
           </td>
           <td>

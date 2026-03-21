@@ -35,7 +35,7 @@
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <div class="fw-semibold">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</div>
-                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time.strftime('%H:%M') }} - {{ show.end_time.strftime('%H:%M') }}</small>
+                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time.strftime('%H:%M') }} - {{ show.end_time.strftime('%H:%M') }} {{ app_timezone }}</small>
                                     </div>
                                 </li>
                             {% endfor %}
@@ -59,7 +59,7 @@
                                 <tbody>
                                 {% for a in absences %}
                                     <tr>
-                                        <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                                        <td>{{ a.start_time|datetime_local }} {{ app_timezone }}</td>
                                         <td>{{ a.show_name }}</td>
                                         <td><span class="badge bg-secondary text-uppercase">{{ a.status }}</span></td>
                                         <td>{{ a.replacement_name or '—' }}</td>
@@ -109,7 +109,7 @@
                                     <li class="list-group-item">
                                         <div class="d-flex justify-content-between">
                                             <div class="fw-semibold">{{ record.severity or 'Note' }}</div>
-                                            <small class="text-muted">{{ record.issued_at.strftime('%Y-%m-%d') }}</small>
+                                            <small class="text-muted">{{ record.issued_at|date_local }}</small>
                                         </div>
                                         <div>{{ record.notes or '' }}</div>
                                         {% if record.action_taken %}

@@ -163,11 +163,12 @@
         if (state === 'dead_air') return '#dc3545';
         return '#6c757d';
     }
+    const dashboardTimezone = {{ app_timezone|tojson }};
     function formatListenerTime(ts) {
         return new Date(ts).toLocaleTimeString([], {
             hour: '2-digit',
             minute: '2-digit',
-            timeZone: 'America/New_York'
+            timeZone: dashboardTimezone
         });
     }
     async function refreshListeners() {
@@ -176,7 +177,7 @@
             const data = await res.json();
             if (Array.isArray(data) && data.length) {
                 const last = data.slice(-5).map(d => `${formatListenerTime(d.ts)}: ${d.listeners} (${d.state || 'n/a'})`);
-                document.getElementById('listenerHistory').textContent = 'Recent (ET): ' + last.join(' • ');
+                document.getElementById('listenerHistory').textContent = `Recent (${dashboardTimezone}): ` + last.join(' • ');
 
                 const labels = data.map(d => formatListenerTime(d.ts));
                 const values = data.map(d => d.listeners || 0);
@@ -201,7 +202,7 @@
                             responsive: true,
                             plugins: {legend: {display: false}},
                             scales: {
-                                x: {title: {display: true, text: 'Time (ET)'}},
+                                x: {title: {display: true, text: `Time (${dashboardTimezone})`}},
                                 y: {title: {display: true, text: 'Listeners'}}
                             }
                         }

@@ -44,8 +44,8 @@
             <tr>
                 <td>{{ a.dj_name }}</td>
                 <td>{{ a.show_name }}</td>
-                <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }}</td>
-                <td>{{ a.end_time.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ a.start_time|datetime_local }} {{ app_timezone }}</td>
+                <td>{{ a.end_time|datetime_local }} {{ app_timezone }}</td>
                 <td>{{ a.replacement_name or '' }}</td>
                 <td>{{ a.status }}</td>
                 <td>{{ a.notes or '' }}</td>

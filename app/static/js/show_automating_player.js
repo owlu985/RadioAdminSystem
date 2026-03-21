@@ -27,11 +27,13 @@ function formatDuration(seconds) {
     return `${mins}:${secs}`;
 }
 
+const appTimezone = window.APP_TIMEZONE || 'America/New_York';
+
 function formatTime(isoString) {
     if (!isoString) return '—';
     const parsed = new Date(isoString);
     if (Number.isNaN(parsed.getTime())) return '—';
-    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: appTimezone });
 }
 
 function renderNowPlaying(nowPlaying, session) {

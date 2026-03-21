@@ -35,6 +35,7 @@ from app.models import (
     db,
 )
 from app.utils import (
+    datetime_iso_local,
     get_current_show,
     format_show_window,
     show_display_title,
@@ -674,7 +675,7 @@ def recent_tracks():
             "artist": artist or None,
             "album": album or None,
             "cover_url": cover_url,
-            "played_at": entry.timestamp.isoformat(),
+            "played_at": datetime_iso_local(entry.timestamp),
         })
     return jsonify({"status": "ok", "tracks": payload})
 
@@ -721,7 +722,7 @@ def run_logs(run_id: int):
     return jsonify([
         {
             "id": log.id,
-            "timestamp": log.timestamp.isoformat(),
+            "timestamp": datetime_iso_local(log.timestamp),
             "message": log.message,
             "entry_type": log.entry_type,
             "title": log.title,
@@ -758,7 +759,7 @@ def latest_probe():
         "avg_db": probe.avg_db,
         "silence_ratio": probe.silence_ratio,
         "automation_ratio": probe.automation_ratio,
-        "timestamp": probe.created_at.isoformat(),
+        "timestamp": datetime_iso_local(probe.created_at),
         "show_run_id": probe.show_run_id,
     })
 
@@ -1524,7 +1525,7 @@ def stream_status():
             "avg_db": probe.avg_db,
             "silence_ratio": probe.silence_ratio,
             "automation_ratio": probe.automation_ratio,
-            "timestamp": probe.created_at.isoformat(),
+            "timestamp": datetime_iso_local(probe.created_at),
         }
 
     listeners = fetch_icecast_listeners()
