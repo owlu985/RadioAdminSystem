@@ -182,6 +182,11 @@
                                 <label for="station_background" class="form-label">Station Background (filename or URL)</label>
                                 <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="first-bkg-variant.jpg or https://...">
                             </div>
+                            <div class="mb-3">
+                                <label for="schedule_timezone" class="form-label">Display Time Zone</label>
+                                <input type="text" name="schedule_timezone" id="schedule_timezone" class="form-control" value="{{ schedule_timezone }}" placeholder="America/New_York">
+                                <div class="form-text">Used anywhere RAMS displays timestamps or wall-clock time. Defaults to America/New_York.</div>
+                            </div>
                         </div>
                     </div>
                     <div class="card mb-3">

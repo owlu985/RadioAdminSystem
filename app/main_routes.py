@@ -2086,7 +2086,7 @@ def toggle_plugin(name):
 
 ALLOWED_SETTINGS_KEYS = [
     'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'BIND_HOST', 'BIND_PORT', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',
-    'AUTO_CREATE_SHOW_FOLDERS', 'STATION_NAME', 'STATION_SLOGAN', 'STATION_BACKGROUND', 'TEMPEST_API_KEY',
+    'AUTO_CREATE_SHOW_FOLDERS', 'STATION_NAME', 'STATION_SLOGAN', 'STATION_BACKGROUND', 'SCHEDULE_TIMEZONE', 'TEMPEST_API_KEY',
     'TEMPEST_STATION_ID', 'ALERTS_ENABLED', 'ALERTS_DRY_RUN', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_ENABLED',
     'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM', 'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_PORT', 'ALERTS_SMTP_USERNAME',
     'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
@@ -2146,6 +2146,7 @@ def settings():
                 'STATION_NAME': request.form['station_name'],
                 'STATION_SLOGAN': request.form['station_slogan'],
                 'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
+                'SCHEDULE_TIMEZONE': request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'America/New_York')).strip() or 'America/New_York',
                 'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
                 'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
                 'ALERTS_ENABLED': 'alerts_enabled' in request.form,
@@ -2235,6 +2236,7 @@ def settings():
         'station_name': config.get('STATION_NAME', ''),
         'station_slogan': config.get('STATION_SLOGAN', ''),
         'station_background': config.get('STATION_BACKGROUND', ''),
+        'schedule_timezone': config.get('SCHEDULE_TIMEZONE', 'America/New_York'),
         'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
         'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
         'alerts_enabled': config.get('ALERTS_ENABLED', False),

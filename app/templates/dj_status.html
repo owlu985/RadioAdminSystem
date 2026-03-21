@@ -177,13 +177,16 @@
 </div>
 
 <script>
+    const statusTimezone = {{ app_timezone|tojson }};
     function updateClock() {
-        const now = new Date();
-        const est = new Date(now.toLocaleString('en-US', { timeZone: 'America/New_York' }));
-        const hh = String(est.getHours()).padStart(2, '0');
-        const mm = String(est.getMinutes()).padStart(2, '0');
-        const ss = String(est.getSeconds()).padStart(2, '0');
-        document.getElementById('clock').textContent = `${hh}:${mm}:${ss}`;
+        const formatter = new Intl.DateTimeFormat('en-US', {
+            timeZone: statusTimezone,
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: false
+        });
+        document.getElementById('clock').textContent = formatter.format(new Date());
     }
     setInterval(updateClock, 1000);
     updateClock();

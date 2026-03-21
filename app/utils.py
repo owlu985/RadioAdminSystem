@@ -1,4 +1,6 @@
-from datetime import datetime, time, timedelta
+from datetime import datetime, time, timedelta, timezone
+from zoneinfo import ZoneInfo
+from functools import lru_cache
 from flask import current_app as app
 from .logger import init_logger
 from .config_utils import normalize_optional_config
@@ -47,6 +49,48 @@ def update_user_config(updates):
 def _normalize_day(day: str) -> str:
     return day.lower()[:3]
 
+
+
+
+@lru_cache(maxsize=32)
+def _coerce_zoneinfo(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("America/New_York")
+
+
+def get_config_timezone_name() -> str:
+    name = app.config.get("SCHEDULE_TIMEZONE", "America/New_York") if app else "America/New_York"
+    return name or "America/New_York"
+
+
+def get_config_timezone() -> ZoneInfo:
+    return _coerce_zoneinfo(get_config_timezone_name())
+
+
+def localize_datetime(value: datetime | None, tz: ZoneInfo | None = None) -> datetime | None:
+    if value is None:
+        return None
+    tz = tz or get_config_timezone()
+    if value.tzinfo is None:
+        value = value.replace(tzinfo=timezone.utc)
+    return value.astimezone(tz)
+
+
+def format_datetime_local(value: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+    localized = localize_datetime(value)
+    return localized.strftime(fmt) if localized else ""
+
+
+def format_date_local(value: datetime | None, fmt: str = "%Y-%m-%d") -> str:
+    localized = localize_datetime(value)
+    return localized.strftime(fmt) if localized else ""
+
+
+def datetime_iso_local(value: datetime | None) -> str | None:
+    localized = localize_datetime(value)
+    return localized.isoformat() if localized else None
 
 DAY_ORDER = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 

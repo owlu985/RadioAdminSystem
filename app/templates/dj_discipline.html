@@ -60,7 +60,7 @@
                 <td>{{ rec.notes }}</td>
                 <td>{{ rec.action_taken or '' }}</td>
                 <td>{% if rec.resolved %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
-                <td>{{ rec.issued_at.strftime('%Y-%m-%d %H:%M') }}</td>
+                <td>{{ rec.issued_at|datetime_local }} {{ app_timezone }}</td>
                 <td>{{ rec.created_by or 'system' }}</td>
                 <td class="text-end">
                   <div class="btn-group btn-group-sm" role="group">

@@ -323,6 +323,7 @@
 <audio id="psaAudioA" class="d-none" preload="auto"></audio>
 <audio id="psaAudioB" class="d-none" preload="auto"></audio>
 <audio id="psaAudioOverlay" class="d-none" preload="auto"></audio>
+<script>window.APP_TIMEZONE = {{ app_timezone|tojson }};</script>
 <script src="{{ url_for('static', filename='js/show_automating_player.js') }}" type="module"></script>
 </body>
 </html>

@@ -12,6 +12,7 @@ from flask import current_app
 from app.services.detection import analyze_audio
 from app.services.library.music_search import _walk_music, _read_tags
 from app.models import AuditRun, db
+from app.utils import datetime_iso_local
 
 audit_jobs: Dict[str, Dict] = {}
 FCC_WORDS = ["fuck", "shit", "piss", "cunt", "cock", "tit", "dick"]
@@ -290,8 +291,8 @@ def list_audit_runs(limit: int = 20) -> List[Dict]:
             "id": run.id,
             "action": run.action,
             "status": run.status,
-            "created_at": run.created_at.isoformat(),
-            "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+            "created_at": datetime_iso_local(run.created_at),
+            "completed_at": datetime_iso_local(run.completed_at) if run.completed_at else None,
             "has_results": bool(results_path),
             "results_count": results_count,
         })
@@ -331,8 +332,8 @@ def get_audit_run(run_id: int) -> Dict | None:
         "id": run.id,
         "action": run.action,
         "status": run.status,
-        "created_at": run.created_at.isoformat(),
-        "completed_at": run.completed_at.isoformat() if run.completed_at else None,
+        "created_at": datetime_iso_local(run.created_at),
+        "completed_at": datetime_iso_local(run.completed_at) if run.completed_at else None,
         "params": params,
         "results": results,
         "results_path": results_path,

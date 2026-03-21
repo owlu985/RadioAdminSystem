@@ -64,7 +64,7 @@
               <td>{{ session.label }}</td>
               <td><code>{{ session.passcode }}</code></td>
               <td>{{ session.notes or '—' }}</td>
-              <td>{{ session.created_at.strftime('%Y-%m-%d %H:%M') if session.created_at else '' }}</td>
+              <td>{{ session.created_at|datetime_local if session.created_at else '' }}{% if session.created_at %} {{ app_timezone }}{% endif %}</td>
               <td class="text-end">
                 <form method="post" action="{{ url_for('remote_link_plugin.delete_session', session_id=session.id) }}" onsubmit="return confirm('Delete this session?');">
                   <button class="btn btn-sm btn-outline-danger">Delete</button>

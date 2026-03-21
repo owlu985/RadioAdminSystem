@@ -7,7 +7,7 @@ from flask import Flask, render_template
 from config import Config
 from .models import db, Show
 from app.plugins import load_plugins
-from .utils import init_utils
+from .utils import init_utils, format_datetime_local, format_date_local, get_config_timezone_name
 from .config_utils import normalize_optional_config
 from .db_utils import ensure_schema
 from .oauth import init_oauth, oauth
@@ -76,6 +76,12 @@ def _install_wsgi_utf8_safety(app: Flask) -> None:
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+    app.jinja_env.filters["datetime_local"] = format_datetime_local
+    app.jinja_env.filters["date_local"] = format_date_local
+
+    @app.context_processor
+    def inject_timezone_settings():
+        return {"app_timezone": get_config_timezone_name()}
 
     def _startup_enabled(flag: str, default: bool = True) -> bool:
         value = app.config.get(flag, default)
