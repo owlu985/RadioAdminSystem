@@ -715,7 +715,8 @@ def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[
             return duration_seconds, peak_db, rms_db, None
 
         def _peaks_for_channel(channel_samples: List[int]) -> List[float]:
-            step = max(1, int(len(channel_samples) / 180))
+            target_points = 2400
+            step = max(1, int(len(channel_samples) / target_points))
             peaks_local: List[float] = []
             max_val = max(abs(int(s)) for s in channel_samples) or 1
             for i in range(0, len(channel_samples), step):
@@ -723,7 +724,8 @@ def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[
                 if not window:
                     continue
                 local_peak = max(abs(int(s)) for s in window) / max_val
-                peaks_local.append(round(local_peak, 4))
+                rms_peak = math.sqrt(sum(int(sample) * int(sample) for sample in window) / len(window)) / max_val
+                peaks_local.append(round(max(local_peak, rms_peak), 4))
             return peaks_local
 
         peaks_payload: Dict[str, List[float]] = {}
