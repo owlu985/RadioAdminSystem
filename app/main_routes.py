@@ -16,7 +16,7 @@ import hashlib
 import zipfile
 import re
 from tempfile import NamedTemporaryFile
-from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event
+from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event, stop_active_show_recording
 from .utils import (
     update_user_config,
     get_current_show,
@@ -79,6 +79,7 @@ from app.services.library.dj_library import (
 )
 from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.log_export import build_docx, read_log_csv, recording_csv_path
+from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
     UNASSIGNED_PERIOD_LABEL,
     current_recording_period,
@@ -1332,6 +1333,7 @@ def dj_absence_submit():
                 )
                 db.session.add(absence)
                 db.session.commit()
+                refresh_schedule()
                 flash("Absence submitted for approval.", "success")
                 return redirect(url_for("main.dj_absence_submit"))
 
@@ -1364,8 +1366,56 @@ def dj_absence_submit():
 @permission_required({"dj:absence"})
 def manage_absences():
         djs = DJ.query.order_by(DJ.first_name.asc().nulls_last(), DJ.last_name.asc().nulls_last()).all()
+        shows = Show.query.order_by(Show.show_name, Show.start_time).all()
 
         if request.method == "POST":
+                action = request.form.get("action") or "update"
+                if action == "create":
+                        dj_id = request.form.get("dj_id", type=int)
+                        show_id = request.form.get("show_id", type=int)
+                        replacement_id = request.form.get("replacement_id", type=int)
+                        status_choice = request.form.get("status") or "approved"
+                        notes = request.form.get("notes") or None
+                        show_obj = Show.query.get(show_id) if show_id else None
+                        dj_obj = DJ.query.get(dj_id) if dj_id else None
+                        if not show_obj or not dj_obj:
+                                flash("Select both a DJ and show to add an absence.", "danger")
+                                return redirect(url_for("main.manage_absences"))
+                        occurrence = next_show_occurrence(show_obj, include_uncovered_absence=True)
+                        if not occurrence:
+                                flash("Could not determine the next scheduled slot for this show.", "danger")
+                                return redirect(url_for("main.manage_absences"))
+                        replacement_name = None
+                        if replacement_id:
+                                rep_obj = DJ.query.get(replacement_id)
+                                if rep_obj:
+                                        replacement_name = f"{rep_obj.first_name} {rep_obj.last_name}".strip()
+                        absence = DJAbsence(
+                                dj_name=f"{dj_obj.first_name} {dj_obj.last_name}".strip(),
+                                show_name=show_obj.show_name or f"{show_obj.host_first_name} {show_obj.host_last_name}",
+                                show_id=show_obj.id,
+                                start_time=occurrence[0],
+                                end_time=occurrence[1],
+                                replacement_name=replacement_name,
+                                notes=notes,
+                                status=status_choice if status_choice in {"pending", "approved", "rejected", "resolved"} else "approved",
+                        )
+                        db.session.add(absence)
+                        db.session.commit()
+                        if absence.status == "approved" and not (absence.replacement_name or "").strip() and absence.show_id:
+                                now = datetime.utcnow()
+                                if absence.start_time <= now < absence.end_time:
+                                        stop_active_show_recording(show_name=absence.show_name, reason="approved_absence")
+                                        try:
+                                                client = RadioDJClient()
+                                                if client.enabled:
+                                                        client.set_autodj(True)
+                                        except Exception as exc:  # noqa: BLE001
+                                                logger.warning("Failed to enable AutoDJ for approved absence %s: %s", absence.id, exc)
+                        refresh_schedule()
+                        flash("Absence added.", "success")
+                        return redirect(url_for("main.manage_absences"))
+
                 abs_id = request.form.get("absence_id", type=int)
                 status_choice = request.form.get("status") or "approved"
                 replacement_id = request.form.get("replacement_id", type=int)
@@ -1382,6 +1432,17 @@ def manage_absences():
                         absence.replacement_name = None
 
                 db.session.commit()
+                if absence.status == "approved" and not (absence.replacement_name or "").strip() and absence.show_id:
+                        now = datetime.utcnow()
+                        if absence.start_time <= now < absence.end_time:
+                                stop_active_show_recording(show_name=absence.show_name, reason="approved_absence")
+                                try:
+                                        client = RadioDJClient()
+                                        if client.enabled:
+                                                client.set_autodj(True)
+                                except Exception as exc:  # noqa: BLE001
+                                        logger.warning("Failed to enable AutoDJ for approved absence %s: %s", absence.id, exc)
+                refresh_schedule()
                 flash("Absence updated.", "success")
                 return redirect(url_for("main.manage_absences"))
 
@@ -1400,8 +1461,10 @@ def manage_absences():
                 "resolved": DJAbsence.query.filter_by(status="resolved").count(),
         }
         return render_template(
-                "absence_manage.html", absences=absences, status_filter=status_filter, counts=counts, djs=djs
+                "absence_manage.html", absences=absences, status_filter=status_filter, counts=counts, djs=djs, shows=shows
         )
+
+
 
 
 @main_bp.route("/music/search")

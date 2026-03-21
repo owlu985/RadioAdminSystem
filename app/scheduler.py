@@ -13,14 +13,16 @@ from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
 from app.services.library.library_index import start_library_index_job
-from .utils import update_user_config, show_display_title, show_primary_host
+from .utils import update_user_config, show_display_title, show_primary_host, scheduled_window_for_date, is_show_preempted_by_absence
 from datetime import date as date_cls
 import ffmpeg
 import mutagen
 import json
 import os
+import subprocess
 
 scheduler = BackgroundScheduler()
+ACTIVE_RECORDINGS = {}
 logger = None
 flask_app = None
 
@@ -110,6 +112,38 @@ def _format_host_list(hosts):
     return f"{', '.join(cleaned[:-1])}, and {cleaned[-1]}"
 
 
+
+
+def _active_recording_key(show_name, output_file):
+    return f"{show_name or ''}|{output_file}"
+
+
+def stop_active_show_recording(*, show_name=None, output_file=None, reason="cancelled"):
+    key = _active_recording_key(show_name, output_file)
+    state = ACTIVE_RECORDINGS.get(key)
+    if not state:
+        for candidate_key, candidate in list(ACTIVE_RECORDINGS.items()):
+            if show_name and candidate.get("show_name") == show_name:
+                state = candidate
+                key = candidate_key
+                break
+    if not state:
+        return False
+    proc = state.get("process")
+    if proc and proc.poll() is None:
+        try:
+            proc.terminate()
+            proc.wait(timeout=10)
+        except Exception:
+            try:
+                proc.kill()
+            except Exception:
+                pass
+    state["stop_requested"] = True
+    state["stop_reason"] = reason
+    ACTIVE_RECORDINGS[key] = state
+    return True
+
 def _apply_recording_tags(path, show_name, hosts, recorded_at):
     try:
         audio = mutagen.File(path, easy=True)
@@ -136,7 +170,7 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at):
 
 
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
-                  label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None):
+                  label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None):
     """Records the stream using FFmpeg."""
 
     ctx = flask_app.app_context() if flask_app else None
@@ -168,6 +202,12 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             logger.info("Skipping recording after show end date %s.", show_end_date)
             return
 
+    if show_id:
+        show = Show.query.get(show_id)
+        window = scheduled_window_for_date(show, datetime.now().date()) if show else None
+        if show and window and is_show_preempted_by_absence(show, window[0], window[1]):
+            logger.info("Skipping recording for approved uncovered absence %s at %s.", show_name or show.id, window[0])
+            return
 
     recorded_at = datetime.now()
     output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA.mp3"
@@ -177,16 +217,27 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             _update_marathon_status(marathon_event_id, "running")
         for attempt in (1, 2):
             try:
-                (
-                    ffmpeg
-                    .input(stream_url, t=duration)
-                    .output(output_file, acodec='copy')
-                    .overwrite_output()
-                    .run()
-                )
+                process = subprocess.Popen([
+                    'ffmpeg', '-y', '-i', stream_url, '-t', str(duration), '-acodec', 'copy', output_file,
+                ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+                key = _active_recording_key(show_name, output_file)
+                ACTIVE_RECORDINGS[key] = {
+                    'process': process,
+                    'show_name': show_name,
+                    'output_file': output_file,
+                    'hosts': hosts or [],
+                    'recorded_at': recorded_at,
+                    'stop_requested': False,
+                    'stop_reason': None,
+                }
+                _, stderr = process.communicate()
+                state = ACTIVE_RECORDINGS.pop(key, None) or {}
+                if process.returncode not in (0, 255) and not state.get('stop_requested'):
+                    err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
+                    raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
                 logger.info(f"Recording started for {output_file}.")
                 logger.info(f"Start time:{start_time}.")
-                if show_name:
+                if show_name and os.path.exists(output_file):
                     _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
                 if attempt == 2:
                     record_failure("recorder", reason="retry_success", restarted=True)
@@ -283,6 +334,7 @@ def schedule_recording(show):
                 hosts,
                 show.start_date,
                 show.end_date,
+                show.id,
             ],
             start_date=start_time,
             end_date=schedule_end,
