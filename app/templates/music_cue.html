@@ -27,7 +27,7 @@
 <div class="container mt-4">
     <h3>CUE Editor</h3>
     {% if track %}
-    <p class="text-muted">{{ track.title }} — {{ track.artist }}</p>
+    <p class="text-muted">{{ track.title }}  -  {{ track.artist }}</p>
     <div class="mb-3">
         <audio id="player" controls preload="metadata" style="width:100%;" src="/music/stream?path={{ track.path|urlencode }}"></audio>
         <div class="zoom-row mt-2">
@@ -40,7 +40,7 @@
         <div class="mt-2 position-relative wave-container" id="wave">
             <div id="loadingOverlay" class="loading-overlay{% if not needs_generation %} hidden{% endif %}">
                 <div class="spinner-border text-primary" role="status" aria-hidden="true"></div>
-                <div class="fw-semibold">Loading waveform and starter cues…</div>
+                <div class="fw-semibold">Loading waveform and starter cues...</div>
                 <div class="text-muted small text-center">This only appears the first time we need to generate missing cue data for this track.</div>
             </div>
             <div id="waveInner" class="wave-inner">
@@ -66,7 +66,7 @@
     <div class="mb-3 d-flex flex-wrap gap-2">
         {% for key,label in fields.items() %}
         <button type="button" class="btn cue-btn btn-outline-dark" id="btn-{{ key }}" data-cue="{{ key }}" onclick="selectCue('{{ key }}')">
-            <span class="fw-semibold cue-swatch" data-cue="{{ key }}">■</span>
+            <span class="fw-semibold cue-swatch" data-cue="{{ key }}">&#9632;</span>
             {{ label }} <span class="text-muted" id="time-{{ key }}"></span>
         </button>
         <input type="hidden" name="{{ key }}" id="{{ key }}" value="{{ cue[key] if cue else '' }}" form="cue-form">
@@ -74,9 +74,9 @@
     </div>
 
     <div class="mb-3 d-flex flex-wrap gap-2 control-buttons">
-        <button type="button" class="btn btn-outline-secondary" onclick="nudge(-STEP)">« Step</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(-STEP)">&laquo; Step</button>
         <button type="button" class="btn btn-outline-secondary" onclick="togglePlay()" id="playToggle">Play/Pause</button>
-        <button type="button" class="btn btn-outline-secondary" onclick="nudge(STEP)">Step »</button>
+        <button type="button" class="btn btn-outline-secondary" onclick="nudge(STEP)">Step &raquo;</button>
         <button type="button" class="btn btn-outline-primary" onclick="setCueValue()">Set</button>
         <button type="button" class="btn btn-outline-danger" onclick="removeCue()">Remove</button>
     </div>
