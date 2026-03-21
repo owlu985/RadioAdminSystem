@@ -10,10 +10,12 @@ import os
 config_lock = threading.Lock()
 logger = None
 
+
 def init_utils():
     global logger
     logger = init_logger()
     logger.info("Utils logger initialized.")
+
 
 def update_user_config(updates):
     """Update the user configuration file and Flask's configuration."""
@@ -30,7 +32,6 @@ def update_user_config(updates):
                 raise f"Error reading user configuration: {e}"
 
         current_config.update(updates)
-
         normalize_optional_config(current_config)
 
         try:
@@ -59,16 +60,70 @@ def normalize_days_list(days: list[str]) -> str:
         key = _normalize_day(d)
         if key not in cleaned:
             cleaned.append(key)
-    # order by the standard week ordering
     cleaned.sort(key=lambda x: DAY_ORDER.index(x) if x in DAY_ORDER else 99)
     return ",".join(cleaned)
 
 
+def show_occurs_on_date(show: Show, show_date) -> bool:
+    if show.start_date and show_date < show.start_date:
+        return False
+    if show.end_date and show_date > show.end_date:
+        return False
+    days = [d.strip() for d in (show.days_of_week or '').split(',') if d.strip()]
+    return _normalize_day(show_date.strftime('%a')) in days
+
+
+def scheduled_window_for_date(show: Show, show_date) -> tuple[datetime, datetime] | None:
+    if not show_occurs_on_date(show, show_date):
+        return None
+    start_dt = datetime.combine(show_date, show.start_time)
+    end_dt = datetime.combine(show_date, show.end_time)
+    if show.end_time <= show.start_time:
+        end_dt += timedelta(days=1)
+    return start_dt, end_dt
+
+
+def approved_absence_for_window(show: Show, start_dt: datetime, end_dt: datetime | None = None) -> DJAbsence | None:
+    if not getattr(show, 'id', None):
+        return None
+    query = DJAbsence.query.filter(
+        DJAbsence.show_id == show.id,
+        DJAbsence.status == "approved",
+        DJAbsence.start_time <= start_dt,
+        DJAbsence.end_time >= (end_dt or start_dt),
+    ).order_by(DJAbsence.start_time.desc())
+    return query.first()
+
+
+def uncovered_approved_absence_for_window(show: Show, start_dt: datetime, end_dt: datetime | None = None) -> DJAbsence | None:
+    absence = approved_absence_for_window(show, start_dt, end_dt)
+    if absence and not (absence.replacement_name or "").strip():
+        return absence
+    return None
+
+
+def is_show_preempted_by_absence(show: Show, start_dt: datetime, end_dt: datetime | None = None) -> bool:
+    return uncovered_approved_absence_for_window(show, start_dt, end_dt) is not None
+
+
+def get_current_absent_show(now: datetime | None = None) -> tuple[Show, DJAbsence] | tuple[None, None]:
+    if now is None:
+        now = datetime.utcnow()
+    for show in Show.query.all():
+        for show_date in (now.date(), now.date() - timedelta(days=1)):
+            window = scheduled_window_for_date(show, show_date)
+            if not window:
+                continue
+            start_dt, end_dt = window
+            if start_dt <= now < end_dt:
+                absence = uncovered_approved_absence_for_window(show, start_dt, end_dt)
+                if absence:
+                    return show, absence
+    return None, None
+
+
 def get_current_show(now: datetime | None = None):
-    """
-    Return the Show scheduled right now, if any.
-    Handles overnight shows where end_time is earlier than start_time.
-    """
+    """Return the show scheduled right now, excluding approved absences without substitutes."""
     if now is None:
         now = datetime.now()
 
@@ -79,43 +134,36 @@ def get_current_show(now: datetime | None = None):
     today_shows = Show.query.all()
 
     def _has_day(show_obj: Show, key: str) -> bool:
-        days = [d.strip() for d in (show_obj.days_of_week or "").split(',') if d.strip()]
+        days = [d.strip() for d in (show_obj.days_of_week or '').split(',') if d.strip()]
         return key in days
-
-    def _within_date_range(show_obj: Show, show_date) -> bool:
-        if show_obj.start_date and show_date < show_obj.start_date:
-            return False
-        if show_obj.end_date and show_date > show_obj.end_date:
-            return False
-        return True
 
     for show in today_shows:
         if not _has_day(show, day_key):
             continue
-        if not _within_date_range(show, now.date()):
+        window = scheduled_window_for_date(show, now.date())
+        if not window:
             continue
-        if show.start_time <= show.end_time:
-            if show.start_time <= current_time < show.end_time:
-                return show
-        else:
-            # Overnight show into next day
-            if current_time >= show.start_time:
-                return show
+        start_dt, end_dt = window
+        if start_dt <= now < end_dt and not is_show_preempted_by_absence(show, start_dt, end_dt):
+            return show
+        if show.start_time > show.end_time and current_time >= show.start_time and not is_show_preempted_by_absence(show, start_dt, end_dt):
+            return show
 
-    # Handle shows that began yesterday and end after midnight today
     for show in today_shows:
         if not _has_day(show, yesterday_key):
             continue
-        if not _within_date_range(show, now.date() - timedelta(days=1)):
+        show_date = now.date() - timedelta(days=1)
+        window = scheduled_window_for_date(show, show_date)
+        if not window:
             continue
-        if show.end_time < show.start_time and current_time < show.end_time:
+        start_dt, end_dt = window
+        if start_dt <= now < end_dt and not is_show_preempted_by_absence(show, start_dt, end_dt):
             return show
 
     return None
 
 
 def format_show_window(show: Show) -> dict:
-    """Return formatted window info for API/UI responses."""
     return {
         "start_time": show.start_time.strftime("%H:%M"),
         "end_time": show.end_time.strftime("%H:%M"),
@@ -152,8 +200,6 @@ def show_display_title(show: Show) -> str:
 
 
 def active_absence_for_show(show: Show, *, now: datetime | None = None) -> DJAbsence | None:
-    """Return an approved/pending absence covering ``now`` for the given show."""
-
     if now is None:
         now = datetime.utcnow()
 
@@ -169,17 +215,12 @@ def active_absence_for_show(show: Show, *, now: datetime | None = None) -> DJAbs
     return query.order_by(DJAbsence.status.desc(), DJAbsence.start_time.desc()).first()
 
 
-def next_show_occurrence(show: Show, *, now: datetime | None = None) -> tuple[datetime, datetime] | None:
-    """Return the next scheduled start/end datetimes for a show based on its days_of_week.
-
-    Picks the soonest occurrence on or after ``now`` (default: current time) within the next two weeks.
-    Handles overnight shows whose end_time is earlier than start_time by rolling the end into the next day.
-    """
-
+def next_show_occurrence(show: Show, *, now: datetime | None = None, include_uncovered_absence: bool = False) -> tuple[datetime, datetime] | None:
+    """Return the next scheduled start/end datetimes for a show within the next two weeks."""
     if now is None:
         now = datetime.now()
 
-    days = [d.strip() for d in (show.days_of_week or "").split(',') if d.strip()]
+    days = [d.strip() for d in (show.days_of_week or '').split(',') if d.strip()]
     if not days:
         return None
 
@@ -189,14 +230,11 @@ def next_show_occurrence(show: Show, *, now: datetime | None = None) -> tuple[da
         key = _normalize_day(candidate.strftime('%a'))
         if key not in days:
             continue
-        if show.start_date and candidate < show.start_date:
+        window = scheduled_window_for_date(show, candidate)
+        if not window:
             continue
-        if show.end_date and candidate > show.end_date:
-            continue
-        start_dt = datetime.combine(candidate, show.start_time)
-        end_dt = datetime.combine(candidate, show.end_time)
-        if show.end_time <= show.start_time:
-            end_dt += timedelta(days=1)
+        start_dt, end_dt = window
         if start_dt >= now or offset > 0:
-            return start_dt, end_dt
+            if include_uncovered_absence or not is_show_preempted_by_absence(show, start_dt, end_dt):
+                return start_dt, end_dt
     return None

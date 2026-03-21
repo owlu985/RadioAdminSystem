@@ -42,6 +42,9 @@ from app.utils import (
     show_host_names,
     active_absence_for_show,
     next_show_occurrence,
+    scheduled_window_for_date,
+    get_current_absent_show,
+    uncovered_approved_absence_for_window,
 )
 from app.services.show_run_service import get_or_create_active_run, start_show_run, end_show_run
 from app.services.radiodj_client import import_news_or_calendar, RadioDJClient
@@ -543,11 +546,19 @@ def now_playing():
     override_enabled = _override_enabled()
 
     if not show:
+        absent_show, absent_slot = get_current_absent_show(now)
         base = {
-            "status": "off_air",
-            "message": current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
+            "status": "automation" if absent_slot else "off_air",
+            "message": "Approved absence without substitute; station is in automation." if absent_slot else current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
             "override_enabled": override_enabled,
         }
+        if absent_slot and absent_show:
+            base["absent_show"] = _serialize_show(absent_show)
+            base["absence"] = {
+                "status": absent_slot.status,
+                "replacement": absent_slot.replacement_name,
+                "dj": absent_slot.dj_name,
+            }
         if override_enabled:
             track = _get_cached_radiodj_nowplaying()
             if track:
@@ -1200,6 +1211,12 @@ def schedule_api():
                 if a.show_id == show.id and a.start_time.strftime('%a').lower().startswith(day.lower()[:3]):
                     absence = a
                     break
+            next_window = next_show_occurrence(show, include_uncovered_absence=True)
+            uncovered_absence = None
+            if next_window and next_window[0].strftime('%a').lower().startswith(day.lower()[:3]):
+                uncovered_absence = uncovered_approved_absence_for_window(show, next_window[0], next_window[1])
+            if uncovered_absence:
+                continue
             events.append({
                 "title": show_display_title(show),
                 "day": day,
