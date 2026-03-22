@@ -28,7 +28,7 @@
     const statusEl = document.getElementById('autodjStatus');
     async function toggleAutoDJ(enabled) {
         statusEl.textContent = 'Sending...';
-        const res = await fetch('/api/radiodj/autodj', {
+        const res = await fetch(window.ramsUrl('/api/radiodj/autodj'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({enabled})

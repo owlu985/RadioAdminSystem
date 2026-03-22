@@ -29,7 +29,7 @@
     {% if track %}
     <p class="text-muted">{{ track.title }}  -  {{ track.artist }}</p>
     <div class="mb-3">
-        <audio id="player" controls preload="metadata" style="width:100%;" src="/music/stream?path={{ track.path|urlencode }}"></audio>
+        <audio id="player" controls preload="metadata" style="width:100%;" src="{{ app_prefixed_path('/music/stream') }}?path={{ track.path|urlencode }}"></audio>
         <div class="zoom-row mt-2">
             <div class="legend">
                 <span style="background:#0d6efd;color:#fff;">Left/Mono</span>
@@ -84,7 +84,7 @@
     <form method="post" class="row g-3" id="cue-form">
         <div class="col-12">
             <button class="btn btn-primary" type="submit">Save CUE</button>
-            <a class="btn btn-secondary" href="/music/detail?path={{ track.path|urlencode }}">Back</a>
+            <a class="btn btn-secondary" href="{{ app_prefixed_path('/music/detail') }}?path={{ track.path|urlencode }}">Back</a>
         </div>
     </form>
     {% else %}
@@ -375,7 +375,7 @@
         if (!initialNeedsGeneration) return;
         setLoading(true);
         try {
-            const res = await fetch(`/api/music/cue?path=${encodeURIComponent(trackPath)}&include_track=1`);
+            const res = await fetch(window.ramsUrl(`/api/music/cue?path=${encodeURIComponent(trackPath)}&include_track=1`));
             if (!res.ok) throw new Error('Failed to generate cue data.');
             const payload = await res.json();
             if (payload.track && payload.track.peaks) peaksData = payload.track.peaks;

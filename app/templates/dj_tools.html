@@ -126,7 +126,7 @@
 <script>
     async function loadNow() {
         try {
-            const res = await fetch('/api/now/widget');
+            const res = await fetch(window.ramsUrl('/api/now/widget'));
             const data = await res.json();
             const nowBlock = document.getElementById('nowBlock');
             const nextBlock = document.getElementById('nextBlock');
@@ -156,7 +156,7 @@
         const statusEl = document.getElementById('autodjStatus');
         statusEl.textContent = 'Updating AutoDJ...';
         try {
-            const res = await fetch('/api/radiodj/autodj', {
+            const res = await fetch(window.ramsUrl('/api/radiodj/autodj'), {
                 method: 'POST',
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({enabled})

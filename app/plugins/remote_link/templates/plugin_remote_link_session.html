@@ -68,7 +68,7 @@ function showError(msg) {
 
 async function sendSignal(type, payload) {
   try {
-    const resp = await fetch('/plugins/remote-link/api/signals', {
+    const resp = await fetch(window.ramsUrl('/plugins/remote-link/api/signals'), {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({session_id: sessionId, sender_id: selfId, sender_label: displayName, type, payload})
@@ -83,7 +83,7 @@ async function sendSignal(type, payload) {
 
 async function pollSignals() {
   try {
-    const resp = await fetch(`/plugins/remote-link/api/signals?session_id=${sessionId}&since_id=${lastId}&self_id=${selfId}`);
+    const resp = await fetch(window.ramsUrl(`/plugins/remote-link/api/signals?session_id=${sessionId}&since_id=${lastId}&self_id=${selfId}`));
     if (!resp.ok) return;
     const data = await resp.json();
     for (const sig of data.signals) {

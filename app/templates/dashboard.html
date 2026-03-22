@@ -134,7 +134,7 @@
 <script>
     async function refreshStatus() {
         try {
-            const res = await fetch('/api/stream/status');
+            const res = await fetch(window.ramsUrl('/api/stream/status'));
             const data = await res.json();
             document.getElementById('streamUp').textContent = data.stream_up ? 'Up' : 'Down';
             if (data.listeners !== undefined) {
@@ -173,7 +173,7 @@
     }
     async function refreshListeners() {
         try {
-            const res = await fetch('/api/icecast/analytics?hours=24');
+            const res = await fetch(window.ramsUrl('/api/icecast/analytics?hours=24'));
             const data = await res.json();
             if (Array.isArray(data) && data.length) {
                 const last = data.slice(-5).map(d => `${formatListenerTime(d.ts)}: ${d.listeners} (${d.state || 'n/a'})`);

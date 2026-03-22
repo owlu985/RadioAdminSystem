@@ -110,7 +110,7 @@
         wrap.style.display = 'block';
         bar.style.width = '0%';
         status.textContent = 'Starting...';
-        const res = await fetch('/api/audit/start', {
+        const res = await fetch(window.ramsUrl('/api/audit/start'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({action, ...payload})
@@ -122,7 +122,7 @@
         }
         const jobId = data.job_id;
         const poll = async () => {
-            const r = await fetch(`/api/audit/status/${jobId}`);
+            const r = await fetch(window.ramsUrl(`/api/audit/status/${jobId}`));
             const s = await r.json();
             const total = s.total || 1;
             const prog = Math.min(100, Math.floor((s.progress || 0) * 100 / total));
@@ -201,7 +201,7 @@
 
     async function loadAuditRuns() {
         const table = document.querySelector('#auditRunsTable tbody');
-        const res = await fetch('/api/audit/runs?limit=20');
+        const res = await fetch(window.ramsUrl('/api/audit/runs?limit=20'));
         const data = await res.json();
         if (!data.length) {
             table.innerHTML = '<tr><td colspan="6" class="text-muted text-center">No runs yet.</td></tr>';
@@ -223,7 +223,7 @@
     }
 
     async function loadAuditRun(runId) {
-        const res = await fetch(`/api/audit/runs/${runId}`);
+        const res = await fetch(window.ramsUrl(`/api/audit/runs/${runId}`));
         const data = await res.json();
         const target = data.action === 'recordings' ? 'recResults' : 'expResults';
         if (data.results_url) {
@@ -234,7 +234,7 @@
     }
 
     async function deleteAuditRun(runId) {
-        const res = await fetch(`/api/audit/runs/${runId}/results`, { method: 'DELETE' });
+        const res = await fetch(window.ramsUrl(`/api/audit/runs/${runId}/results`), { method: 'DELETE' });
         if (!res.ok) {
             alert('Unable to delete results.');
             return;

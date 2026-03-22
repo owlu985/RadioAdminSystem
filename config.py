@@ -32,6 +32,9 @@ class Config:
     BIND_HOST = "127.0.0.1"
     BIND_PORT = 5000
 
+    # Deployment path prefix, e.g. "/admin" when mounted under example.com/admin
+    ADMIN_URL_PREFIX = ""
+
     # Silence / automation detection
     DEAD_AIR_DB = -72
     DEAD_AIR_SOFT_DB = -60
