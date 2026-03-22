@@ -3,7 +3,7 @@ import json
 import secrets
 import traceback
 from typing import Any
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from config import Config
 from .models import db, Show
 from app.plugins import load_plugins
@@ -19,6 +19,53 @@ from .scheduler import init_scheduler, pause_shows_until
 from .rate_limit import rate_limit_check
 
 
+
+
+
+def _normalize_url_prefix(prefix: Any) -> str:
+    if prefix is None:
+        return ""
+    prefix = str(prefix).strip()
+    if not prefix or prefix == "/":
+        return ""
+    prefix = "/" + prefix.strip("/")
+    return prefix
+
+
+def _prefix_path(prefix: str, path: str) -> str:
+    normalized = _normalize_url_prefix(prefix)
+    if not path:
+        return normalized or "/"
+    if path.startswith(("http://", "https://", "//", "mailto:", "tel:", "javascript:")):
+        return path
+    if not path.startswith("/"):
+        path = "/" + path
+    if normalized and path.startswith(normalized + "/"):
+        return path
+    if normalized == path:
+        return path
+    return f"{normalized}{path}" if normalized else path
+
+
+def _install_url_prefix_middleware(app: Flask) -> None:
+    prefix = _normalize_url_prefix(app.config.get("ADMIN_URL_PREFIX", ""))
+    app.config["ADMIN_URL_PREFIX"] = prefix
+    app.config["APPLICATION_ROOT"] = prefix or "/"
+    if prefix:
+        app.config.setdefault("SESSION_COOKIE_PATH", prefix)
+
+    original_wsgi_app = app.wsgi_app
+
+    def _prefixed_wsgi_app(environ, start_response):
+        if prefix:
+            path_info = environ.get("PATH_INFO", "") or "/"
+            script_name = environ.get("SCRIPT_NAME", "")
+            if path_info == prefix or path_info.startswith(prefix + "/"):
+                environ["SCRIPT_NAME"] = f"{script_name}{prefix}"
+                environ["PATH_INFO"] = path_info[len(prefix):] or "/"
+        return original_wsgi_app(environ, start_response)
+
+    app.wsgi_app = _prefixed_wsgi_app
 
 def _utf8_safe_text(value: Any) -> str:
     if value is None:
@@ -78,10 +125,17 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     app.jinja_env.filters["datetime_local"] = format_datetime_local
     app.jinja_env.filters["date_local"] = format_date_local
+    _install_url_prefix_middleware(app)
 
     @app.context_processor
-    def inject_timezone_settings():
-        return {"app_timezone": get_config_timezone_name()}
+    def inject_runtime_settings():
+        prefix = app.config.get("ADMIN_URL_PREFIX", "")
+        return {
+            "app_timezone": get_config_timezone_name(),
+            "app_url_prefix": prefix,
+            "app_prefixed_path": lambda path="/": _prefix_path(prefix, path),
+            "app_request_path": _prefix_path(prefix, request.path),
+        }
 
     def _startup_enabled(flag: str, default: bool = True) -> bool:
         value = app.config.get(flag, default)

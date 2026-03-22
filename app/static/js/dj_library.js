@@ -38,7 +38,7 @@ function escapeHtml(value) {
 
 async function loadLibraryIndex() {
     try {
-        const res = await fetch('/dj/library/data');
+        const res = await fetch(window.ramsUrl('/dj/library/data'));
         const data = await res.json();
         state.artists = data.artists || [];
         state.genres = data.genres || [];
@@ -185,7 +185,7 @@ async function performSearch() {
     }
     searchMeta.textContent = 'Searching...';
     try {
-        const res = await fetch(`/dj/library/search?q=${encodeURIComponent(query)}`);
+        const res = await fetch(window.ramsUrl(`/dj/library/search?q=${encodeURIComponent(query)}`));
         const data = await res.json();
         const items = data.items || [];
         searchMeta.textContent = `${items.length} result(s)`;
@@ -236,7 +236,7 @@ async function convertTextPlaylist() {
     playlistConvert.disabled = true;
     playlistStatus.textContent = 'Matching tracks...';
     try {
-        const res = await fetch('/dj/library/import', {
+        const res = await fetch(window.ramsUrl('/dj/library/import'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ text, name: 'Imported Playlist' })
@@ -268,7 +268,7 @@ async function convertYoutubePlaylist() {
     youtubeConvert.disabled = true;
     youtubeStatus.textContent = 'Fetching YouTube playlist...';
     try {
-        const res = await fetch('/dj/library/youtube', {
+        const res = await fetch(window.ramsUrl('/dj/library/youtube'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ playlist_url: url })
@@ -300,7 +300,7 @@ async function savePlaylist() {
     playlistSave.disabled = true;
     playlistSaveStatus.textContent = 'Saving playlist file...';
     try {
-        const res = await fetch('/dj/library/playlist/save', {
+        const res = await fetch(window.ramsUrl('/dj/library/playlist/save'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({ name, content })

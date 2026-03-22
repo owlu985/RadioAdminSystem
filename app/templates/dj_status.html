@@ -193,7 +193,7 @@
 
     async function refreshStatus() {
         try {
-            const res = await fetch('/api/stream/status');
+            const res = await fetch(window.ramsUrl('/api/stream/status'));
             const data = await res.json();
             const streamElem = document.getElementById('streamUp');
             streamElem.textContent = data.stream_up ? 'Online' : 'Offline';
@@ -246,7 +246,7 @@
 
     async function refreshWeather() {
         try {
-            const res = await fetch('/api/weather/tempest');
+            const res = await fetch(window.ramsUrl('/api/weather/tempest'));
             const data = await res.json();
             if (!res.ok || data.status === 'error') {
                 throw new Error(data.message || 'Weather unavailable');
@@ -279,7 +279,7 @@
 
     async function refreshNowPlaying() {
         try {
-            const res = await fetch('/api/now');
+            const res = await fetch(window.ramsUrl('/api/now'));
             const data = await res.json();
             const currentElem = document.getElementById('currentShow');
             const currentWindow = document.getElementById('currentWindow');

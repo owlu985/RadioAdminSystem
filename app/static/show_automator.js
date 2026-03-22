@@ -117,7 +117,7 @@
     const refreshQueue = async () => {
         setStatus('Loading queue…');
         try {
-            const res = await fetch('/api/playback/queue');
+            const res = await fetch(window.ramsUrl('/api/playback/queue'));
             if (!res.ok) throw new Error('Unable to load queue.');
             const data = await res.json();
             queueItems = data.queue || [];
@@ -188,7 +188,7 @@
     const persistOrder = async (items) => {
         const updates = items.map((item, idx) => ({ id: item.id, position: idx }));
         for (const update of updates) {
-            const res = await fetch('/api/playback/queue/move', {
+            const res = await fetch(window.ramsUrl('/api/playback/queue/move'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ item_id: update.id, position: update.position }),

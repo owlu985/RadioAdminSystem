@@ -257,7 +257,7 @@ function formatMs(ms) {
 async function lookupAlbum() {
   const q = document.getElementById('album-query').value.trim();
   if (!q) return;
-  const res = await fetch(`/api/archivist/album-info?q=${encodeURIComponent(q)}`);
+  const res = await fetch(window.ramsUrl(`/api/archivist/album-info?q=${encodeURIComponent(q)}`));
   const data = await res.json();
   const target = document.getElementById('album-results');
   if (!data.length) {
@@ -291,7 +291,7 @@ async function uploadRip(evt) {
   }
   await new Promise((resolve) => {
     const xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/archivist/album-rip/upload');
+    xhr.open('POST', window.ramsUrl('/api/archivist/album-rip/upload'));
     xhr.upload.onprogress = (event) => {
       if (!event.lengthComputable || !barFill) return;
       const percent = Math.round((event.loaded / event.total) * 100);
@@ -389,7 +389,7 @@ async function analyzeRip() {
     progress = Math.min(progress + 8, 90);
     barFill.style.width = `${progress}%`;
   }, 350);
-  const res = await fetch('/api/archivist/album-rip', {
+  const res = await fetch(window.ramsUrl('/api/archivist/album-rip'), {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ silence_thresh_db, min_gap_ms, min_track_ms })
@@ -414,7 +414,7 @@ async function analyzeRip() {
 
 async function cleanupRip() {
   try {
-    await fetch('/api/archivist/album-rip/cleanup', { method: 'POST', keepalive: true });
+    await fetch(window.ramsUrl('/api/archivist/album-rip/cleanup'), { method: 'POST', keepalive: true });
   } catch (e) {
     // ignore
   }
@@ -431,7 +431,7 @@ async function lookupMB() {
   const select = document.getElementById('mb-releases');
   select.innerHTML = '<option value="">Select a release variant…</option>';
   try {
-    const res = await fetch(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`);
+    const res = await fetch(window.ramsUrl(`/api/archivist/musicbrainz-releases?title=${encodeURIComponent(title)}&artist=${encodeURIComponent(artist)}`));
     if (!res.ok) {
       status.textContent = 'Search failed.';
       return;

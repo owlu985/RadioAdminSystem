@@ -21,7 +21,7 @@
 {% include '_footer.html' %}
 <script>
     async function loadSchedule() {
-        const res = await fetch('/api/schedule');
+        const res = await fetch(window.ramsUrl('/api/schedule'));
         const data = await res.json();
         const tbody = document.querySelector('#grid tbody');
         tbody.innerHTML = data.events.map(e => {

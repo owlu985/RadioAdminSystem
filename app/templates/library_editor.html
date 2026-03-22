@@ -860,7 +860,7 @@
         saveStatus.textContent = 'Saving changes...';
         saveStatus.classList.remove('text-danger');
         try {
-            const res = await fetch('/api/music/bulk-update', {
+            const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ paths: [current.path], updates })

@@ -383,7 +383,7 @@
             const explicitLabel = track.explicit === true ? 'Yes' : track.explicit === false ? 'No' : 'Unknown';
             html = `
                 <div class="text-center mb-3">
-                    <img class="metadata-cover mb-2" src="/music/cover?path=${encodeURIComponent(track.path)}" alt="cover">
+                    <img class="metadata-cover mb-2" src="${window.ramsUrl(`/music/cover?path=${encodeURIComponent(track.path)}`)}" alt="cover">
                 </div>
                 <div class="browser-meta-label text-muted">Track</div>
                 <div class="fw-semibold mb-2">${track.title || 'Untitled'}</div>
@@ -423,7 +423,7 @@
         tbody.innerHTML = data.map(item => `
             <tr class="result-row" tabindex="0" data-path="${item.path}">
                 <td><input type="checkbox" value="${item.path}" aria-label="Select ${item.title || 'track'}"></td>
-                <td><a href="/music/detail?path=${encodeURIComponent(item.path)}">${item.title || ''}</a></td>
+                <td><a href="${window.ramsUrl(`/music/detail?path=${encodeURIComponent(item.path)}`)}">${item.title || ''}</a></td>
                 <td>${item.artist || ''}</td>
                 <td>${item.album || ''}</td>
                 <td>${item.duration_seconds ? item.duration_seconds.toFixed(1)+'s' : ''}</td>
@@ -530,7 +530,7 @@
             if (btn && btn.classList.contains('list-group-item')) {
                 btn.click();
                 if (btn.dataset.type === 'track') {
-                    window.location.href = `/music/detail?path=${encodeURIComponent(btn.dataset.path)}`;
+                    window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(btn.dataset.path)}`);
                 }
             }
         }
@@ -593,7 +593,7 @@
         }
         if (delId) {
             e.preventDefault();
-            await fetch(`/api/music/saved-searches?id=${delId}`, {method: 'DELETE'});
+            await fetch(window.ramsUrl(`/api/music/saved-searches?id=${delId}`), {method: 'DELETE'});
             savedSearches = savedSearches.filter(s => s.id != delId);
             renderSaved();
         }
@@ -604,7 +604,7 @@
         if (!q) return;
         const name = prompt('Name this search?', q.slice(0, 30) || 'Saved search');
         if (!name) return;
-        const res = await fetch('/api/music/saved-searches', {
+        const res = await fetch(window.ramsUrl('/api/music/saved-searches'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({name, query: q})
@@ -642,7 +642,7 @@
         if (year) params.set('year', year);
         if (mood) params.set('mood', mood);
         if (explicitOnly) params.set('explicit', '1');
-        const res = await fetch(`/api/music/search?${params.toString()}`);
+        const res = await fetch(window.ramsUrl(`/api/music/search?${params.toString()}`));
         const data = await res.json();
         renderResults(data.items || []);
         updateFilterOptions(data);
@@ -703,7 +703,7 @@
     openDetailBtn.addEventListener('click', () => {
         const path = openDetailBtn.dataset.path;
         if (path) {
-            window.location.href = `/music/detail?path=${encodeURIComponent(path)}`;
+            window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(path)}`);
         }
     });
 
@@ -723,7 +723,7 @@
             const buf = await coverFile.arrayBuffer();
             coverArt = btoa(String.fromCharCode(...new Uint8Array(buf)));
         }
-        const res = await fetch('/api/music/bulk-update', {
+        const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
             body: JSON.stringify({paths, updates, cover_art: coverArt})
@@ -733,7 +733,7 @@
     });
 
     async function loadQueues() {
-        const res = await fetch('/api/music/scan/library');
+        const res = await fetch(window.ramsUrl('/api/music/scan/library'));
         const data = await res.json();
         const metrics = data.metrics || {};
         const renderList = (arr, label) => `<div class="mb-2"><strong>${label}</strong><br>${arr.slice(0,5).map(t => t.title || t.path).join('<br>') || 'None'}</div>`;

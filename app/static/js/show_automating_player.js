@@ -414,7 +414,7 @@ async function fetchLibraryNav({ refresh = false } = {}) {
                 per_page: libraryNavState.perPage,
             });
             if (refresh) params.set('refresh', '1');
-            const res = await fetch(`/api/music/search?${params.toString()}`);
+            const res = await fetch(window.ramsUrl(`/api/music/search?${params.toString()}`));
             data = await res.json();
         } else {
             const params = new URLSearchParams({
@@ -423,7 +423,7 @@ async function fetchLibraryNav({ refresh = false } = {}) {
                 kind: mode,
             });
             if (libraryNavState.query) params.set('q', libraryNavState.query);
-            const res = await fetch(`/api/psa/library?${params.toString()}`);
+            const res = await fetch(window.ramsUrl(`/api/psa/library?${params.toString()}`));
             data = await res.json();
         }
         libraryNavState.items = data.items || [];
@@ -769,7 +769,7 @@ async function openMetadataEditor(item) {
     metadataPath.textContent = item.name ? `File: ${item.name}` : '';
     if (item.token) {
         try {
-            const res = await fetch(`/api/psa/metadata?token=${encodeURIComponent(item.token)}`);
+            const res = await fetch(window.ramsUrl(`/api/psa/metadata?token=${encodeURIComponent(item.token)}`));
             const data = await res.json();
             if (data.status === 'ok' && data.metadata) {
                 metadataTitle.value = data.metadata.title || '';
@@ -879,7 +879,7 @@ async function ensureShowRun() {
     if (activeShowRunId) return activeShowRunId;
     if (showRunStartPromise) return showRunStartPromise;
     const payload = {};
-    showRunStartPromise = fetch('/api/playback/show/start', {
+    showRunStartPromise = fetch(window.ramsUrl('/api/playback/show/start'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -917,7 +917,7 @@ async function logPlaybackEvent(event, item, extra = {}) {
     if (!activeShowRunId) return;
     const payload = buildLogPayload(event, item, extra);
     if (!payload) return;
-    fetch('/api/playback/log', {
+    fetch(window.ramsUrl('/api/playback/log'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1093,7 +1093,7 @@ async function moveQueueItem(item, position) {
 async function fetchMusicCues(path) {
     if (!path) return null;
     try {
-        const res = await fetch(`/api/music/cue?path=${encodeURIComponent(path)}`);
+        const res = await fetch(window.ramsUrl(`/api/music/cue?path=${encodeURIComponent(path)}`));
         if (!res.ok) return null;
         const data = await res.json();
         return data.cue || null;
@@ -1106,7 +1106,7 @@ function prewarmTranscode(payload) {
     if (!payload || payload.kind !== 'music') return;
     const path = payload.metadata?.path;
     if (!path) return;
-    fetch('/music/pretranscode', {
+    fetch(window.ramsUrl('/music/pretranscode'), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ path }),
@@ -1201,7 +1201,7 @@ function getAutomationQueueContext() {
 
 async function automationTick() {
     try {
-        await fetch('/api/show-automator/state');
+        await fetch(window.ramsUrl('/api/show-automator/state'));
     } catch (err) {
         // ignore
     }
@@ -1219,7 +1219,7 @@ async function automationTick() {
         overlay: context.overlayPayload,
     };
     try {
-        const res = await fetch('/api/show-automator/plan', {
+        const res = await fetch(window.ramsUrl('/api/show-automator/plan'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(payload),
@@ -1840,7 +1840,7 @@ window.addEventListener('beforeunload', () => {
     if (!enablePlaybackLogging) return;
     if (!activeShowRunId) return;
     const payload = new Blob([JSON.stringify({ show_run_id: activeShowRunId, log_sheet_id: activeLogSheetId })], { type: 'application/json' });
-    navigator.sendBeacon('/api/playback/show/stop', payload);
+    navigator.sendBeacon(window.ramsUrl('/api/playback/show/stop'), payload);
 });
 
 
@@ -2186,7 +2186,7 @@ if (cueSaveBtn) cueSaveBtn.addEventListener('click', async () => {
         if (!isNaN(val)) payload[field] = val;
     });
     try {
-        const res = await fetch('/api/psa/cue', {
+        const res = await fetch(window.ramsUrl('/api/psa/cue'), {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ token: cueItem.token, cue: payload }),
