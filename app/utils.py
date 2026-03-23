@@ -13,6 +13,44 @@ config_lock = threading.Lock()
 logger = None
 
 
+UTC_OFFSET_TIMEZONE_OPTIONS = [
+    {"value": "Etc/GMT+12", "label": "UTC-12"},
+    {"value": "Etc/GMT+11", "label": "UTC-11"},
+    {"value": "Etc/GMT+10", "label": "UTC-10"},
+    {"value": "Etc/GMT+9", "label": "UTC-9"},
+    {"value": "Etc/GMT+8", "label": "UTC-8"},
+    {"value": "Etc/GMT+7", "label": "UTC-7"},
+    {"value": "Etc/GMT+6", "label": "UTC-6"},
+    {"value": "Etc/GMT+5", "label": "UTC-5"},
+    {"value": "Etc/GMT+4", "label": "UTC-4"},
+    {"value": "Etc/GMT+3", "label": "UTC-3"},
+    {"value": "Etc/GMT+2", "label": "UTC-2"},
+    {"value": "Etc/GMT+1", "label": "UTC-1"},
+    {"value": "Etc/GMT", "label": "UTC+0"},
+    {"value": "Etc/GMT-1", "label": "UTC+1"},
+    {"value": "Etc/GMT-2", "label": "UTC+2"},
+    {"value": "Etc/GMT-3", "label": "UTC+3"},
+    {"value": "Etc/GMT-4", "label": "UTC+4"},
+    {"value": "Etc/GMT-5", "label": "UTC+5"},
+    {"value": "Etc/GMT-6", "label": "UTC+6"},
+    {"value": "Etc/GMT-7", "label": "UTC+7"},
+    {"value": "Etc/GMT-8", "label": "UTC+8"},
+    {"value": "Etc/GMT-9", "label": "UTC+9"},
+    {"value": "Etc/GMT-10", "label": "UTC+10"},
+    {"value": "Etc/GMT-11", "label": "UTC+11"},
+    {"value": "Etc/GMT-12", "label": "UTC+12"},
+    {"value": "Etc/GMT-13", "label": "UTC+13"},
+    {"value": "Etc/GMT-14", "label": "UTC+14"},
+]
+
+UTC_OFFSET_TIMEZONE_LABELS = {item["value"]: item["label"] for item in UTC_OFFSET_TIMEZONE_OPTIONS}
+
+
+def timezone_label(name: str | None) -> str:
+    normalized = normalize_timezone_name(name)
+    return UTC_OFFSET_TIMEZONE_LABELS.get(normalized, normalized)
+
+
 def init_utils():
     global logger
     logger = init_logger()
@@ -62,11 +100,26 @@ def _coerce_zoneinfo(name: str) -> ZoneInfo:
 
 def normalize_timezone_name(name: str | None) -> str:
     if not name:
-        return "America/New_York"
+        return "Etc/GMT+4"
     candidate = str(name).strip()
     if not candidate:
-        return "America/New_York"
-    return getattr(_coerce_zoneinfo(candidate), "key", "America/New_York")
+        return "Etc/GMT+4"
+    upper = candidate.upper()
+    if upper == "UTC" or upper == "GMT":
+        return "Etc/GMT"
+    if upper.startswith(("UTC", "GMT")):
+        offset = candidate[3:].strip()
+        if offset:
+            try:
+                hours = int(offset)
+            except ValueError:
+                pass
+            else:
+                if hours == 0:
+                    return "Etc/GMT"
+                if -12 <= hours <= 14:
+                    return f"Etc/GMT{(-hours):+d}"
+    return getattr(_coerce_zoneinfo(candidate), "key", "Etc/GMT+4")
 
 
 def get_config_timezone_name() -> str:

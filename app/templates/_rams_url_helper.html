@@ -1,0 +1,20 @@
+<script>
+    window.RAMS_URL_PREFIX = {{ app_url_prefix|tojson }};
+    window.ramsUrl = function(path) {
+        if (!path) {
+            return window.RAMS_URL_PREFIX || '/';
+        }
+        if (/^(?:[a-z]+:)?\/\//i.test(path) || /^(?:mailto:|tel:|javascript:)/i.test(path)) {
+            return path;
+        }
+        const normalizedPrefix = (window.RAMS_URL_PREFIX || '').replace(/\/$/, '');
+        const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+        if (!normalizedPrefix) {
+            return normalizedPath;
+        }
+        if (normalizedPath === normalizedPrefix || normalizedPath.startsWith(`${normalizedPrefix}/`)) {
+            return normalizedPath;
+        }
+        return `${normalizedPrefix}${normalizedPath}`;
+    };
+</script>

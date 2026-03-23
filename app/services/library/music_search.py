@@ -28,6 +28,7 @@ from app.models import db, MusicAnalysis, MusicCue
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
 _MUSIC_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
+_LIBRARY_EDITOR_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None, "music_generated_at": None}
 
 
 def _walk_music():
@@ -62,6 +63,30 @@ def _write_music_index_file(payload: Dict) -> None:
         json.dump(payload, fh)
 
 
+def _library_editor_index_path() -> str:
+    return os.path.join(current_app.instance_path, "library_editor_index.json")
+
+
+def _load_library_editor_index_file() -> Dict:
+    path = _library_editor_index_path()
+    if not os.path.exists(path):
+        return {"data": None, "generated_at": None, "root": None, "music_generated_at": None}
+    try:
+        with open(path, "r", encoding="utf-8") as fh:
+            return json.load(fh) or {"data": None, "generated_at": None, "root": None, "music_generated_at": None}
+    except Exception:
+        return {"data": None, "generated_at": None, "root": None, "music_generated_at": None}
+
+
+def _write_library_editor_index_file(payload: Dict) -> None:
+    path = _library_editor_index_path()
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, "w", encoding="utf-8") as fh:
+        json.dump(payload, fh)
+
+
+def invalidate_library_editor_index_cache() -> None:
+    _LIBRARY_EDITOR_INDEX_CACHE.update({"data": None, "loaded_at": None, "root": None, "music_generated_at": None})
 def build_music_index(existing: Optional[Dict] = None) -> Dict:
     root = current_app.config.get("NAS_MUSIC_ROOT")
     if not root or not os.path.exists(root):
@@ -177,8 +202,8 @@ def _is_surrogate_encode_error(exc: BaseException) -> bool:
     return False
 
 
-def build_library_editor_index() -> Dict:
-    index = get_music_index()
+def build_library_editor_index(index: Dict | None = None) -> Dict:
+    index = index or get_music_index()
     entries = list(index.get("files", {}).values())
     recent_days = current_app.config.get("LIBRARY_EDITOR_RECENT_DAYS", 30)
     recent_cutoff = time.time() - (recent_days * 86400)
@@ -338,6 +363,57 @@ def build_library_editor_index() -> Dict:
         "psa_imaging": psa_imaging,
         "generated_at": time.time(),
     }
+
+
+def get_library_editor_index(refresh: bool = False) -> Dict:
+    ttl = current_app.config.get("LIBRARY_EDITOR_INDEX_TTL", 900)
+    root = current_app.config.get("NAS_MUSIC_ROOT")
+    music_index = get_music_index(refresh=refresh)
+    music_generated_at = music_index.get("generated_at")
+    cached = _LIBRARY_EDITOR_INDEX_CACHE.get("data")
+    loaded_at = _LIBRARY_EDITOR_INDEX_CACHE.get("loaded_at") or 0
+    if (
+        cached
+        and not refresh
+        and time.time() - loaded_at < ttl
+        and _LIBRARY_EDITOR_INDEX_CACHE.get("root") == root
+        and _LIBRARY_EDITOR_INDEX_CACHE.get("music_generated_at") == music_generated_at
+    ):
+        return cached  # type: ignore[return-value]
+
+    disk = _load_library_editor_index_file()
+    disk_data = disk.get("data")
+    disk_generated_at = disk.get("generated_at") or 0
+    if (
+        disk_data
+        and not refresh
+        and time.time() - disk_generated_at < ttl
+        and disk.get("root") == root
+        and disk.get("music_generated_at") == music_generated_at
+    ):
+        _LIBRARY_EDITOR_INDEX_CACHE.update({
+            "data": disk_data,
+            "loaded_at": time.time(),
+            "root": root,
+            "music_generated_at": music_generated_at,
+        })
+        return disk_data
+
+    payload = build_library_editor_index(index=music_index)
+    disk_payload = {
+        "data": payload,
+        "generated_at": time.time(),
+        "root": root,
+        "music_generated_at": music_generated_at,
+    }
+    _write_library_editor_index_file(disk_payload)
+    _LIBRARY_EDITOR_INDEX_CACHE.update({
+        "data": payload,
+        "loaded_at": time.time(),
+        "root": root,
+        "music_generated_at": music_generated_at,
+    })
+    return payload
 
 
 def _utf8_safe_text(value: object) -> str:

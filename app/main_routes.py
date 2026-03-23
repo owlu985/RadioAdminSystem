@@ -28,6 +28,8 @@ from .utils import (
     next_show_occurrence,
     active_absence_for_show,
     normalize_timezone_name,
+    UTC_OFFSET_TIMEZONE_OPTIONS,
+    timezone_label,
 )
 from datetime import datetime, time, timedelta, date
 from .models import (
@@ -69,7 +71,7 @@ from app.services.library.music_search import (
     load_cue,
     save_cue,
     update_metadata,
-    build_library_editor_index,
+    get_library_editor_index,
     _read_tags,
 )
 from app.services.library.dj_library import (
@@ -1489,7 +1491,7 @@ def music_search_page():
 @main_bp.route("/music/library/editor")
 @permission_required({"music:view"})
 def library_editor_page():
-    library_index = build_library_editor_index()
+    library_index = get_library_editor_index()
     return render_template("library_editor.html", library_index=library_index)
 
 
@@ -2140,6 +2142,7 @@ def settings():
                 'BIND_HOST': request.form.get('bind_host', current_app.config.get('BIND_HOST', '127.0.0.1')).strip(),
                 'BIND_PORT': int(request.form.get('bind_port') or current_app.config.get('BIND_PORT', 5000)),
                 'STREAM_URL': request.form['stream_url'],
+                'ADMIN_URL_PREFIX': request.form.get('admin_url_prefix', current_app.config.get('ADMIN_URL_PREFIX', '')).strip(),
                 'OUTPUT_FOLDER': request.form['output_folder'],
                 'DEFAULT_START_DATE': request.form['default_start_date'],
                 'DEFAULT_END_DATE': request.form['default_end_date'],
@@ -2147,7 +2150,7 @@ def settings():
                 'STATION_NAME': request.form['station_name'],
                 'STATION_SLOGAN': request.form['station_slogan'],
                 'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
-                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'America/New_York'))),
+                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4'))),
                 'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
                 'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
                 'ALERTS_ENABLED': 'alerts_enabled' in request.form,
@@ -2230,6 +2233,7 @@ def settings():
         'bind_host': config.get('BIND_HOST', '127.0.0.1'),
         'bind_port': config.get('BIND_PORT', 5000),
         'stream_url': config['STREAM_URL'],
+        'admin_url_prefix': config.get('ADMIN_URL_PREFIX', ''),
         'output_folder': config['OUTPUT_FOLDER'],
         'default_start_date': config['DEFAULT_START_DATE'],
         'default_end_date': config['DEFAULT_END_DATE'],
@@ -2237,7 +2241,9 @@ def settings():
         'station_name': config.get('STATION_NAME', ''),
         'station_slogan': config.get('STATION_SLOGAN', ''),
         'station_background': config.get('STATION_BACKGROUND', ''),
-        'schedule_timezone': normalize_timezone_name(config.get('SCHEDULE_TIMEZONE', 'America/New_York')),
+        'schedule_timezone': normalize_timezone_name(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
+        'schedule_timezone_options': UTC_OFFSET_TIMEZONE_OPTIONS,
+        'schedule_timezone_label': timezone_label(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
         'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
         'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
         'alerts_enabled': config.get('ALERTS_ENABLED', False),
