@@ -17,6 +17,7 @@ from .utils import update_user_config, show_display_title, show_primary_host, sc
 from datetime import date as date_cls
 import ffmpeg
 import mutagen
+from mutagen.id3 import COMM, TALB, TIT2, TPE1, ID3, ID3NoHeaderError
 import json
 import os
 import subprocess
@@ -146,12 +147,6 @@ def stop_active_show_recording(*, show_name=None, output_file=None, reason="canc
 
 def _apply_recording_tags(path, show_name, hosts, recorded_at):
     try:
-        audio = mutagen.File(path, easy=True)
-        if not audio:
-            logger.warning("Unable to tag recording %s (unsupported format).", path)
-            return
-        if audio.tags is None:
-            audio.add_tags()
         host_text = _format_host_list(hosts)
         title = f"{show_name} ({recorded_at.strftime('%m-%d-%Y')})"
         comment = (
@@ -159,6 +154,31 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at):
             f"{' with ' + host_text if host_text else ''} on WLMC Radio. "
             "The log for this show, if applicable, is available through the show/log management portal."
         )
+
+        if path.lower().endswith(".mp3"):
+            try:
+                audio = ID3(path)
+            except ID3NoHeaderError:
+                audio = ID3()
+            audio.delall("TIT2")
+            audio.delall("TPE1")
+            audio.delall("TALB")
+            audio.delall("COMM")
+            audio.add(TIT2(encoding=3, text=title))
+            if host_text:
+                audio.add(TPE1(encoding=3, text=host_text))
+            audio.add(TALB(encoding=3, text=show_name))
+            audio.add(COMM(encoding=3, lang="eng", desc="", text=comment))
+            audio.save(path)
+            logger.info("Applied metadata tags to recording %s.", path)
+            return
+
+        audio = mutagen.File(path, easy=True)
+        if not audio:
+            logger.warning("Unable to tag recording %s (unsupported format).", path)
+            return
+        if audio.tags is None:
+            audio.add_tags()
         audio["title"] = [title]
         audio["artist"] = [host_text] if host_text else []
         audio["album"] = [show_name]
