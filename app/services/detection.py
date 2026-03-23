@@ -3,11 +3,9 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
 import time
+import subprocess
 
 import ffmpeg
-import numpy as np
-from pydub import AudioSegment
-from pydub.utils import make_chunks
 from flask import current_app
 from datetime import datetime
 
@@ -35,6 +33,10 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
     Analyze audio levels to detect dead air, automation, or live DJ.
     Never raises exceptions; falls back to defaults on errors.
     """
+
+    from pydub import AudioSegment
+    from pydub.utils import make_chunks
+    import numpy as np
 
     try:
         audio = AudioSegment.from_file(file_path)
@@ -131,29 +133,38 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
             reconnect=1,
             reconnect_streamed=1,
             reconnect_delay_max=2,
+            rw_timeout=5000000,
         )
 
-        _, stderr = (
+        cmd = (
             stream_input
             .output(tmp_path, acodec="copy")
             .overwrite_output()
-            .run(capture_stdout=True, capture_stderr=True)
+            .compile()
         )
+
+        proc = subprocess.run(
+            cmd,
+            capture_output=True,
+            check=False,
+            timeout=max(duration + 5, 10),
+        )
+        stderr = proc.stderr or b""
 
         if stderr:
             detail = stderr.decode(errors="ignore").strip()
             if detail:
                 logger.debug("FFmpeg probe stderr: %s", detail)
 
-        result = analyze_audio(tmp_path, config)
+        if proc.returncode != 0:
+            detail = stderr.decode(errors="ignore").strip() or f"ffmpeg exited {proc.returncode}"
+            logger.error("FFmpeg probe error: %s", detail)
+            result = None
+        else:
+            result = analyze_audio(tmp_path, config)
 
-    except ffmpeg.Error as exc:  # type: ignore[attr-defined]
-        detail = ""
-        try:
-            detail = exc.stderr.decode(errors="ignore") if exc.stderr else ""
-        except Exception:  # noqa: BLE001
-            detail = str(exc)
-        logger.error("FFmpeg probe error: %s", (detail or str(exc)).strip())
+    except subprocess.TimeoutExpired:
+        logger.error("FFmpeg probe timed out after %s seconds for %s", max(duration + 5, 10), stream_url)
         result = None
     except Exception as exc:  # noqa: BLE001
         logger.error("FFmpeg probe unexpected error: %s", exc)
