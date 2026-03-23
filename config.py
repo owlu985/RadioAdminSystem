@@ -111,6 +111,7 @@ class Config:
     NEWS_TYPES_CONFIG = os.path.join(NAS_ROOT, "news_types.json")
     NAS_MUSIC_ROOT = os.getenv("RAMS_MUSIC_LIBRARY") or os.path.join(NAS_ROOT, "music")
     MUSIC_INDEX_TTL = 60
+    LIBRARY_EDITOR_INDEX_TTL = 900
     MEDIA_INDEX_TTL = 60
     PSA_LIBRARY_PATH = os.path.join(NAS_ROOT, "psa")
     IMAGING_LIBRARY_PATH = os.path.join(NAS_ROOT, "imaging")

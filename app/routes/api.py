@@ -71,6 +71,7 @@ from app.services.library.music_search import (
     harvest_cover_art,
     cover_art_candidates,
     enrich_metadata_external,
+    invalidate_library_editor_index_cache,
 )
 from app.services.library.media_library import list_media, load_media_meta, save_media_meta
 from app.services.archivist_db import (
@@ -1114,6 +1115,8 @@ def music_bulk_update():
     if not paths:
         return jsonify({"status": "error", "message": "paths required"}), 400
     result = bulk_update_metadata(paths, updates, cover_bytes)
+    if result.get("status") == "ok":
+        invalidate_library_editor_index_cache()
     return jsonify(result)
 
 

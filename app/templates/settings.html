@@ -116,14 +116,19 @@
                         <div class="card-header">Server & Recording</div>
                         <div class="card-body">
                             <div class="row g-3 mb-3">
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label for="bind_host" class="form-label">Server Bind Host</label>
                                     <input type="text" name="bind_host" id="bind_host" class="form-control" value="{{ bind_host }}" required>
                                     <div class="form-text">127.0.0.1 for local-only, 0.0.0.0 to listen on LAN.</div>
                                 </div>
-                                <div class="col-md-6">
+                                <div class="col-md-4">
                                     <label for="bind_port" class="form-label">Server Port</label>
                                     <input type="number" min="1" max="65535" name="bind_port" id="bind_port" class="form-control" value="{{ bind_port }}" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="admin_url_prefix" class="form-label">Admin Root</label>
+                                    <input type="text" name="admin_url_prefix" id="admin_url_prefix" class="form-control" value="{{ admin_url_prefix }}" placeholder="/admin">
+                                    <div class="form-text">Optional URL prefix RAMS is mounted under, such as <code>/admin</code>.</div>
                                 </div>
                             </div>
                             <div class="mb-3">
@@ -184,8 +189,12 @@
                             </div>
                             <div class="mb-3">
                                 <label for="schedule_timezone" class="form-label">Display Time Zone</label>
-                                <input type="text" name="schedule_timezone" id="schedule_timezone" class="form-control" value="{{ schedule_timezone }}" placeholder="America/New_York">
-                                <div class="form-text">Used anywhere RAMS displays timestamps or wall-clock time. Defaults to America/New_York.</div>
+                                <select name="schedule_timezone" id="schedule_timezone" class="form-select">
+                                    {% for option in schedule_timezone_options %}
+                                        <option value="{{ option.value }}" {% if schedule_timezone == option.value %}selected{% endif %}>{{ option.label }}</option>
+                                    {% endfor %}
+                                </select>
+                                <div class="form-text">Used anywhere RAMS displays timestamps or wall-clock time. Current setting: {{ schedule_timezone_label }}. Fixed UTC offsets do not change automatically for daylight saving time.</div>
                             </div>
                         </div>
                     </div>
