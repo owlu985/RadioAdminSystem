@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import time
+import threading
 from datetime import datetime, timedelta, timezone, date
 from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort, send_file
 import os
@@ -36,6 +37,7 @@ from app.models import (
 )
 from app.utils import (
     datetime_iso_local,
+    get_config_timezone_name,
     get_current_show,
     format_show_window,
     show_display_title,
@@ -98,7 +100,9 @@ QUEUE_ITEM_TYPES = {"music", "psa", "imaging", "voicetrack", "stop"}
 _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "fetched_at": None,
     "payload": None,
+    "error_until": None,
 }
+_RADIODJ_NOWPLAYING_LOCK = threading.Lock()
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
@@ -396,10 +400,11 @@ def _push_icecast_metadata(track: dict) -> None:
     password = current_app.config.get("ICECAST_PASSWORD")
     try:
         resp = requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
+        safe_song = _sanitize_text(song)
         if resp.ok:
-            logger.info("Icecast metadata update ok: %s", song)
+            logger.info("Icecast metadata update ok: %s", safe_song)
         else:
-            logger.warning("Icecast metadata update failed: %s (status %s)", song, resp.status_code)
+            logger.warning("Icecast metadata update failed: %s (status %s)", safe_song, resp.status_code)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Icecast metadata update failed: %s", exc)
 
@@ -413,24 +418,53 @@ def _strip_p_tag(value: Optional[str]) -> Optional[str]:
     return text
 
 
-def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dict]:
+def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: bool = False, allow_fetch: bool = True) -> Optional[dict]:
     now_ts = time.time()
     last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
+    cached_payload = _RADIODJ_NOWPLAYING_CACHE.get("payload")
+    error_until = _RADIODJ_NOWPLAYING_CACHE.get("error_until")
+
     if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
-        return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
-    payload: Optional[dict] = None
-    rdj = RadioDJClient()
-    if rdj.enabled:
-        payload = rdj.now_playing()
-    _RADIODJ_NOWPLAYING_CACHE["fetched_at"] = now_ts
-    if payload:
+        return cached_payload  # type: ignore[return-value]
+    if isinstance(error_until, (int, float)) and now_ts < error_until:
+        return cached_payload  # type: ignore[return-value]
+    if not allow_fetch or not _RADIODJ_NOWPLAYING_LOCK.acquire(blocking=False):
+        return cached_payload  # type: ignore[return-value]
+
+    try:
+        now_ts = time.time()
+        last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
+        cached_payload = _RADIODJ_NOWPLAYING_CACHE.get("payload")
+        error_until = _RADIODJ_NOWPLAYING_CACHE.get("error_until")
+        if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
+            return cached_payload  # type: ignore[return-value]
+        if isinstance(error_until, (int, float)) and now_ts < error_until:
+            return cached_payload  # type: ignore[return-value]
+
+        payload: Optional[dict] = None
+        rdj = RadioDJClient()
+        if rdj.enabled:
+            payload = rdj.now_playing()
+        _RADIODJ_NOWPLAYING_CACHE["fetched_at"] = now_ts
+
+        if not payload:
+            _RADIODJ_NOWPLAYING_CACHE["error_until"] = now_ts + 30
+            return cached_payload  # type: ignore[return-value]
+
         track = _extract_radiodj_track(payload)
-        if track:
-            cached_track = _RADIODJ_NOWPLAYING_CACHE.get("payload")
-            if cached_track != track:
-                _RADIODJ_NOWPLAYING_CACHE["payload"] = track
-                if push_icecast:
-                    _push_icecast_metadata(track)
+        if not track:
+            _RADIODJ_NOWPLAYING_CACHE["payload"] = None
+            _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
+            return None
+
+        previous_track = cached_payload if isinstance(cached_payload, dict) else None
+        _RADIODJ_NOWPLAYING_CACHE["payload"] = track
+        _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
+
+        if previous_track != track:
+            if push_icecast:
+                _push_icecast_metadata(track)
+            if write_log:
                 show = get_current_show()
                 show_run = None
                 if show:
@@ -457,7 +491,9 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = True) -> Optional[dic
                     description=track.get("album"),
                 ))
                 db.session.commit()
-    return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
+        return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
+    finally:
+        _RADIODJ_NOWPLAYING_LOCK.release()
 
 
 def _extract_radiodj_track(payload: dict) -> Optional[dict]:
@@ -1189,7 +1225,7 @@ def music_cue():
 
 @api_bp.route("/schedule")
 def schedule_api():
-    tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
+    tz = get_config_timezone_name()
     cached = api_cache.get("schedule")
     if cached:
         return jsonify(cached)
@@ -1508,17 +1544,10 @@ def stream_status():
         status["stream_up"] = False
 
     probe = StreamProbe.query.order_by(StreamProbe.created_at.desc()).first()
-    if probe is None or (datetime.utcnow() - probe.created_at) > timedelta(minutes=10):
-        probe_result = probe_stream(url)
-        if probe_result:
-            status["probe"] = {
-                "classification": probe_result.classification,
-                "reason": probe_result.reason,
-                "avg_db": probe_result.avg_db,
-                "silence_ratio": probe_result.silence_ratio,
-                "automation_ratio": probe_result.automation_ratio,
-            }
-    else:
+    probe_is_stale = probe is None or (datetime.utcnow() - probe.created_at) > timedelta(minutes=10)
+    allow_inline_probe = request.args.get("refresh") in {"1", "true", "yes"}
+
+    if not probe_is_stale and probe is not None:
         status["probe"] = {
             "classification": probe.classification,
             "reason": probe.reason,
@@ -1527,6 +1556,29 @@ def stream_status():
             "automation_ratio": probe.automation_ratio,
             "timestamp": datetime_iso_local(probe.created_at),
         }
+    elif allow_inline_probe:
+        probe_result = probe_stream(url)
+        if probe_result:
+            status["probe"] = {
+                "classification": probe_result.classification,
+                "reason": probe_result.reason,
+                "avg_db": probe_result.avg_db,
+                "silence_ratio": probe_result.silence_ratio,
+                "automation_ratio": probe_result.automation_ratio,
+                "generated_live": True,
+            }
+    else:
+        status["probe_pending"] = True
+        if probe is not None:
+            status["probe"] = {
+                "classification": probe.classification,
+                "reason": probe.reason,
+                "avg_db": probe.avg_db,
+                "silence_ratio": probe.silence_ratio,
+                "automation_ratio": probe.automation_ratio,
+                "timestamp": datetime_iso_local(probe.created_at),
+                "stale": True,
+            }
 
     listeners = fetch_icecast_listeners()
     if listeners is not None:

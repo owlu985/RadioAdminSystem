@@ -663,7 +663,7 @@ def run_radiodj_now_playing_job():
                     "title": show_name,
                     "song": f"{show_name} with {host_label}",
                 })
-            _get_cached_radiodj_nowplaying(push_icecast=not show)
+            _get_cached_radiodj_nowplaying(push_icecast=not show, write_log=True)
         except Exception as exc:  # noqa: BLE001
             logger.warning("RadioDJ now-playing update failed: %s", exc)
 

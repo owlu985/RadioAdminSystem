@@ -9,7 +9,7 @@ from app.main_routes import main_bp
 from app.models import DJAbsence, Show
 from app.services.health import get_health_snapshot
 from app.services.stream_monitor import fetch_icecast_listeners
-from app.utils import format_show_window, get_current_show
+from app.utils import format_show_window, get_current_show, get_config_timezone_name
 
 logger = init_logger()
 
@@ -84,7 +84,7 @@ def schedule_grid():
 @main_bp.route('/schedule/ical')
 def schedule_ical():
     shows = Show.query.order_by(Show.days_of_week, Show.start_time).all()
-    tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
+    tz = get_config_timezone_name()
     lines = [
         "BEGIN:VCALENDAR",
         "VERSION:2.0",
