@@ -7,7 +7,10 @@ import os
 import time
 from typing import List, Dict, Optional
 
+from flask import current_app, has_app_context
 from werkzeug.utils import secure_filename
+
+from config import Config
 
 try:
     from pydub import AudioSegment
@@ -22,7 +25,17 @@ from app.models import ArchivistEntry, db
 
 
 def _album_tmp_dir() -> str:
-    base = os.path.join(os.getcwd(), "instance", "album_rip_tmp")
+    """Resolve the album-rip temp directory under configured app storage."""
+
+    if has_app_context():
+        upload_root = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
+        data_root = current_app.config.get("DATA_ROOT") or current_app.instance_path
+    else:
+        upload_root = Config.ARCHIVIST_UPLOAD_DIR
+        data_root = Config.DATA_ROOT
+
+    base_root = upload_root or os.path.join(data_root, "archivist_uploads")
+    base = os.path.join(base_root, "album_rip_tmp")
     os.makedirs(base, exist_ok=True)
     return base
 

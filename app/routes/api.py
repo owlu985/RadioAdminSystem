@@ -367,6 +367,12 @@ def _sanitize_text(value: Optional[str]) -> str:
     return value.encode("utf-8", "replace").decode("utf-8")
 
 
+def _sanitize_log_text(value: Optional[str]) -> str:
+    """Render log text safely even when the WSGI error stream is ASCII-only."""
+
+    return _sanitize_text(value).encode("ascii", "backslashreplace").decode("ascii")
+
+
 def _icecast_update_url() -> Optional[str]:
     status_url = current_app.config.get("ICECAST_STATUS_URL")
     list_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
@@ -401,13 +407,13 @@ def _push_icecast_metadata(track: dict) -> None:
     password = current_app.config.get("ICECAST_PASSWORD")
     try:
         resp = requests.get(update_url, params=params, auth=(username, password) if password else None, timeout=5)
-        safe_song = _sanitize_text(song)
+        safe_song = _sanitize_log_text(song)
         if resp.ok:
             logger.info("Icecast metadata update ok: %s", safe_song)
         else:
             logger.warning("Icecast metadata update failed: %s (status %s)", safe_song, resp.status_code)
     except Exception as exc:  # noqa: BLE001
-        logger.warning("Icecast metadata update failed: %s", exc)
+        logger.warning("Icecast metadata update failed: %s", _sanitize_log_text(exc))
 
 
 def _strip_p_tag(value: Optional[str]) -> Optional[str]:
