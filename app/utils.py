@@ -60,9 +60,18 @@ def _coerce_zoneinfo(name: str) -> ZoneInfo:
         return ZoneInfo("America/New_York")
 
 
+def normalize_timezone_name(name: str | None) -> str:
+    if not name:
+        return "America/New_York"
+    candidate = str(name).strip()
+    if not candidate:
+        return "America/New_York"
+    return getattr(_coerce_zoneinfo(candidate), "key", "America/New_York")
+
+
 def get_config_timezone_name() -> str:
     name = app.config.get("SCHEDULE_TIMEZONE", "America/New_York") if app else "America/New_York"
-    return name or "America/New_York"
+    return normalize_timezone_name(name)
 
 
 def get_config_timezone() -> ZoneInfo:

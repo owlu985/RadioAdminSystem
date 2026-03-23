@@ -37,6 +37,7 @@ from app.models import (
 )
 from app.utils import (
     datetime_iso_local,
+    get_config_timezone_name,
     get_current_show,
     format_show_window,
     show_display_title,
@@ -1224,7 +1225,7 @@ def music_cue():
 
 @api_bp.route("/schedule")
 def schedule_api():
-    tz = current_app.config.get("SCHEDULE_TIMEZONE", "America/New_York")
+    tz = get_config_timezone_name()
     cached = api_cache.get("schedule")
     if cached:
         return jsonify(cached)

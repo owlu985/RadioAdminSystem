@@ -27,6 +27,7 @@ from .utils import (
     show_primary_host,
     next_show_occurrence,
     active_absence_for_show,
+    normalize_timezone_name,
 )
 from datetime import datetime, time, timedelta, date
 from .models import (
@@ -2146,7 +2147,7 @@ def settings():
                 'STATION_NAME': request.form['station_name'],
                 'STATION_SLOGAN': request.form['station_slogan'],
                 'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
-                'SCHEDULE_TIMEZONE': request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'America/New_York')).strip() or 'America/New_York',
+                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'America/New_York'))),
                 'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
                 'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
                 'ALERTS_ENABLED': 'alerts_enabled' in request.form,
@@ -2236,7 +2237,7 @@ def settings():
         'station_name': config.get('STATION_NAME', ''),
         'station_slogan': config.get('STATION_SLOGAN', ''),
         'station_background': config.get('STATION_BACKGROUND', ''),
-        'schedule_timezone': config.get('SCHEDULE_TIMEZONE', 'America/New_York'),
+        'schedule_timezone': normalize_timezone_name(config.get('SCHEDULE_TIMEZONE', 'America/New_York')),
         'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
         'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
         'alerts_enabled': config.get('ALERTS_ENABLED', False),
