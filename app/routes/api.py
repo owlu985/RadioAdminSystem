@@ -102,6 +102,8 @@ _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "fetched_at": None,
     "payload": None,
     "error_until": None,
+    "last_logged_track_id": None,
+    "last_pushed_track_id": None,
 }
 _RADIODJ_NOWPLAYING_LOCK = threading.Lock()
 
@@ -425,6 +427,84 @@ def _strip_p_tag(value: Optional[str]) -> Optional[str]:
     return text
 
 
+def _cover_url_for_track(title: Optional[str], artist: Optional[str]) -> Optional[str]:
+    normalized_title = _sanitize_text(title).strip().lower()
+    normalized_artist = _sanitize_text(artist).strip().lower()
+    if not normalized_title or not normalized_artist:
+        return None
+    index = get_music_index()
+    files = index.get("files", {})
+    if not isinstance(files, dict):
+        return None
+    for entry in files.values():
+        if not isinstance(entry, dict):
+            continue
+        entry_title = _sanitize_text(entry.get("title")).strip().lower()
+        entry_artist = _sanitize_text(entry.get("artist")).strip().lower()
+        if entry_title != normalized_title or entry_artist != normalized_artist:
+            continue
+        path = _sanitize_text(entry.get("path"))
+        if not path:
+            return None
+        encoded_path = _quote_music_path(path)
+        if encoded_path:
+            return f"/api/music/cover-image?path={encoded_path}"
+        return None
+    return None
+
+
+def _track_fingerprint(track: dict) -> str:
+    artist = _sanitize_text(track.get("artist") or track.get("Artist")).strip().lower()
+    title = _sanitize_text(track.get("title") or track.get("Title")).strip().lower()
+    album = _sanitize_text(track.get("album") or track.get("Album")).strip().lower()
+    started_at = _sanitize_text(track.get("started_at") or track.get("DatePlayed") or "").strip().lower()
+    return "|".join([artist, title, album, started_at])
+
+
+def _apply_nowplaying_side_effects(track: dict, *, push_icecast: bool, write_log: bool) -> None:
+    track_id = _track_fingerprint(track)
+    if not track_id:
+        return
+
+    if push_icecast:
+        last_pushed = _RADIODJ_NOWPLAYING_CACHE.get("last_pushed_track_id")
+        if last_pushed != track_id:
+            _push_icecast_metadata(track)
+            _RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"] = track_id
+
+    if write_log:
+        last_logged = _RADIODJ_NOWPLAYING_CACHE.get("last_logged_track_id")
+        if last_logged == track_id:
+            return
+        show = get_current_show()
+        show_run = None
+        if show:
+            dj_first, dj_last = show_primary_host(show)
+            show_run = get_or_create_active_run(
+                show_name=show_display_title(show),
+                dj_first_name=dj_first,
+                dj_last_name=dj_last,
+            )
+        log_q = LogEntry.query.filter_by(entry_type="music")
+        total = log_q.count()
+        if total >= 10:
+            excess = total - 9
+            oldest = log_q.order_by(LogEntry.timestamp.asc()).limit(excess).all()
+            for entry in oldest:
+                db.session.delete(entry)
+        db.session.add(LogEntry(
+            show_run_id=show_run.id if show_run else None,
+            timestamp=datetime.utcnow(),
+            message="Now playing",
+            entry_type="music",
+            title=track.get("title"),
+            artist=track.get("artist"),
+            description=track.get("album"),
+        ))
+        db.session.commit()
+        _RADIODJ_NOWPLAYING_CACHE["last_logged_track_id"] = track_id
+
+
 def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: bool = False, allow_fetch: bool = True) -> Optional[dict]:
     now_ts = time.time()
     last_fetch = _RADIODJ_NOWPLAYING_CACHE.get("fetched_at")
@@ -432,10 +512,16 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: boo
     error_until = _RADIODJ_NOWPLAYING_CACHE.get("error_until")
 
     if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
+        if isinstance(cached_payload, dict):
+            _apply_nowplaying_side_effects(cached_payload, push_icecast=push_icecast, write_log=write_log)
         return cached_payload  # type: ignore[return-value]
     if isinstance(error_until, (int, float)) and now_ts < error_until:
+        if isinstance(cached_payload, dict):
+            _apply_nowplaying_side_effects(cached_payload, push_icecast=push_icecast, write_log=write_log)
         return cached_payload  # type: ignore[return-value]
     if not allow_fetch or not _RADIODJ_NOWPLAYING_LOCK.acquire(blocking=False):
+        if isinstance(cached_payload, dict):
+            _apply_nowplaying_side_effects(cached_payload, push_icecast=push_icecast, write_log=write_log)
         return cached_payload  # type: ignore[return-value]
 
     try:
@@ -444,8 +530,12 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: boo
         cached_payload = _RADIODJ_NOWPLAYING_CACHE.get("payload")
         error_until = _RADIODJ_NOWPLAYING_CACHE.get("error_until")
         if isinstance(last_fetch, (int, float)) and now_ts - last_fetch < 8:
+            if isinstance(cached_payload, dict):
+                _apply_nowplaying_side_effects(cached_payload, push_icecast=push_icecast, write_log=write_log)
             return cached_payload  # type: ignore[return-value]
         if isinstance(error_until, (int, float)) and now_ts < error_until:
+            if isinstance(cached_payload, dict):
+                _apply_nowplaying_side_effects(cached_payload, push_icecast=push_icecast, write_log=write_log)
             return cached_payload  # type: ignore[return-value]
 
         payload: Optional[dict] = None
@@ -464,40 +554,10 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: boo
             _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
             return None
 
-        previous_track = cached_payload if isinstance(cached_payload, dict) else None
         _RADIODJ_NOWPLAYING_CACHE["payload"] = track
         _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
 
-        if previous_track != track:
-            if push_icecast:
-                _push_icecast_metadata(track)
-            if write_log:
-                show = get_current_show()
-                show_run = None
-                if show:
-                    dj_first, dj_last = show_primary_host(show)
-                    show_run = get_or_create_active_run(
-                        show_name=show_display_title(show),
-                        dj_first_name=dj_first,
-                        dj_last_name=dj_last,
-                    )
-                log_q = LogEntry.query.filter_by(entry_type="music")
-                total = log_q.count()
-                if total >= 10:
-                    excess = total - 9
-                    oldest = log_q.order_by(LogEntry.timestamp.asc()).limit(excess).all()
-                    for entry in oldest:
-                        db.session.delete(entry)
-                db.session.add(LogEntry(
-                    show_run_id=show_run.id if show_run else None,
-                    timestamp=datetime.utcnow(),
-                    message="Now playing",
-                    entry_type="music",
-                    title=track.get("title"),
-                    artist=track.get("artist"),
-                    description=track.get("album"),
-                ))
-                db.session.commit()
+        _apply_nowplaying_side_effects(track, push_icecast=push_icecast, write_log=write_log)
         return _RADIODJ_NOWPLAYING_CACHE.get("payload")  # type: ignore[return-value]
     finally:
         _RADIODJ_NOWPLAYING_LOCK.release()
@@ -678,8 +738,13 @@ def now_widget():
         return jsonify(base)
     nowplaying_payload = _get_cached_radiodj_nowplaying()
     if nowplaying_payload:
+        track_payload = dict(nowplaying_payload)
+        track_payload["cover_url"] = _cover_url_for_track(
+            track_payload.get("title"),
+            track_payload.get("artist"),
+        )
         base = base or {}
-        base.update({"status": "automation", "source": "radiodj_cached", "track": nowplaying_payload})
+        base.update({"status": "automation", "source": "radiodj_cached", "track": track_payload})
         return jsonify(base)
     return jsonify(base or {"status": "off_air"})
 
