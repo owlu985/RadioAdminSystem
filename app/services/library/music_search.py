@@ -822,9 +822,9 @@ def _audio_stats(path: str) -> Tuple[Optional[float], Optional[float], Optional[
 
 def detect_audio_cues(
     path: str,
-    start_threshold: float = -25.0,
+    start_threshold: float = -15.0,
     mix_threshold: float = -15.0,
-    end_threshold: float = -28.0,
+    end_threshold: float = -18.0,
     chunk_ms: int = 50,
 ) -> Dict[str, float]:
     """Best-effort cue detection when tags are missing.

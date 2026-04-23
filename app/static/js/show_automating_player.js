@@ -565,6 +565,7 @@ const queueList = document.getElementById('queueList');
 const timerEls = [document.getElementById('timer'), document.getElementById('timerTop')];
 const top40 = document.getElementById('top40');
 const loopBetween = document.getElementById('loopBetween');
+const bypassCues = document.getElementById('bypassCues');
 const togglePauseBtn = document.getElementById('togglePause');
 const playNextBtn = document.getElementById('playNext');
 const fadeOutBtn = document.getElementById('fadeOut');
@@ -730,6 +731,26 @@ function loadQueueState() {
 
 function activePlayer() { return players[currentIdx].el; }
 function otherPlayer() { return players[1 - currentIdx].el; }
+
+function cuesBypassed() {
+    return Boolean(bypassCues && bypassCues.checked);
+}
+
+function playbackCueValue(cues, field) {
+    if (cuesBypassed()) return null;
+    return getCueValue(cues, field);
+}
+
+function persistAutomationPreferences() {
+    try {
+        localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify({
+            mode: automationMode,
+            bypass_cues: cuesBypassed(),
+        }));
+    } catch (err) {
+        // ignore
+    }
+}
 
 const metadataDialog = document.getElementById('metadataDialog');
 const metadataTitle = document.getElementById('metadataTitle');
@@ -986,6 +1007,9 @@ async function loadAutomationMode() {
             if (data && data.mode) {
                 automationMode = data.mode;
             }
+            if (bypassCues && data && typeof data.bypass_cues === 'boolean') {
+                bypassCues.checked = data.bypass_cues;
+            }
         }
     } catch (err) {
         // ignore
@@ -998,11 +1022,7 @@ async function loadAutomationMode() {
 async function setAutomationMode(mode) {
     if (!['manual', 'automation'].includes(mode)) return;
     automationMode = mode;
-    try {
-        localStorage.setItem(AUTOMATION_STORAGE_KEY, JSON.stringify({ mode }));
-    } catch (err) {
-        // ignore
-    }
+    persistAutomationPreferences();
     updateAutomationModeUI();
     toggleAutomationPolling();
 }
@@ -1330,7 +1350,7 @@ function previewCues(item) {
     outroBadge.classList.remove('countdown-flash', 'text-bg-danger');
     updateTalkOverlay(cues, 0, 0);
 
-    const hasLoop = cues.loop_in != null && cues.loop_out != null;
+    const hasLoop = !cuesBypassed() && cues.loop_in != null && cues.loop_out != null;
     loopBetween.disabled = !hasLoop;
     if (!hasLoop) loopBetween.checked = false;
 }
@@ -1442,7 +1462,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     playerObj.item = item;
     markItemStarted(item);
     const cues = item.cues || {};
-    const hasLoop = cues.loop_in != null && cues.loop_out != null;
+    const hasLoop = !cuesBypassed() && cues.loop_in != null && cues.loop_out != null;
     loopBetween.disabled = !hasLoop;
     if (!hasLoop) loopBetween.checked = false;
     autoNextTriggered = false;
@@ -1455,7 +1475,7 @@ function startFrom(idx, preferredIdx = currentIdx, reason = 'manual') {
     queue.shift();
     player.src = item.url;
     player.volume = 1;
-    const cueIn = getCueValue(cues, 'cue_in');
+    const cueIn = playbackCueValue(cues, 'cue_in');
     playerObj.seekTo = cueIn;
     applyPlaybackRate(player, item);
     player.play();
@@ -1526,7 +1546,7 @@ function startNextWithOverlay(reason = 'auto') {
     nextObj.item = nextItem;
     nextPlayer.src = nextItem.url;
     nextPlayer.volume = 1;
-    nextObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
+    nextObj.seekTo = playbackCueValue(nextItem.cues, 'cue_in');
     currentIdx = nextIdx;
     currentItem = nextItem;
     markItemStarted(nextItem);
@@ -1558,7 +1578,7 @@ function fadeAndNext(reason = 'auto') {
     nextPlayerObj.item = nextItem;
     nextPlayer.src = nextItem.url;
     nextPlayer.volume = 1;
-    nextPlayerObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
+    nextPlayerObj.seekTo = playbackCueValue(nextItem.cues, 'cue_in');
     applyPlaybackRate(nextPlayer, nextItem);
     nextPlayer.play();
     if (currentItem) {
@@ -1596,10 +1616,10 @@ function updateTimer() {
     }
 
     const cues = currentItem && currentItem.cues ? currentItem.cues : {};
-    const startNext = getCueValue(cues, 'start_next');
-    const intro = getCueValue(cues, 'intro');
-    const outro = getCueValue(cues, 'outro');
-    const cueOut = getCueValue(cues, 'cue_out');
+    const startNext = playbackCueValue(cues, 'start_next');
+    const intro = playbackCueValue(cues, 'intro');
+    const outro = playbackCueValue(cues, 'outro');
+    const cueOut = playbackCueValue(cues, 'cue_out');
     const endPoint = cueOut != null ? cueOut : player.duration;
     let remaining = Math.max(0, endPoint - player.currentTime);
     if (queue.length > 0 && startNext != null) {
@@ -1662,7 +1682,7 @@ function updateTimer() {
         const nextTrack = queue.find(item => !overlayEligible(item) && !item.stop);
         if (!overlayPlayer.src && overlayCandidate && currentItem && currentItem.kind === 'music') {
             if (outro != null && player.currentTime >= outro) {
-                overlayStopAt = getCueValue(nextTrack?.cues, 'intro');
+                overlayStopAt = playbackCueValue(nextTrack?.cues, 'intro');
                 overlayStopForId = nextTrack?.id ?? null;
                 playOverlayItem(overlayCandidate);
             }
@@ -1700,7 +1720,7 @@ function updateTimer() {
     if (automationMode !== 'automation' && !prestartedIdx && currentItem && currentItem.kind === 'voicetrack' && queue.length > 0) {
         const nextItem = queue[0];
         const nextCues = nextItem.cues || {};
-        const target = getCueValue(nextCues, 'intro') ?? getCueValue(nextCues, 'outro');
+        const target = playbackCueValue(nextCues, 'intro') ?? playbackCueValue(nextCues, 'outro');
         if (target != null && remaining <= target + 0.25) {
             const nextIdxDeck = 1 - currentIdx;
             const nextPlayerObj = players[nextIdxDeck];
@@ -1708,7 +1728,7 @@ function updateTimer() {
             nextPlayerObj.item = nextItem;
             nextPlayer.src = nextItem.url;
             nextPlayer.volume = 1;
-            nextPlayerObj.seekTo = getCueValue(nextItem.cues, 'cue_in');
+            nextPlayerObj.seekTo = playbackCueValue(nextItem.cues, 'cue_in');
             applyPlaybackRate(nextPlayer, nextItem);
             try { nextPlayer.play(); } catch (e) { /* ignore */ }
             prestartedIdx = nextIdxDeck;
@@ -1804,6 +1824,19 @@ if (top40) top40.addEventListener('change', () => {
             p.el.playbackRate = computePlaybackRate(p.item);
         }
     });
+});
+
+if (bypassCues) bypassCues.addEventListener('change', () => {
+    persistAutomationPreferences();
+    if (bypassCues.checked) {
+        loopBetween.checked = false;
+        loopBetween.disabled = true;
+    } else {
+        const cues = currentItem && currentItem.cues ? currentItem.cues : null;
+        const hasLoop = Boolean(cues && cues.loop_in != null && cues.loop_out != null);
+        loopBetween.disabled = !hasLoop;
+    }
+    previewCues(currentItem || (queue.length ? queue[0] : null));
 });
 
 players.forEach((p, idx) => {
