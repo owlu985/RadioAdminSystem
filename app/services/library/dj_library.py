@@ -17,6 +17,10 @@ def _normalize(value: Optional[str]) -> str:
     return re.sub(r"\s+", " ", (value or "").strip().lower())
 
 
+def _normalize_compact(value: Optional[str]) -> str:
+    return re.sub(r"[^a-z0-9]+", "", _normalize(value))
+
+
 def _strip_brackets(value: str) -> str:
     return re.sub(r"[\(\[\{].*?[\)\]\}]", "", value).strip()
 
@@ -135,7 +139,8 @@ def build_dj_library_index() -> Dict:
 
 def search_dj_library(query: str) -> List[Dict]:
     query_norm = _normalize(query)
-    if not query_norm:
+    query_compact = _normalize_compact(query)
+    if not query_norm and not query_compact:
         return []
     index = get_music_index()
     entries = list(index.get("files", {}).values())
@@ -144,10 +149,15 @@ def search_dj_library(query: str) -> List[Dict]:
         title = entry.get("title") or _fallback_title(entry)
         artist = entry.get("artist") or ""
         album = entry.get("album") or ""
+        title_norm = _normalize(title)
+        artist_norm = _normalize(artist)
+        album_norm = _normalize(album)
+        title_compact = _normalize_compact(title)
+        artist_compact = _normalize_compact(artist)
+        album_compact = _normalize_compact(album)
         if (
-            query_norm in _normalize(title)
-            or query_norm in _normalize(artist)
-            or query_norm in _normalize(album)
+            (query_norm and (query_norm in title_norm or query_norm in artist_norm or query_norm in album_norm))
+            or (query_compact and (query_compact in title_compact or query_compact in artist_compact or query_compact in album_compact))
         ):
             payload = _build_track_payload(entry)
             results.append(payload)
