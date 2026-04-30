@@ -168,6 +168,9 @@ const libraryNavState = {
     lastKey: null,
     lastFetchedAt: 0,
     pendingKey: null,
+    djIndex: null,
+    selectedArtist: null,
+    selectedAlbum: null,
 };
 let libraryNavInitialized = false;
 let libraryNavElements = {};
@@ -255,9 +258,16 @@ function ensureLibraryNavigation() {
             <span class="text-muted small" id="libraryNavMeta"></span>
         </div>
         <div class="row g-3">
-            <div class="col-lg-7">
+            <div class="col-lg-8">
                 <div class="border rounded p-2 bg-body-tertiary">
                     <div id="libraryNavStatus" class="text-muted small mb-2">Loading library…</div>
+                    <div id="libraryNavMusicBrowser" class="d-none">
+                        <div class="row g-2">
+                            <div class="col-md-4"><div id="libraryNavArtists" class="list-group small"></div></div>
+                            <div class="col-md-4"><div id="libraryNavAlbums" class="list-group small"></div></div>
+                            <div class="col-md-4"><div id="libraryNavTracks" class="list-group small"></div></div>
+                        </div>
+                    </div>
                     <ul id="libraryNavResults"></ul>
                     <div class="d-flex justify-content-between align-items-center mt-2">
                         <button class="btn btn-outline-secondary btn-sm" id="libraryNavPrev">Prev</button>
@@ -265,7 +275,7 @@ function ensureLibraryNavigation() {
                     </div>
                 </div>
             </div>
-            <div class="col-lg-5">
+            <div class="col-lg-4">
                 <div class="d-flex justify-content-between align-items-center mb-2">
                     <strong>Queue Builder</strong>
                     <span class="text-muted small">Drag items here</span>
@@ -282,6 +292,10 @@ function ensureLibraryNavigation() {
         meta: libraryNavigationPanel.querySelector('#libraryNavMeta'),
         status: libraryNavigationPanel.querySelector('#libraryNavStatus'),
         results: libraryNavigationPanel.querySelector('#libraryNavResults'),
+        musicBrowser: libraryNavigationPanel.querySelector('#libraryNavMusicBrowser'),
+        artists: libraryNavigationPanel.querySelector('#libraryNavArtists'),
+        albums: libraryNavigationPanel.querySelector('#libraryNavAlbums'),
+        tracks: libraryNavigationPanel.querySelector('#libraryNavTracks'),
         prevBtn: libraryNavigationPanel.querySelector('#libraryNavPrev'),
         nextBtn: libraryNavigationPanel.querySelector('#libraryNavNext'),
         queue: libraryNavigationPanel.querySelector('#libraryNavQueue'),
@@ -409,6 +423,9 @@ async function fetchLibraryNav({ refresh = false } = {}) {
     try {
         let data = null;
         if (mode === 'music') {
+            const djRes = await fetch(window.ramsUrl('/dj/library/data'));
+            const djData = await djRes.json();
+            libraryNavState.djIndex = djData || { artists: [] };
             const params = new URLSearchParams({
                 q: libraryNavState.query || '%',
                 page: libraryNavState.page,
@@ -451,12 +468,18 @@ function renderLibraryResults() {
     if (!libraryNavInitialized) return;
     if (!libraryNavElements.results) return;
     libraryNavElements.results.innerHTML = '';
+    if (libraryNavState.mode === 'music' && libraryNavElements.musicBrowser) {
+        libraryNavElements.musicBrowser.classList.remove('d-none');
+        renderMusicBrowser();
+    } else if (libraryNavElements.musicBrowser) {
+        libraryNavElements.musicBrowser.classList.add('d-none');
+    }
 
     if (libraryNavState.error) {
         libraryNavElements.results.innerHTML = `<li class="list-group-item text-danger">${libraryNavState.error}</li>`;
-    } else if (!libraryNavState.items.length) {
+    } else if (!libraryNavState.items.length && libraryNavState.mode !== 'music') {
         libraryNavElements.results.innerHTML = '<li class="list-group-item text-muted">No items found.</li>';
-    } else {
+    } else if (libraryNavState.mode !== 'music') {
         libraryNavState.items.forEach((item, idx) => {
             const payload = buildLibraryQueuePayload(item, libraryNavState.mode);
             const li = document.createElement('li');
@@ -541,6 +564,41 @@ function updateLibraryQueueList(queueItems) {
         }
         libraryNavElements.queue.appendChild(li);
     });
+}
+
+function renderMusicBrowser() {
+    const artists = (libraryNavState.djIndex?.artists || []).filter(a => {
+        const q = (libraryNavState.query || '').toLowerCase();
+        if (!q) return true;
+        return (a.name || '').toLowerCase().includes(q)
+            || (a.albums || []).some(al => (al.name || '').toLowerCase().includes(q)
+                || (al.tracks || []).some(t => `${t.title || ''} ${t.artist || ''} ${t.album || ''}`.toLowerCase().includes(q)));
+    });
+    if (!libraryNavState.selectedArtist && artists.length) libraryNavState.selectedArtist = artists[0].name;
+    libraryNavElements.artists.innerHTML = artists.map(a => `<button class="list-group-item list-group-item-action ${libraryNavState.selectedArtist === a.name ? 'active' : ''}" data-artist="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join('') || '<div class="text-muted small">No artists.</div>';
+    libraryNavElements.artists.querySelectorAll('button[data-artist]').forEach(btn => btn.addEventListener('click', () => {
+        libraryNavState.selectedArtist = btn.dataset.artist;
+        libraryNavState.selectedAlbum = null;
+        renderMusicBrowser();
+    }));
+    const artist = artists.find(a => a.name === libraryNavState.selectedArtist) || artists[0];
+    const albums = artist?.albums || [];
+    if (!libraryNavState.selectedAlbum && albums.length) libraryNavState.selectedAlbum = albums[0].name;
+    libraryNavElements.albums.innerHTML = albums.map(a => `<button class="list-group-item list-group-item-action ${libraryNavState.selectedAlbum === a.name ? 'active' : ''}" data-album="${escapeHtml(a.name)}">${escapeHtml(a.name)}</button>`).join('') || '<div class="text-muted small">No albums.</div>';
+    libraryNavElements.albums.querySelectorAll('button[data-album]').forEach(btn => btn.addEventListener('click', () => {
+        libraryNavState.selectedAlbum = btn.dataset.album;
+        renderMusicBrowser();
+    }));
+    const album = albums.find(a => a.name === libraryNavState.selectedAlbum) || albums[0];
+    const tracks = album?.tracks || [];
+    libraryNavElements.tracks.innerHTML = tracks.map((t, idx) => `<div class="list-group-item d-flex justify-content-between align-items-start"><div><div class="fw-semibold">${escapeHtml(t.title || 'Untitled')}</div><div class="small text-muted">${escapeHtml(t.artist || '')}</div></div><button class="btn btn-sm btn-outline-primary" data-track="${idx}">Add</button></div>`).join('') || '<div class="text-muted small">No tracks.</div>';
+    libraryNavElements.tracks.querySelectorAll('button[data-track]').forEach(btn => btn.addEventListener('click', async () => {
+        const track = tracks[Number(btn.dataset.track)];
+        if (!track) return;
+        const payload = buildLibraryQueuePayload({ ...track, kind: 'music', duration_seconds: null }, 'music');
+        payload.metadata = { ...(payload.metadata || {}), path: track.path };
+        await insertLibraryItem(payload, null);
+    }));
 }
 
 async function insertLibraryItem(payload, position) {

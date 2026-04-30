@@ -447,6 +447,29 @@ def _search_tokens(value: Optional[str]) -> List[str]:
     normalized = re.sub(r"[^a-z0-9]+", " ", cleaned)
     return [tok for tok in normalized.split() if tok]
 
+
+def _humanize_compact_text(value: str) -> str:
+    if not value:
+        return value
+    spaced = re.sub(r"([a-z])([A-Z])", r"\1 \2", value)
+    spaced = re.sub(r"([A-Za-z])(\d)", r"\1 \2", spaced)
+    spaced = re.sub(r"(\d)([A-Za-z])", r"\1 \2", spaced)
+    return re.sub(r"\s+", " ", spaced).strip()
+
+
+def _infer_artist_title_from_filename(path: str) -> Tuple[Optional[str], Optional[str]]:
+    base = os.path.splitext(os.path.basename(path))[0]
+    if not base:
+        return None, None
+    normalized = re.sub(r"[_]+", " ", base).strip()
+    parts = re.split(r"\s*-\s*", normalized, maxsplit=1)
+    if len(parts) == 2:
+        artist_guess = _clean_metadata_text(_humanize_compact_text(parts[0]))
+        title_guess = _clean_metadata_text(_humanize_compact_text(parts[1]))
+        return (artist_guess or None), (title_guess or None)
+    title_guess = _clean_metadata_text(_humanize_compact_text(normalized))
+    return None, (title_guess or None)
+
 def _read_tags(path: str) -> Dict:
     base_title = os.path.splitext(os.path.basename(path))[0]
     data = {
@@ -785,16 +808,22 @@ def _read_tags(path: str) -> Dict:
             data["year"] = _parse_year(data.get("year"))
         if data.get("explicit") is not None:
             data["explicit"] = _parse_explicit(data.get("explicit"))
+        inferred_artist, inferred_title = _infer_artist_title_from_filename(path)
+        if not data.get("artist") and inferred_artist:
+            data["artist"] = inferred_artist
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
-            data["title"] = _clean_metadata_text(base_title) or base_title
+            data["title"] = inferred_title or _clean_metadata_text(base_title) or base_title
         return data
     except Exception:
         if data.get("year"):
             data["year"] = _parse_year(data.get("year"))
         if data.get("explicit") is not None:
             data["explicit"] = _parse_explicit(data.get("explicit"))
+        inferred_artist, inferred_title = _infer_artist_title_from_filename(path)
+        if not data.get("artist") and inferred_artist:
+            data["artist"] = inferred_artist
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
-            data["title"] = _clean_metadata_text(base_title) or base_title
+            data["title"] = inferred_title or _clean_metadata_text(base_title) or base_title
         return data
 
 
