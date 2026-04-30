@@ -10,6 +10,10 @@ const playbackPanelsEnabled = Boolean(
 let playbackPanelFilter = 'all';
 let playbackPanelTimer = null;
 
+function cleanDisplayText(value) {
+    return String(value ?? '').replace(/�/g, '').replace(/\s+/g, ' ').trim();
+}
+
 function escapeHtml(value) {
     return String(value ?? '')
         .replace(/&/g, '&amp;')
@@ -42,13 +46,11 @@ function renderNowPlaying(nowPlaying, session) {
         nowPlayingPanel.innerHTML = '<div class="text-muted">Nothing playing right now.</div>';
         return;
     }
-    const title = escapeHtml(nowPlaying.title || 'Untitled');
-    const artist = escapeHtml(nowPlaying.artist || 'Unknown artist');
+    const title = escapeHtml(cleanDisplayText(nowPlaying.title) || 'Untitled');
+    const artist = escapeHtml(cleanDisplayText(nowPlaying.artist) || 'Unknown artist');
     const kind = escapeHtml((nowPlaying.kind || nowPlaying.type || 'item').toUpperCase());
     const status = escapeHtml((nowPlaying.status || 'playing').toUpperCase());
-    const showName = escapeHtml(session?.show_name || '—');
-    const djName = escapeHtml(session?.dj_name || '—');
-    const notes = session?.notes ? `<div class="text-muted small">Notes: ${escapeHtml(session.notes)}</div>` : '';
+        const notes = session?.notes ? `<div class="text-muted small">Notes: ${escapeHtml(session.notes)}</div>` : '';
 
     nowPlayingPanel.innerHTML = `
         <div class="d-flex justify-content-between align-items-start flex-wrap gap-3">
@@ -63,7 +65,6 @@ function renderNowPlaying(nowPlaying, session) {
                 <div class="text-muted small">Started: ${formatTime(nowPlaying.started_at)}</div>
             </div>
         </div>
-        <div class="text-muted small mt-2">Show: ${showName} &middot; DJ: ${djName}</div>
         ${notes}
     `;
 }
@@ -79,8 +80,8 @@ function renderLiveQueue(queueItems, nowPlaying) {
         const li = document.createElement('li');
         const isCurrent = nowPlaying && nowPlaying.queue_item_id === item.id;
         li.className = `list-group-item d-flex justify-content-between align-items-center${isCurrent ? ' list-group-item-info' : ''}`;
-        const title = escapeHtml(item.title || 'Untitled');
-        const artist = escapeHtml(item.artist || '');
+        const title = escapeHtml(cleanDisplayText(item.title) || 'Untitled');
+        const artist = escapeHtml(cleanDisplayText(item.artist) || '');
         const kind = escapeHtml(item.kind || item.type || 'item');
         const meta = [
             artist ? `Artist: ${artist}` : null,

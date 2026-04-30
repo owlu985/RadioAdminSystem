@@ -114,7 +114,7 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             _ensure_analysis(full, tags)
         rel_dir = os.path.relpath(os.path.dirname(full), root)
         folder = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
-        search_blob = " ".join(filter(None, [
+        search_parts = [
             tags.get("title"),
             tags.get("artist"),
             tags.get("album_artist"),
@@ -122,7 +122,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             tags.get("composer"),
             tags.get("genre"),
             tags.get("year"),
-        ])).lower()
+        ]
+        search_blob = " ".join(_search_tokens(" ".join([str(p) for p in search_parts if p])))
         entry = {
             "path": full,
             "title": tags.get("title"),
@@ -424,6 +425,28 @@ def _utf8_safe_text(value: object) -> str:
     return value.encode("utf-8", "replace").decode("utf-8")
 
 
+
+
+def _clean_metadata_text(value: object) -> str:
+    text = _utf8_safe_text(value).replace("\x00", " ").strip()
+    if not text:
+        return ""
+    # Drop mutagen repr-like blobs (e.g. PRIV(owner='XMP', data=b'...')).
+    if text.startswith("PRIV(") and "data=b" in text:
+        return ""
+    # Remove replacement glyph and normalize separators/punctuation for display/search.
+    text = text.replace("�", "")
+    text = re.sub(r"\s+", " ", text).strip()
+    return text
+
+
+def _search_tokens(value: Optional[str]) -> List[str]:
+    cleaned = _clean_metadata_text(value or "").lower()
+    if not cleaned:
+        return []
+    normalized = re.sub(r"[^a-z0-9]+", " ", cleaned)
+    return [tok for tok in normalized.split() if tok]
+
 def _read_tags(path: str) -> Dict:
     base_title = os.path.splitext(os.path.basename(path))[0]
     data = {
@@ -495,9 +518,14 @@ def _read_tags(path: str) -> Dict:
         if isinstance(coerced, list):
             for item in coerced:
                 if isinstance(item, str) and item.strip():
-                    return item
-            return coerced[0] if coerced else None
-        return coerced
+                    cleaned = _clean_metadata_text(item)
+                    if cleaned:
+                        return cleaned
+            first = coerced[0] if coerced else None
+            cleaned = _clean_metadata_text(first) if first is not None else ""
+            return cleaned or None
+        cleaned = _clean_metadata_text(coerced)
+        return cleaned or None
 
     def _parse_explicit(val):
         if val is None:
@@ -758,7 +786,7 @@ def _read_tags(path: str) -> Dict:
         if data.get("explicit") is not None:
             data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
-            data["title"] = base_title
+            data["title"] = _clean_metadata_text(base_title) or base_title
         return data
     except Exception:
         if data.get("year"):
@@ -766,7 +794,7 @@ def _read_tags(path: str) -> Dict:
         if data.get("explicit") is not None:
             data["explicit"] = _parse_explicit(data.get("explicit"))
         if not data.get("title") or str(data.get("title")).strip().lower() == "none":
-            data["title"] = base_title
+            data["title"] = _clean_metadata_text(base_title) or base_title
         return data
 
 
@@ -1090,13 +1118,20 @@ def search_music(
     index = get_music_index()
     entries = list(index.get("files", {}).values())
     query_lower = (query or "").lower().strip()
+    query_tokens = _search_tokens(query_lower)
 
     if folder:
         folder = folder.strip().replace("\\", "/").strip("/")
         entries = [e for e in entries if (e.get("folder") or "").startswith(folder)]
 
     if query_lower and query_lower not in {"%", "*"}:
-        entries = [e for e in entries if query_lower in (e.get("search") or "")]
+        if query_tokens:
+            entries = [
+                e for e in entries
+                if all(tok in (e.get("search") or "") for tok in query_tokens)
+            ]
+        else:
+            entries = [e for e in entries if query_lower in (e.get("search") or "")]
 
     def _norm(val: Optional[str]) -> str:
         return (val or "").strip().lower()
