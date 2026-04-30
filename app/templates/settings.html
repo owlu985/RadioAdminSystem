@@ -562,28 +562,6 @@
         passwordInput.type=passwordInput.type==='password'?'text':'password';
     }
 
-    document.getElementById('link_generate').addEventListener('click', ()=>{
-        const clientId=document.getElementById('link_client_id').value.trim();
-        const redirect=document.getElementById('link_redirect').value.trim();
-        const scopes=document.getElementById('link_scopes').value.trim().replace(/\s+/g,' ');
-        const state=document.getElementById('link_state').value.trim()||'rams-state';
-        const challenge=document.getElementById('link_challenge').value.trim();
-        if(!clientId||!redirect||!scopes||!challenge){
-            document.getElementById('link_output').value='Please fill client id, redirect, scopes, and code challenge.';
-            return;
-        }
-        const params=new URLSearchParams({
-            response_type:'code',
-            client_id:clientId,
-            redirect_uri:redirect,
-            scope:scopes,
-            state:state,
-            code_challenge:challenge,
-            code_challenge_method:'S256'
-        });
-        document.getElementById('link_output').value=`https://twitter.com/i/oauth2/authorize?${params.toString()}`;
-    });
-
     const libraryIndexRefresh=document.getElementById('libraryIndexRefresh');
     const libraryIndexRefreshStatus=document.getElementById('libraryIndexRefreshStatus');
     if(libraryIndexRefresh){
