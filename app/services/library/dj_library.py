@@ -188,12 +188,12 @@ def parse_text_playlist(text: str) -> List[Dict]:
         line = raw_line.strip()
         if not line:
             continue
-        if " - " in line:
-            artist, title = line.split(" - ", 1)
-        elif " – " in line:
-            artist, title = line.split(" – ", 1)
-        else:
-            artist, title = "", line
+        separators = [" - ", " \u2013 ", " \u2014 "]
+        artist, title = "", line
+        for sep in separators:
+            if sep in line:
+                artist, title = line.split(sep, 1)
+                break
         entries.append({"artist": artist.strip(), "title": title.strip()})
     return entries
 
