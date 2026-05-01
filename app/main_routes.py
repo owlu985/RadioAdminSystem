@@ -1527,7 +1527,11 @@ def _transcode_cache_dir() -> str:
 
 def _transcode_cache_path(path: str) -> str:
     stat = os.stat(path)
-    key = f"{path}:{stat.st_mtime}:{stat.st_size}".encode("utf-8")
+    key_text = f"{path}:{stat.st_mtime}:{stat.st_size}"
+    try:
+        key = os.fsencode(key_text)
+    except UnicodeEncodeError:
+        key = key_text.encode("utf-8", "surrogatepass")
     digest = hashlib.sha1(key).hexdigest()
     return os.path.join(_transcode_cache_dir(), f"{digest}.mp3")
 
