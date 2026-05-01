@@ -437,6 +437,10 @@ def _clean_metadata_text(value: object) -> str:
     # Remove replacement glyph and normalize separators/punctuation for display/search.
     text = text.replace("�", "")
     text = re.sub(r"\s+", " ", text).strip()
+    # Some libraries export compact camel-cased tags (e.g. "BillieEilish")
+    # even when the intended display value contains spaces. Humanize those so
+    # search tokens still match normal spaced queries.
+    text = _humanize_compact_text(text)
     return text
 
 
