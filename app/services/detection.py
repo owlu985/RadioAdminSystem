@@ -12,8 +12,9 @@ from datetime import datetime
 from app.logger import init_logger
 from app.models import StreamProbe, db, LogEntry
 from app.services.show_run_service import get_or_create_active_run
-from app.services.alerts import check_stream_up, process_probe_alerts
+from app.services.alerts import process_probe_alerts
 from app.services.health import record_failure
+from app.services.barix import restart_instreamer
 from app.utils import get_current_show, show_display_title, show_primary_host
 
 logger = init_logger()
@@ -184,21 +185,35 @@ def probe_and_record():
     (if any), and store it for API access.
     """
     stream_url = current_app.config["STREAM_URL"]
-    stream_up = check_stream_up(stream_url)
 
     def _attempt_probe() -> Optional[DetectionResult]:
-        return probe_stream(stream_url) if stream_up else DetectionResult(0, 1.0, 0, "stream_down", "unreachable")
+        return probe_stream(stream_url)
 
     result = _attempt_probe()
+    stream_up = result is not None
 
     if result is None and current_app.config.get("SELF_HEAL_ENABLED", True):
         record_failure("stream_probe", reason="probe_failed", restarted=True)
         time.sleep(1)
         result = _attempt_probe()
+        stream_up = result is not None
+
+    if result is None and current_app.config.get("BARIX_AUTO_RESTART_ENABLED", False):
+        restart_threshold = int(current_app.config.get("STREAM_DOWN_RESTART_THRESHOLD", 3))
+        if restart_threshold <= 1:
+            restart_instreamer(reason="single_probe_failure")
+        else:
+            from app.models import JobHealth
+
+            job = JobHealth.query.filter_by(name="stream_probe").first()
+            failures = int(job.failure_count or 0) if job else 0
+            if failures >= restart_threshold:
+                if restart_instreamer(reason=f"probe_failures={failures}"):
+                    record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
 
     if result is None:
         record_failure("stream_probe", reason="probe_failed_final", restarted=False)
-        process_probe_alerts(stream_up, None)
+        process_probe_alerts(False, None)
         return
 
     show = get_current_show()

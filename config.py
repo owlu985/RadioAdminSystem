@@ -95,6 +95,12 @@ class Config:
 
     # Self-heal / health reporting defaults
     SELF_HEAL_ENABLED = True
+    STREAM_DOWN_RESTART_THRESHOLD = 3
+    BARIX_AUTO_RESTART_ENABLED = False
+    BARIX_IP = None
+    BARIX_RESTART_URL = None
+    BARIX_USERNAME = None
+    BARIX_PASSWORD = None
 
     # Settings backup
     SETTINGS_BACKUP_INTERVAL_HOURS = 12
