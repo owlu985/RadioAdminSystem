@@ -1530,10 +1530,9 @@ def _transcode_cache_path(path: str) -> str:
     key_text = f"{path}:{stat.st_mtime}:{stat.st_size}"
     try:
         key = os.fsencode(key_text)
-    except UnicodeEncodeError:
+    except Exception:
         key = key_text.encode("utf-8", "surrogatepass")
-    digest = hashlib.sha1(key).hexdigest()
-    return os.path.join(_transcode_cache_dir(), f"{digest}.mp3")
+    return os.path.join(_transcode_cache_dir(), f"{hashlib.sha1(key).hexdigest()}.mp3")
 
 
 def _ensure_transcoded_mp3(path: str) -> str | None:
