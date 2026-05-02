@@ -9,6 +9,7 @@ from app.services.detection import probe_and_record
 from app.services.recording_periods import recordings_period_root
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
+from app.services.barix import restart_instreamer
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
@@ -145,7 +146,7 @@ def stop_active_show_recording(*, show_name=None, output_file=None, reason="canc
     ACTIVE_RECORDINGS[key] = state
     return True
 
-def _apply_recording_tags(path, show_name, hosts, recorded_at):
+def _apply_recording_tags(path, show_name, hosts, recorded_at, note=None):
     try:
         host_text = _format_host_list(hosts)
         title = f"{show_name} ({recorded_at.strftime('%m-%d-%Y')})"
@@ -154,6 +155,8 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at):
             f"{' with ' + host_text if host_text else ''} on WLMC Radio. "
             "The log for this show, if applicable, is available through the show/log management portal."
         )
+        if note:
+            comment = f"{comment} Note: {note}"
 
         if path.lower().endswith(".mp3"):
             try:
@@ -230,15 +233,20 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             return
 
     recorded_at = datetime.now()
-    output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA.mp3"
+    base_output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA"
     start_time = recorded_at.strftime('%H-%M-%S')
     try:
         if marathon_event_id:
             _update_marathon_status(marathon_event_id, "running")
-        for attempt in (1, 2):
+        remaining_duration = int(duration)
+        segment = 0
+        while remaining_duration > 0:
+            suffix = "" if segment == 0 else f"_{segment}"
+            output_file = f"{base_output_file}{suffix}.mp3"
+            started_at = datetime.utcnow()
             try:
                 process = subprocess.Popen([
-                    'ffmpeg', '-y', '-i', stream_url, '-t', str(duration), '-acodec', 'copy', output_file,
+                    'ffmpeg', '-y', '-i', stream_url, '-t', str(remaining_duration), '-acodec', 'copy', output_file,
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 key = _active_recording_key(show_name, output_file)
                 ACTIVE_RECORDINGS[key] = {
@@ -259,22 +267,28 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 logger.info(f"Start time:{start_time}.")
                 if show_name and os.path.exists(output_file):
                     _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
-                if attempt == 2:
-                    record_failure("recorder", reason="retry_success", restarted=True)
                 return
             except ffmpeg.Error as e:
                 err_msg = e.stderr.decode() if getattr(e, "stderr", None) else str(e)
                 record_failure("recorder", reason=err_msg, restarted=False)
-                logger.error(f"FFmpeg error (attempt {attempt}): {err_msg}")
+                logger.error(f"FFmpeg error (segment {segment}): {err_msg}")
             except Exception as exc:  # noqa: BLE001
                 record_failure("recorder", reason=str(exc), restarted=False)
-                logger.error(f"Recording error (attempt {attempt}): {exc}")
+                logger.error(f"Recording error (segment {segment}): {exc}")
 
-            if attempt == 1 and (flask_app and flask_app.config.get("SELF_HEAL_ENABLED", True)):
-                logger.warning("Retrying recording after failure...")
-                time.sleep(1)
-                continue
-            break
+            elapsed = max(1, int((datetime.utcnow() - started_at).total_seconds()))
+            remaining_duration = max(0, remaining_duration - elapsed)
+
+            if show_name and os.path.exists(output_file):
+                _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
+
+            if not restart_instreamer(reason="recording_stream_failure"):
+                record_failure("barix_auto_heal", reason="Barix Down, auto-heal locked out, manual intervention required")
+                break
+
+            record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
+            segment += 1
+            time.sleep(3)
         if marathon_event_id:
             event = _active_marathon()
             if event and chunk_end and chunk_end >= event.end_time:
