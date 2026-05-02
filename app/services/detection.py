@@ -115,6 +115,7 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
     """
     config = current_app.config
     duration = int(config.get("STREAM_PROBE_SECONDS", 8))
+    probe_timeout = int(config.get("STREAM_PROBE_TIMEOUT_SECONDS", 25))
 
     sample = _sample_path()
     if sample:
@@ -148,7 +149,7 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
             cmd,
             capture_output=True,
             check=False,
-            timeout=max(duration + 5, 10),
+            timeout=max(probe_timeout, duration + 5, 10),
         )
         stderr = proc.stderr or b""
 
@@ -165,7 +166,7 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
             result = analyze_audio(tmp_path, config)
 
     except subprocess.TimeoutExpired:
-        logger.error("FFmpeg probe timed out after %s seconds for %s", max(duration + 5, 10), stream_url)
+        logger.error("FFmpeg probe timed out after %s seconds for %s", max(probe_timeout, duration + 5, 10), stream_url)
         result = None
     except Exception as exc:  # noqa: BLE001
         logger.error("FFmpeg probe unexpected error: %s", exc)
@@ -200,16 +201,19 @@ def probe_and_record():
 
     if result is None and current_app.config.get("BARIX_AUTO_RESTART_ENABLED", False):
         restart_threshold = int(current_app.config.get("STREAM_DOWN_RESTART_THRESHOLD", 3))
-        if restart_threshold <= 1:
-            restart_instreamer(reason="single_probe_failure")
-        else:
-            from app.models import JobHealth
+        from app.models import JobHealth
 
-            job = JobHealth.query.filter_by(name="stream_probe").first()
-            failures = int(job.failure_count or 0) if job else 0
-            if failures >= restart_threshold:
-                if restart_instreamer(reason=f"probe_failures={failures}"):
-                    record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
+        job = JobHealth.query.filter_by(name="stream_probe").first()
+        failures = int(job.failure_count or 0) if job else 0
+        if failures >= restart_threshold:
+            if restart_instreamer(reason=f"probe_failures={failures}"):
+                record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
+            else:
+                record_failure(
+                    "barix_auto_heal",
+                    reason="Barix Down, auto-heal locked out, manual intervention required",
+                    restarted=False,
+                )
 
     if result is None:
         record_failure("stream_probe", reason="probe_failed_final", restarted=False)
