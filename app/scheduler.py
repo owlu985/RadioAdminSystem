@@ -28,6 +28,30 @@ ACTIVE_RECORDINGS = {}
 logger = None
 flask_app = None
 
+
+def _scheduler_executor_shutdown() -> bool:
+    """Return True when APScheduler's default thread pool has been shut down."""
+    try:
+        executor = scheduler._executors.get("default")  # APScheduler internal API
+        pool = getattr(executor, "_pool", None)
+        return bool(pool and getattr(pool, "_shutdown", False))
+    except Exception:
+        return False
+
+
+def _reset_scheduler(reason: str):
+    """Recreate scheduler instance when its executor can no longer accept jobs."""
+    global scheduler
+    logger.warning("Resetting scheduler instance: %s", reason)
+    scheduler = BackgroundScheduler()
+
+
+def _ensure_scheduler_ready():
+    """Make sure the scheduler and its executor are ready to accept jobs."""
+    if _scheduler_executor_shutdown():
+        _reset_scheduler("executor thread pool was shut down")
+
+
 def init_scheduler(app):
     """Initialize and start the scheduler with the Flask app context."""
 
@@ -35,6 +59,8 @@ def init_scheduler(app):
     flask_app = app
     logger = init_logger()
     logger.info("Scheduler logger initialized.")
+
+    _ensure_scheduler_ready()
 
     if not scheduler.running:
         scheduler.start()
