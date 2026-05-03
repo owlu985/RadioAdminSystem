@@ -285,6 +285,43 @@
                                 <input class="form-check-input" type="checkbox" id="self_heal_enabled" name="self_heal_enabled" {% if self_heal_enabled %}checked{% endif %}>
                                 <label class="form-check-label" for="self_heal_enabled">Enable self-heal for probes/recorders</label>
                             </div>
+                            <div class="border rounded p-3 bg-light mb-3">
+                                <h6>Barix Auto-Heal</h6>
+                                <div class="form-check form-switch mb-3">
+                                    <input class="form-check-input" type="checkbox" role="switch" id="barix_auto_restart_enabled" name="barix_auto_restart_enabled" {% if barix_auto_restart_enabled %}checked{% endif %}>
+                                    <label class="form-check-label" for="barix_auto_restart_enabled">Enable Barix auto-restart</label>
+                                </div>
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-4">
+                                        <label for="stream_probe_timeout_seconds" class="form-label">Probe Timeout (sec)</label>
+                                        <input type="number" name="stream_probe_timeout_seconds" id="stream_probe_timeout_seconds" class="form-control" value="{{ stream_probe_timeout_seconds }}" min="5">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="stream_down_restart_threshold" class="form-label">Failures Before Restart</label>
+                                        <input type="number" name="stream_down_restart_threshold" id="stream_down_restart_threshold" class="form-control" value="{{ stream_down_restart_threshold }}" min="1">
+                                    </div>
+                                    <div class="col-md-4">
+                                        <label for="barix_restart_window_minutes" class="form-label">Lockout Window (min)</label>
+                                        <input type="number" name="barix_restart_window_minutes" id="barix_restart_window_minutes" class="form-control" value="{{ barix_restart_window_minutes }}" min="1">
+                                    </div>
+                                </div>
+                                <div class="row g-3 mb-3">
+                                    <div class="col-md-6">
+                                        <label for="barix_ip" class="form-label">Barix IP</label>
+                                        <input type="text" name="barix_ip" id="barix_ip" class="form-control" value="{{ barix_ip }}" placeholder="192.168.1.10">
+                                    </div>
+                                    <div class="col-md-6">
+                                        <label for="barix_restart_url" class="form-label">Restart URL (optional override)</label>
+                                        <input type="text" name="barix_restart_url" id="barix_restart_url" class="form-control" value="{{ barix_restart_url }}" placeholder="http://IP/setup.cgi?c=99">
+                                    </div>
+                                </div>
+                                <div class="row g-3 mb-0">
+                                    <div class="col-md-4">
+                                        <label for="barix_max_restarts_per_window" class="form-label">Max Restarts per Window</label>
+                                        <input type="number" name="barix_max_restarts_per_window" id="barix_max_restarts_per_window" class="form-control" value="{{ barix_max_restarts_per_window }}" min="1">
+                                    </div>
+                                </div>
+                            </div>
                             <div class="border rounded p-3 bg-light">
                                 <h6>Alerts</h6>
                                 <div class="form-check form-switch mb-2">
