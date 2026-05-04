@@ -106,6 +106,8 @@ _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "last_pushed_track_id": None,
 }
 _RADIODJ_NOWPLAYING_LOCK = threading.Lock()
+_PROBE_LOCK = threading.Lock()
+_LAST_PROBE_AT = 0.0
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
@@ -596,13 +598,6 @@ def _get_now_playing_state() -> NowPlayingState:
     return state
 
 
-def _override_enabled() -> bool:
-    if current_app.config.get("NOW_PLAYING_OVERRIDE_ENABLED"):
-        return True
-    state = NowPlayingState.query.first()
-    return bool(state.override_enabled) if state else False
-
-
 def _serialize_show(show: Show, absence: DJAbsence | None = None, window: dict | None = None) -> dict:
     host_label = show_host_names(show)
     if absence and absence.replacement_name:
@@ -647,14 +642,12 @@ def now_playing():
     now = datetime.utcnow()
     show = get_current_show()
     absence = active_absence_for_show(show, now=now) if show else None
-    override_enabled = _override_enabled()
 
     if not show:
         absent_show, absent_slot = get_current_absent_show(now)
         base = {
             "status": "automation" if absent_slot else "off_air",
             "message": "Approved absence without substitute; station is in automation." if absent_slot else current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
-            "override_enabled": override_enabled,
         }
         if absent_slot and absent_show:
             base["absent_show"] = _serialize_show(absent_show)
@@ -663,10 +656,6 @@ def now_playing():
                 "replacement": absent_slot.replacement_name,
                 "dj": absent_slot.dj_name,
             }
-        if override_enabled:
-            track = _get_cached_radiodj_nowplaying()
-            if track:
-                base.update({"status": "automation", "source": "radiodj_cached", "track": track})
         next_show, window, next_absence = _find_next_show(now)
         if next_show and window:
             start_dt, end_dt = window
@@ -702,7 +691,6 @@ def now_playing():
         "status": "on_air",
         "show": _serialize_show(show, absence=absence),
         "run": _serialize_show_run(run),
-        "override_enabled": override_enabled,
         "absence": {
             "status": absence.status,
             "replacement": absence.replacement_name,
@@ -788,25 +776,22 @@ def recent_tracks():
     return jsonify({"status": "ok", "tracks": payload})
 
 
-@api_bp.route("/now/override", methods=["GET", "POST"])
-def now_override():
-    state = _get_now_playing_state()
-    if request.method == "POST":
-        payload = request.get_json(force=True, silent=True) or {}
-        enabled = payload.get("enabled")
-        if enabled is None:
-            return jsonify({"status": "error", "message": "enabled required"}), 400
-        enabled_flag = str(enabled).lower() in {"1", "true", "yes", "on"}
-        state.override_enabled = enabled_flag
-        state.updated_at = datetime.utcnow()
-        db.session.commit()
-    return jsonify({"status": "ok", "override_enabled": state.override_enabled})
-
-
 @api_bp.route("/probe", methods=["POST"])
+@permission_required({"audit:run"})
 def probe_now():
     """Trigger an on-demand probe of the stream and return the result."""
-    result = probe_stream(current_app.config["STREAM_URL"])
+    global _LAST_PROBE_AT
+    cooldown_s = float(current_app.config.get("PROBE_COOLDOWN_SECONDS", 10))
+    now_ts = time.time()
+    if now_ts - _LAST_PROBE_AT < cooldown_s:
+        return jsonify({"status": "error", "message": "probe_cooldown"}), 429
+    if not _PROBE_LOCK.acquire(blocking=False):
+        return jsonify({"status": "error", "message": "probe_in_progress"}), 429
+    _LAST_PROBE_AT = now_ts
+    try:
+        result = probe_stream(current_app.config["STREAM_URL"])
+    finally:
+        _PROBE_LOCK.release()
     if result is None:
         return jsonify({"status": "error", "message": "probe_failed"}), 500
     return jsonify({

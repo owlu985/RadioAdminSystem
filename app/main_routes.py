@@ -15,6 +15,7 @@ import base64
 import hashlib
 import zipfile
 import re
+import threading
 from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event, stop_active_show_recording
 from .utils import (
@@ -101,6 +102,7 @@ from werkzeug.utils import secure_filename
 main_bp = Blueprint('main', __name__)
 logger = init_logger()
 logger.info("Routes logger initialized.")
+_PRETRANSCODE_LOCK = threading.Lock()
 
 BASE_ROLE_CHOICES = [
     ("admin", "Admin"),
@@ -1597,13 +1599,18 @@ def music_stream():
 @main_bp.route("/music/pretranscode", methods=["POST"])
 @permission_required({"music:view"})
 def music_pretranscode():
-    payload = request.get_json(force=True, silent=True) or {}
-    path = payload.get("path")
-    if not path:
-        return jsonify({"status": "error", "message": "path required"}), 400
-    safe_path = _safe_music_path(path)
-    transcoded = _ensure_transcoded_mp3(safe_path)
-    return jsonify({"status": "ok", "transcoded": bool(transcoded)})
+    if not _PRETRANSCODE_LOCK.acquire(blocking=False):
+        return jsonify({"status": "error", "message": "transcode_in_progress"}), 429
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        path = payload.get("path")
+        if not path:
+            return jsonify({"status": "error", "message": "path required"}), 400
+        safe_path = _safe_music_path(path)
+        transcoded = _ensure_transcoded_mp3(safe_path)
+        return jsonify({"status": "ok", "transcoded": bool(transcoded)})
+    finally:
+        _PRETRANSCODE_LOCK.release()
 
 
 @main_bp.route("/music/cover")
