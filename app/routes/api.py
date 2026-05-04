@@ -106,6 +106,8 @@ _RADIODJ_NOWPLAYING_CACHE: dict[str, float | dict | None] = {
     "last_pushed_track_id": None,
 }
 _RADIODJ_NOWPLAYING_LOCK = threading.Lock()
+_PROBE_LOCK = threading.Lock()
+_LAST_PROBE_AT = 0.0
 
 
 def _serialize_queue_item(item: PlaybackQueueItem) -> dict:
@@ -775,9 +777,21 @@ def recent_tracks():
 
 
 @api_bp.route("/probe", methods=["POST"])
+@permission_required({"audit:run"})
 def probe_now():
     """Trigger an on-demand probe of the stream and return the result."""
-    result = probe_stream(current_app.config["STREAM_URL"])
+    global _LAST_PROBE_AT
+    cooldown_s = float(current_app.config.get("PROBE_COOLDOWN_SECONDS", 10))
+    now_ts = time.time()
+    if now_ts - _LAST_PROBE_AT < cooldown_s:
+        return jsonify({"status": "error", "message": "probe_cooldown"}), 429
+    if not _PROBE_LOCK.acquire(blocking=False):
+        return jsonify({"status": "error", "message": "probe_in_progress"}), 429
+    _LAST_PROBE_AT = now_ts
+    try:
+        result = probe_stream(current_app.config["STREAM_URL"])
+    finally:
+        _PROBE_LOCK.release()
     if result is None:
         return jsonify({"status": "error", "message": "probe_failed"}), 500
     return jsonify({
