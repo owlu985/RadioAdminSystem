@@ -1902,8 +1902,12 @@ def marathon_page():
     events = MarathonEvent.query.order_by(MarathonEvent.start_time.desc()).all()
     now = datetime.utcnow()
     for ev in events:
-        if ev.status == "pending" and ev.start_time <= now < ev.end_time and not ev.canceled_at:
+        if ev.canceled_at:
+            continue
+        if ev.status == "pending" and ev.start_time <= now < ev.end_time:
             ev.status = "running"
+        elif ev.status == "running" and now >= ev.end_time:
+            ev.status = "completed"
     db.session.commit()
 
     return render_template("marathon.html", events=events, now=now)
