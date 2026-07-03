@@ -93,6 +93,8 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
         return {"files": {}, "generated_at": time.time(), "root": root}
 
     existing_files = (existing or {}).get("files", {})
+    # Batch-load all MusicAnalysis records at start to avoid N+1 queries
+    all_analyses = {a.path: a for a in MusicAnalysis.query.all()}
     new_files: Dict[str, Dict] = {}
     for path in _walk_music():
         full = os.path.normpath(path)
@@ -102,7 +104,7 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             continue
         prev = existing_files.get(full)
         if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
-            analysis = MusicAnalysis.query.filter_by(path=full).first()
+            analysis = all_analyses.get(full)  # ← Changed from query to dict lookup
             if not analysis or _analysis_needs_stats(analysis):
                 tags = _read_tags(full)
                 _ensure_analysis(full, tags)
@@ -228,14 +230,11 @@ def build_library_editor_index(index: Dict | None = None) -> Dict:
     }
     cues_by_path: Dict[str, Dict[str, float]] = {}
     if normalized_paths:
-        # Avoid path-bound SQL params entirely: certain malformed surrogate
-        # values can still trigger DBAPI utf-8 encode errors at execute time
-        # despite prior normalization.
-        cues = MusicCue.query.all()
+        # Load only cues for tracks in the music index (vastly reduces memory/DB load)
+        # Convert set to list for query (SQLAlchemy .in_() requires iterable)
+        cues = MusicCue.query.filter(MusicCue.path.in_(list(normalized_paths))).all() if normalized_paths else []
         for cue in cues:
             normalized_cue_path = _utf8_safe_text(cue.path)
-            if normalized_cue_path not in normalized_paths:
-                continue
             cue_payload = {
                 field: getattr(cue, field)
                 for field in cue_fields
@@ -369,19 +368,25 @@ def build_library_editor_index(index: Dict | None = None) -> Dict:
 def get_library_editor_index(refresh: bool = False) -> Dict:
     ttl = current_app.config.get("LIBRARY_EDITOR_INDEX_TTL", 900)
     root = current_app.config.get("NAS_MUSIC_ROOT")
-    music_index = get_music_index(refresh=refresh)
-    music_generated_at = music_index.get("generated_at")
+    # Only call get_music_index if we're doing a refresh or cache is cold
     cached = _LIBRARY_EDITOR_INDEX_CACHE.get("data")
     loaded_at = _LIBRARY_EDITOR_INDEX_CACHE.get("loaded_at") or 0
+    cached_music_generated_at = _LIBRARY_EDITOR_INDEX_CACHE.get("music_generated_at")
+    
+    # If memory cache is still fresh, return immediately without reloading music_index
     if (
         cached
         and not refresh
         and time.time() - loaded_at < ttl
         and _LIBRARY_EDITOR_INDEX_CACHE.get("root") == root
-        and _LIBRARY_EDITOR_INDEX_CACHE.get("music_generated_at") == music_generated_at
     ):
         return cached  # type: ignore[return-value]
 
+    # Load music index only if cache is cold
+    music_index = get_music_index(refresh=refresh)
+    music_generated_at = music_index.get("generated_at")
+    
+    # Check disk cache before rebuilding
     disk = _load_library_editor_index_file()
     disk_data = disk.get("data")
     disk_generated_at = disk.get("generated_at") or 0
