@@ -220,6 +220,11 @@ def probe_and_record():
                 restarted=False,
             )
 
+    if result is None:
+        record_failure("stream_probe", reason="probe_failed_final", restarted=False)
+        process_probe_alerts(False, None)
+        return
+
     show = get_current_show()
     show_run = None
     if show:
