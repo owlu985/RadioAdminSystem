@@ -205,20 +205,20 @@ def probe_and_record():
 
         job = JobHealth.query.filter_by(name="stream_probe").first()
         failures = int(job.failure_count or 0) if job else 0
+    
         if failures >= restart_threshold:
             if restart_instreamer(reason=f"probe_failures={failures}"):
                 record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
-            else:
-                record_failure(
-                    "barix_auto_heal",
-                    reason="Barix Down, auto-heal locked out, manual intervention required",
-                    restarted=False,
-                )
-
-    if result is None:
-        record_failure("stream_probe", reason="probe_failed_final", restarted=False)
-        process_probe_alerts(False, None)
-        return
+                # CRITICAL: Reset failure count after successful restart
+                job.failure_count = 0
+                db.session.commit()
+                return  # ← EARLY RETURN - don't record "probe_failed_final"
+        else:
+            record_failure(
+                "barix_auto_heal",
+                reason="Barix Down, auto-heal locked out, manual intervention required",
+                restarted=False,
+            )
 
     show = get_current_show()
     show_run = None
