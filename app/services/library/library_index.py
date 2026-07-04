@@ -60,7 +60,12 @@ def _build_index(app) -> None:
                 _set_state(progress=progress)
                 continue
             prev = existing_files.get(full)
-            if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
+            if (
+                prev
+                and prev.get("mtime") == stat.st_mtime
+                and prev.get("size") == stat.st_size
+                and prev.get("metadata_reader_version") == music_search.METADATA_READER_VERSION
+            ):
                 new_files[full] = prev
                 progress = _calculate_progress(idx + 1, total)
                 _set_state(progress=progress)
@@ -69,7 +74,7 @@ def _build_index(app) -> None:
             tags = music_search._read_tags(full)
             rel_dir = os.path.relpath(os.path.dirname(full), root)
             folder = "" if rel_dir == "." else rel_dir.replace(os.sep, "/")
-            search_blob = " ".join(filter(None, [
+            search_parts = [
                 tags.get("title"),
                 tags.get("artist"),
                 tags.get("album_artist"),
@@ -77,7 +82,8 @@ def _build_index(app) -> None:
                 tags.get("composer"),
                 tags.get("genre"),
                 tags.get("year"),
-            ])).lower()
+            ]
+            search_blob = " ".join(music_search._search_tokens(" ".join([str(p) for p in search_parts if p])))
             entry = {
                 "path": full,
                 "title": tags.get("title"),
@@ -93,6 +99,7 @@ def _build_index(app) -> None:
                 "search": search_blob,
                 "track_num": music_search._parse_track_number(tags.get("track")),
                 "disc_num": music_search._parse_track_number(tags.get("disc")),
+                "metadata_reader_version": music_search.METADATA_READER_VERSION,
             }
             new_files[full] = entry
             progress = _calculate_progress(idx + 1, total)

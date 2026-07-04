@@ -27,6 +27,7 @@ from app.models import db, MusicAnalysis, MusicCue
 
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
+METADATA_READER_VERSION = 2
 _MUSIC_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
 _LIBRARY_EDITOR_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None, "music_generated_at": None}
 
@@ -103,7 +104,12 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
         except OSError:
             continue
         prev = existing_files.get(full)
-        if prev and prev.get("mtime") == stat.st_mtime and prev.get("size") == stat.st_size:
+        if (
+            prev
+            and prev.get("mtime") == stat.st_mtime
+            and prev.get("size") == stat.st_size
+            and prev.get("metadata_reader_version") == METADATA_READER_VERSION
+        ):
             analysis = all_analyses.get(full)  # ← Changed from query to dict lookup
             if not analysis or _analysis_needs_stats(analysis):
                 tags = _read_tags(full)
@@ -141,6 +147,7 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "search": search_blob,
             "track_num": _parse_track_number(tags.get("track")),
             "disc_num": _parse_track_number(tags.get("disc")),
+            "metadata_reader_version": METADATA_READER_VERSION,
         }
         new_files[full] = entry
     payload = {"files": new_files, "generated_at": time.time(), "root": root}
@@ -432,29 +439,39 @@ def _utf8_safe_text(value: object) -> str:
 
 
 
-def _clean_metadata_text(value: object) -> str:
+def _clean_display_text(value: object) -> str:
     text = _utf8_safe_text(value).replace("\x00", " ").strip()
     if not text:
         return ""
     # Drop mutagen repr-like blobs (e.g. PRIV(owner='XMP', data=b'...')).
     if text.startswith("PRIV(") and "data=b" in text:
         return ""
-    # Remove replacement glyph and normalize separators/punctuation for display/search.
+    # Remove replacement glyph and normalize whitespace without inventing or
+    # removing meaningful display spacing from embedded metadata.
     text = text.replace("�", "")
-    text = re.sub(r"\s+", " ", text).strip()
-    # Some libraries export compact camel-cased tags (e.g. "BillieEilish")
-    # even when the intended display value contains spaces. Humanize those so
-    # search tokens still match normal spaced queries.
-    text = _humanize_compact_text(text)
-    return text
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _clean_search_text(value: object) -> str:
+    return _humanize_compact_text(_clean_display_text(value))
+
+
+def _clean_metadata_text(value: object) -> str:
+    return _clean_display_text(value)
 
 
 def _search_tokens(value: Optional[str]) -> List[str]:
-    cleaned = _clean_metadata_text(value or "").lower()
+    display = _clean_display_text(value or "").lower()
+    search = _clean_search_text(value or "").lower()
+    cleaned = f"{display} {search}".strip()
     if not cleaned:
         return []
     normalized = re.sub(r"[^a-z0-9]+", " ", cleaned)
-    return [tok for tok in normalized.split() if tok]
+    tokens = []
+    for tok in normalized.split():
+        if tok and tok not in tokens:
+            tokens.append(tok)
+    return tokens
 
 
 def _humanize_compact_text(value: str) -> str:
@@ -550,13 +567,13 @@ def _read_tags(path: str) -> Dict:
         if isinstance(coerced, list):
             for item in coerced:
                 if isinstance(item, str) and item.strip():
-                    cleaned = _clean_metadata_text(item)
+                    cleaned = _clean_display_text(item)
                     if cleaned:
                         return cleaned
             first = coerced[0] if coerced else None
-            cleaned = _clean_metadata_text(first) if first is not None else ""
+            cleaned = _clean_display_text(first) if first is not None else ""
             return cleaned or None
-        cleaned = _clean_metadata_text(coerced)
+        cleaned = _clean_display_text(coerced)
         return cleaned or None
 
     def _parse_explicit(val):
@@ -635,43 +652,14 @@ def _read_tags(path: str) -> Dict:
         return None
 
     try:
+        is_mp4_container = path.lower().endswith((".m4a", ".mp4"))
         audio_easy = mutagen.File(path, easy=True)
         if audio_easy:
             if hasattr(audio_easy, "info") and getattr(audio_easy.info, "bitrate", None):
                 data["bitrate"] = getattr(audio_easy.info, "bitrate")
             if getattr(audio_easy, "tags", None) and "covr" in audio_easy.tags:
                 data["cover_embedded"] = True
-            for key, target in [
-                ("title", "title"),
-                ("artist", "artist"),
-                ("albumartist", "album_artist"),
-                ("album", "album"),
-                ("composer", "composer"),
-                ("isrc", "isrc"),
-                ("date", "year"),
-                ("year", "year"),
-                ("genre", "genre"),
-                ("tracknumber", "track"),
-                ("discnumber", "disc"),
-                ("copyright", "copyright"),
-            ]:
-                val = audio_easy.tags.get(key) if audio_easy.tags else None
-                if val:
-                    data[target] = _first_text(val)
-            if audio_easy.tags and data.get("explicit") is None:
-                for key in ["itunesadvisory", "explicit", "contentadvisory"]:
-                    if key in audio_easy.tags:
-                        data["explicit"] = _parse_explicit(audio_easy.tags.get(key))
-                        if data["explicit"] is not None:
-                            break
-
-        if path.lower().endswith((".m4a", ".mp4")):
-            try:
-                from mutagen.mp4 import EasyMP4  # type: ignore
-
-                easy_mp4 = EasyMP4(path)
-                if hasattr(easy_mp4, "info") and getattr(easy_mp4.info, "bitrate", None) and not data.get("bitrate"):
-                    data["bitrate"] = getattr(easy_mp4.info, "bitrate")
+            if not is_mp4_container:
                 for key, target in [
                     ("title", "title"),
                     ("artist", "artist"),
@@ -686,18 +674,17 @@ def _read_tags(path: str) -> Dict:
                     ("discnumber", "disc"),
                     ("copyright", "copyright"),
                 ]:
-                    if data.get(target):
-                        continue
-                    if not getattr(easy_mp4, "tags", None):
-                        continue
-                    val = easy_mp4.tags.get(key)
-                    if val and not data.get(target):
-                        coerced = _first_text(val)
-                        if coerced:
-                            data[target] = coerced
-            except Exception:
-                pass
+                    val = audio_easy.tags.get(key) if audio_easy.tags else None
+                    if val:
+                        data[target] = _first_text(val)
+            if audio_easy.tags and data.get("explicit") is None:
+                for key in ["itunesadvisory", "explicit", "contentadvisory"]:
+                    if key in audio_easy.tags:
+                        data["explicit"] = _parse_explicit(audio_easy.tags.get(key))
+                        if data["explicit"] is not None:
+                            break
 
+        if is_mp4_container:
             try:
                 from mutagen.mp4 import MP4  # type: ignore
 
@@ -713,30 +700,41 @@ def _read_tags(path: str) -> Dict:
                             if data["explicit"] is not None:
                                 break
 
-                atom_map = {
-                    "title": ["\u00a9nam", "----:com.apple.iTunes:TITLE"],
-                    "artist": ["\u00a9ART", "----:com.apple.iTunes:ARTIST"],
-                    "album_artist": ["aART", "----:com.apple.iTunes:ALBUMARTIST"],
-                    "album": ["\u00a9alb", "----:com.apple.iTunes:ALBUM"],
-                    "composer": ["\u00a9wrt", "----:com.apple.iTunes:COMPOSER"],
-                    "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
-                    "year": ["\u00a9day", "----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
-                    "genre": ["\u00a9gen", "gnre", "----:com.apple.iTunes:GENRE"],
+                standard_atom_map = {
+                    "title": ["\u00a9nam"],
+                    "artist": ["\u00a9ART"],
+                    "album_artist": ["aART"],
+                    "album": ["\u00a9alb"],
+                    "composer": ["\u00a9wrt"],
+                    "year": ["\u00a9day"],
+                    "genre": ["\u00a9gen", "gnre"],
                     "track": ["trkn"],
                     "disc": ["disk"],
-                    "copyright": ["cprt", "----:com.apple.iTunes:COPYRIGHT"],
+                    "copyright": ["cprt"],
+                }
+                freeform_atom_map = {
+                    "title": ["----:com.apple.iTunes:TITLE"],
+                    "artist": ["----:com.apple.iTunes:ARTIST"],
+                    "album_artist": ["----:com.apple.iTunes:ALBUMARTIST"],
+                    "album": ["----:com.apple.iTunes:ALBUM"],
+                    "composer": ["----:com.apple.iTunes:COMPOSER"],
+                    "isrc": ["----:com.apple.iTunes:ISRC", "----:com.apple.iTunes:isrc"],
+                    "year": ["----:com.apple.iTunes:YEAR", "----:com.apple.iTunes:DATE"],
+                    "genre": ["----:com.apple.iTunes:GENRE"],
+                    "copyright": ["----:com.apple.iTunes:COPYRIGHT"],
                 }
 
-                for target, atoms in atom_map.items():
-                    if data.get(target):
-                        continue
-                    for atom in atoms:
-                        val = mp4_tags.get(atom)
-                        if val:
-                            coerced = _first_text(val)
-                            if coerced:
-                                data[target] = coerced
-                                break
+                for atom_map in [standard_atom_map, freeform_atom_map]:
+                    for target, atoms in atom_map.items():
+                        if data.get(target):
+                            continue
+                        for atom in atoms:
+                            val = mp4_tags.get(atom)
+                            if val:
+                                coerced = _first_text(val)
+                                if coerced:
+                                    data[target] = coerced
+                                    break
 
                 if not data.get("artist") or not data.get("title"):
                     for key, val in mp4_tags.items():
@@ -752,20 +750,6 @@ def _read_tags(path: str) -> Dict:
                             if coerced:
                                 data["title"] = coerced
 
-                if not data.get("artist") or not data.get("title") or not data.get("album"):
-                    for key, val in mp4_tags.items():
-                        coerced = _first_text(val)
-                        if not coerced:
-                            continue
-                        if isinstance(coerced, str):
-                            lower_val = coerced.lower()
-                            if not data.get("artist") and "artist" in lower_val:
-                                data["artist"] = coerced
-                            if not data.get("title") and ("title" in lower_val or "name" in lower_val):
-                                data["title"] = coerced
-                            if not data.get("album") and "album" in lower_val:
-                                data["album"] = coerced
-
                 if data.get("explicit") is None:
                     for key, val in mp4_tags.items():
                         if not isinstance(key, str):
@@ -779,6 +763,39 @@ def _read_tags(path: str) -> Dict:
                     data["bitrate"] = getattr(mp4.info, "bitrate")
             except Exception:
                 pass
+
+            if not all([data.get("title"), data.get("artist"), data.get("album")]):
+                try:
+                    from mutagen.mp4 import EasyMP4  # type: ignore
+
+                    easy_mp4 = EasyMP4(path)
+                    if hasattr(easy_mp4, "info") and getattr(easy_mp4.info, "bitrate", None) and not data.get("bitrate"):
+                        data["bitrate"] = getattr(easy_mp4.info, "bitrate")
+                    for key, target in [
+                        ("title", "title"),
+                        ("artist", "artist"),
+                        ("albumartist", "album_artist"),
+                        ("album", "album"),
+                        ("composer", "composer"),
+                        ("isrc", "isrc"),
+                        ("date", "year"),
+                        ("year", "year"),
+                        ("genre", "genre"),
+                        ("tracknumber", "track"),
+                        ("discnumber", "disc"),
+                        ("copyright", "copyright"),
+                    ]:
+                        if data.get(target):
+                            continue
+                        if not getattr(easy_mp4, "tags", None):
+                            continue
+                        val = easy_mp4.tags.get(key)
+                        if val:
+                            coerced = _first_text(val)
+                            if coerced:
+                                data[target] = coerced
+                except Exception:
+                    pass
 
         if not all([data.get("title"), data.get("artist"), data.get("album")]):
             try:
