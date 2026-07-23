@@ -308,8 +308,13 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             if show_name and os.path.exists(output_file):
                 _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
 
-            if not restart_instreamer(reason="recording_stream_failure"):
-                record_failure("barix_auto_heal", reason="Barix Down, auto-heal locked out, manual intervention required")
+            restart_result = restart_instreamer(reason="recording_stream_failure")
+            record_failure(
+                "barix_auto_heal",
+                reason=f"Recording restart: {restart_result.status}: {restart_result.message}",
+                restarted=restart_result.should_count_restart,
+            )
+            if not restart_result.accepted:
                 break
 
             record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)

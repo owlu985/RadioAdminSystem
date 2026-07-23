@@ -14,7 +14,7 @@ from app.models import StreamProbe, db, LogEntry
 from app.services.show_run_service import get_or_create_active_run
 from app.services.alerts import process_probe_alerts
 from app.services.health import record_failure
-from app.services.barix import restart_instreamer
+from app.services.barix import BarixRestartResult, restart_instreamer
 from app.utils import get_current_show, show_display_title, show_primary_host
 
 logger = init_logger()
@@ -27,6 +27,15 @@ class DetectionResult:
     automation_ratio: float
     classification: str
     reason: str
+
+
+def _record_barix_restart_result(result: BarixRestartResult, reason_prefix: str = "Barix auto-heal") -> None:
+    """Persist a clear, user-visible health reason for a Barix restart decision."""
+    record_failure(
+        "barix_auto_heal",
+        reason=f"{reason_prefix}: {result.status}: {result.message}",
+        restarted=result.should_count_restart,
+    )
 
 
 def analyze_audio(file_path: str, config: dict) -> DetectionResult:
@@ -205,18 +214,21 @@ def probe_and_record():
 
         job = JobHealth.query.filter_by(name="stream_probe").first()
         failures = int(job.failure_count or 0) if job else 0
-    
+
         if failures >= restart_threshold:
-            if restart_instreamer(reason=f"probe_failures={failures}"):
+            restart_result = restart_instreamer(reason=f"probe_failures={failures}")
+            _record_barix_restart_result(restart_result, reason_prefix="Stream probe restart")
+            if restart_result.accepted:
                 record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
                 # CRITICAL: Reset failure count after successful restart
-                job.failure_count = 0
-                db.session.commit()
+                if job:
+                    job.failure_count = 0
+                    db.session.commit()
                 return  # ← EARLY RETURN - don't record "probe_failed_final"
         else:
             record_failure(
                 "barix_auto_heal",
-                reason="Barix Down, auto-heal locked out, manual intervention required",
+                reason=f"Stream probe failed; waiting for restart threshold ({failures}/{restart_threshold})",
                 restarted=False,
             )
 
