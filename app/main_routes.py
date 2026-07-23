@@ -169,6 +169,7 @@ def shows():
 
     all_djs = (
         DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+        .filter(DJ.is_archived.is_(False))
         .order_by(DJ.first_name, DJ.last_name)
         .all()
     )
@@ -828,8 +829,12 @@ def media_file(token: str):
 @main_bp.route("/djs")
 @admin_required
 def list_djs():
+        show_archived = request.args.get("show_archived") == "1"
+        query = DJ.query
+        if not show_archived:
+            query = query.filter(DJ.is_archived.is_(False))
         djs = (
-            DJ.query.options(
+            query.options(
                 selectinload(DJ.shows).load_only(
                     Show.id,
                     Show.show_name,
@@ -870,7 +875,7 @@ def list_djs():
                 seen_ids.add(show.id)
             dj.display_shows = combined
 
-        return render_template("djs_list.html", djs=djs)
+        return render_template("djs_list.html", djs=djs, show_archived=show_archived)
 
 
 @main_bp.route("/djs/<int:dj_id>")
@@ -907,7 +912,7 @@ def dj_profile(dj_id: int):
 @main_bp.route("/djs/discipline", methods=["GET", "POST"])
 @permission_required({"dj:discipline"})
 def manage_dj_discipline():
-        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+        djs = DJ.query.filter(DJ.is_archived.is_(False)).order_by(DJ.last_name, DJ.first_name).all()
         if request.method == "POST":
                 action = request.form.get("action", "create")
                 if action == "delete":
@@ -1065,7 +1070,9 @@ def add_dj():
             description=request.form.get("description"),
             photo_url=photo_url,
             is_public=bool(request.form.get("is_public")),
+            is_archived=bool(request.form.get("is_archived")),
         )
+        dj.period_list = request.form.getlist("periods")
         selected = request.form.getlist("show_ids")
         if selected:
             dj.shows = Show.query.filter(Show.id.in_(selected)).all()
@@ -1075,7 +1082,8 @@ def add_dj():
         return redirect(url_for("main.list_djs"))
 
     shows = Show.query.order_by(Show.start_time).all()
-    return render_template("dj_form.html", dj=None, shows=shows)
+    periods = load_recording_periods().get("periods", [])
+    return render_template("dj_form.html", dj=None, shows=shows, periods=periods)
 
 
 @main_bp.route("/djs/bulk-add", methods=["POST"])
@@ -1263,6 +1271,8 @@ def edit_dj(dj_id):
         dj.description = request.form.get("description")
         dj.photo_url = photo_url
         dj.is_public = bool(request.form.get("is_public"))
+        dj.is_archived = bool(request.form.get("is_archived"))
+        dj.period_list = request.form.getlist("periods")
         selected = request.form.getlist("show_ids")
         dj.shows = Show.query.filter(Show.id.in_(selected)).all() if selected else []
         db.session.commit()
@@ -1270,8 +1280,19 @@ def edit_dj(dj_id):
         return redirect(url_for("main.list_djs"))
 
     shows = Show.query.order_by(Show.start_time).all()
-    return render_template("dj_form.html", dj=dj, shows=shows)
+    periods = load_recording_periods().get("periods", [])
+    return render_template("dj_form.html", dj=dj, shows=shows, periods=periods)
 
+
+@main_bp.route("/djs/<int:dj_id>/archive", methods=["POST"])
+@admin_required
+def archive_dj(dj_id):
+    dj = DJ.query.get_or_404(dj_id)
+    archive = request.form.get("archive") == "1"
+    dj.is_archived = archive
+    db.session.commit()
+    flash(f"{'Archived' if archive else 'Unarchived'} DJ: {dj.first_name} {dj.last_name}.", "success")
+    return redirect(url_for("main.list_djs", show_archived="1" if archive else None))
 
 @main_bp.route("/djs/<int:dj_id>/delete", methods=["POST"])
 @admin_required
@@ -1291,7 +1312,7 @@ def delete_dj(dj_id):
 @main_bp.route("/dj/absence", methods=["GET", "POST"])
 def dj_absence_submit():
         shows = Show.query.order_by(Show.show_name).all()
-        djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+        djs = DJ.query.filter(DJ.is_archived.is_(False)).order_by(DJ.last_name, DJ.first_name).all()
         if request.method == "POST":
                 dj_id = request.form.get("dj_id", type=int)
                 show_id = request.form.get("show_id") or None
@@ -1368,7 +1389,7 @@ def dj_absence_submit():
 @main_bp.route("/absences", methods=["GET", "POST"])
 @permission_required({"dj:absence"})
 def manage_absences():
-        djs = DJ.query.order_by(DJ.first_name.asc().nulls_last(), DJ.last_name.asc().nulls_last()).all()
+        djs = DJ.query.filter(DJ.is_archived.is_(False)).order_by(DJ.first_name.asc().nulls_last(), DJ.last_name.asc().nulls_last()).all()
         shows = Show.query.order_by(Show.show_name, Show.start_time).all()
 
         if request.method == "POST":
@@ -1956,7 +1977,7 @@ def add_show():
             primary_dj_id = request.form.get('primary_dj_id', type=int)
             primary_dj = (
                 DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
-                .filter_by(id=primary_dj_id)
+                .filter(DJ.id == primary_dj_id, DJ.is_archived.is_(False))
                 .first()
             )
             if not primary_dj:
@@ -1964,7 +1985,7 @@ def add_show():
                 return redirect(url_for('main.add_show'))
             selected_djs = request.form.getlist('dj_ids')
             cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
-            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids), DJ.is_archived.is_(False)).all() if cohost_ids else []
 
             show = Show(
                 host_first_name=primary_dj.first_name,
@@ -2013,7 +2034,7 @@ def edit_show(id):
             primary_dj_id = request.form.get('primary_dj_id', type=int)
             primary_dj = (
                 DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
-                .filter_by(id=primary_dj_id)
+                .filter(DJ.id == primary_dj_id, DJ.is_archived.is_(False))
                 .first()
             )
             if not primary_dj:
@@ -2021,7 +2042,7 @@ def edit_show(id):
                 return redirect(url_for('main.edit_show', id=id))
             selected_djs = request.form.getlist('dj_ids')
             cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
-            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids)).all() if cohost_ids else []
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids), DJ.is_archived.is_(False)).all() if cohost_ids else []
             show.show_name = request.form.get('show_name')
             show.genre = request.form.get('genre')
             show.description = request.form.get('description')
@@ -2051,7 +2072,7 @@ def edit_show(id):
         )
         primary_dj = (
             DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
-            .filter_by(first_name=show.host_first_name, last_name=show.host_last_name)
+            .filter(DJ.first_name == show.host_first_name, DJ.last_name == show.host_last_name)
             .first()
         )
         selected_primary_id = primary_dj.id if primary_dj else None

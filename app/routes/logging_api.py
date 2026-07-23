@@ -134,7 +134,7 @@ def submit_log():
         logger.info("Log CSV saved with %s entries", len(rows))
         return redirect(url_for("logs.submit_log"))
 
-    djs = DJ.query.order_by(DJ.last_name, DJ.first_name).all()
+    djs = DJ.query.filter(DJ.is_archived.is_(False)).order_by(DJ.last_name, DJ.first_name).all()
     shows = Show.query.order_by(Show.show_name).all()
     dj_payload = [
         {"id": d.id, "first_name": d.first_name, "last_name": d.last_name}

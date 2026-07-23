@@ -79,7 +79,7 @@ def ensure_schema(app, logger) -> None:
             conn.execute(text("ALTER TABLE log_entry ADD COLUMN entry_time TIME"))
         if "dj" not in insp.get_table_names():
             conn.execute(text(
-                "CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, description TEXT, photo_url VARCHAR(255), is_public BOOLEAN NOT NULL DEFAULT 1)"
+                "CREATE TABLE IF NOT EXISTS dj (id INTEGER PRIMARY KEY, first_name VARCHAR(64) NOT NULL, last_name VARCHAR(64) NOT NULL, bio TEXT, description TEXT, photo_url VARCHAR(255), is_public BOOLEAN NOT NULL DEFAULT 1, is_archived BOOLEAN NOT NULL DEFAULT 0, periods TEXT)"
             ))
         if "show_dj" not in insp.get_table_names():
             conn.execute(text("CREATE TABLE IF NOT EXISTS show_dj (show_id INTEGER NOT NULL, dj_id INTEGER NOT NULL, PRIMARY KEY (show_id, dj_id))"))
@@ -123,6 +123,11 @@ def ensure_schema(app, logger) -> None:
         if "is_public" not in dj_cols:
             conn.execute(text("ALTER TABLE dj ADD COLUMN is_public BOOLEAN DEFAULT 1"))
             conn.execute(text("UPDATE dj SET is_public = 1 WHERE is_public IS NULL"))
+        if "is_archived" not in dj_cols:
+            conn.execute(text("ALTER TABLE dj ADD COLUMN is_archived BOOLEAN DEFAULT 0"))
+            conn.execute(text("UPDATE dj SET is_archived = 0 WHERE is_archived IS NULL"))
+        if "periods" not in dj_cols:
+            conn.execute(text("ALTER TABLE dj ADD COLUMN periods TEXT"))
         if "dj_absence" not in insp.get_table_names():
             conn.execute(text(
                 """
