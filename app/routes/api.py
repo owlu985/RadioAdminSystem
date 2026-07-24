@@ -25,7 +25,6 @@ from app.models import (
     PressFeature,
     WebsiteBanner,
     PodcastEpisode,
-    AuditRun,
     DJAbsence,
     HostedAudio,
     MarathonEvent,
@@ -86,14 +85,6 @@ from app.db_utils import ensure_playback_session_schema
 from sqlalchemy import func
 from app.logger import init_logger
 from app.auth_utils import permission_required
-from app.services.audit import (
-    get_audit_results_path,
-    load_audit_results,
-    start_audit_job,
-    get_audit_status,
-    list_audit_runs,
-    get_audit_run,
-)
 import requests
 api_bp = Blueprint("api", __name__, url_prefix="/api")
 logger = init_logger()
@@ -1689,75 +1680,6 @@ def library_index_refresh():
         "started": started,
     }
     return jsonify(payload)
-
-
-@api_bp.route("/audit/start", methods=["POST"])
-@permission_required({"audit:run"})
-def start_audit():
-    data = request.get_json(silent=True) or {}
-    action = data.get("action")
-    if action not in {"recordings", "explicit"}:
-        return jsonify({"status": "error", "message": "invalid action"}), 400
-    max_files = data.get("max_files")
-    params = {
-        "folder": data.get("folder"),
-        "rate": float(data.get("rate") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"]),
-        "max_files": int(max_files) if max_files not in (None, "") else None,
-        "lyrics_check": bool(data.get("lyrics_check")),
-    }
-    job_id = start_audit_job(action, params)
-    return jsonify({"status": "queued", "job_id": job_id})
-
-
-@api_bp.route("/audit/status/<job_id>")
-@permission_required({"audit:run"})
-def audit_status(job_id):
-    payload = get_audit_status(job_id)
-    run_id = payload.get("audit_run_id")
-    if payload.get("results_path") and run_id:
-        payload["results_url"] = url_for("api.audit_run_results", run_id=run_id)
-    return jsonify(payload)
-
-
-@api_bp.route("/audit/runs")
-@permission_required({"audit:run"})
-def audit_runs():
-    limit = request.args.get("limit", default=20, type=int)
-    runs = list_audit_runs(limit=limit)
-    for run in runs:
-        if run.get("has_results"):
-            run["results_url"] = url_for("api.audit_run_results", run_id=run["id"])
-    return jsonify(runs)
-
-
-@api_bp.route("/audit/runs/<int:run_id>")
-@permission_required({"audit:run"})
-def audit_run_detail(run_id):
-    run = get_audit_run(run_id)
-    if not run:
-        return jsonify({"status": "error", "message": "not found"}), 404
-    if run.get("results_path"):
-        run["results_url"] = url_for("api.audit_run_results", run_id=run_id)
-    return jsonify(run)
-
-
-@api_bp.route("/audit/runs/<int:run_id>/results", methods=["GET", "DELETE"])
-@permission_required({"audit:run"})
-def audit_run_results(run_id):
-    run = db.session.get(AuditRun, run_id)
-    if not run:
-        return jsonify({"status": "error", "message": "not found"}), 404
-    if request.method == "DELETE":
-        results_path = get_audit_results_path(run)
-        if results_path and os.path.exists(results_path):
-            os.remove(results_path)
-        run.results_json = None
-        db.session.commit()
-        return jsonify({"status": "ok"})
-    results = load_audit_results(run)
-    if results is None:
-        return jsonify({"status": "error", "message": "results not found"}), 404
-    return jsonify({"status": "ok", "results": results})
 
 
 @api_bp.route("/djs")

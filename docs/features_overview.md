@@ -4,7 +4,7 @@ This document summarizes the major features available in RAMS, with links to key
 
 ## Branding, Navigation, and Settings
 - Configurable station name/slogan and RAMS branding (logo at `app/static/logo.png`).
-- Global navbar/footer on every page with quick links to Dashboard, Schedule, Logs, Music, News, DJs, Audit, API Docs, Settings, and more.
+- Global navbar/footer on every page with quick links to Dashboard, Schedule, Logs, Music, News, DJs, API Docs, Settings, and more.
 - Settings UI: admin credentials, stream URL, NAS roots, station branding/background, Tempest weather token/station, alert thresholds, OAuth toggles, and JSON import/export for settings.
 - Color-coded system log viewer (Settings → Logs) with in-app access to recent log lines.
 
@@ -57,11 +57,6 @@ This document summarizes the major features available in RAMS, with links to key
 - Admin pages to add/edit/list DJs; public API `/api/djs` for website bios and show mappings.
 - DJ profiles surface absences, logs, and permission-aware disciplinary notes.
 
-## Audits
-- Recording classification audit: scan recordings folder to label live/automation/dead air using the detector.
-- Explicit-content audit: checks NAS music via iTunes API for explicit flags/clean versions; rate-limited to avoid 429s; async jobs with progress bars.
-- Audit jobs run asynchronously; progress can be viewed without keeping the page open.
-
 ## Alerts and Health
 - Alert settings for dead-air/stream-down thresholds; simulated sends until enabled.
 - Job health tracking for probes/recorders with retry counters and dashboard surfacing.
@@ -76,7 +71,6 @@ This document summarizes the major features available in RAMS, with links to key
 - RadioDJ PSA controls and imports (enable/disable/delete/update metadata)
 - Music search/detail/edit and CUE endpoints
 - DJ list: `/api/djs`
-- Audit jobs: `/api/audit/start`, `/api/audit/status/<job_id>`
 - Schedule grid JSON/iCal feeds
 - News upload and config-backed endpoints
 - Website content & podcast plugin feed: `/api/plugins/website/content`; hosted audio embeds: `/api/plugins/audio/embed/<id>`

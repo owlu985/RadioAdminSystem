@@ -79,10 +79,8 @@ GET  /api/probes/latest        (latest probe)
 GET  /api/runs/&lt;run_id&gt;
 GET  /api/runs/&lt;run_id&gt;/logs
 GET  /api/psa/compliance/&lt;run_id&gt;
-GET  /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=...&amp;end=...
-POST /api/audit/start          (recording + explicitness audits)
-GET  /api/audit/status/&lt;job_id&gt;</code></pre>
-    <p>Probes classify live/automation/dead-air and log dB ratios. Audit jobs run in the background with progress polling.</p>
+GET  /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=...&amp;end=...</code></pre>
+    <p>Probes classify live/automation/dead-air and log dB ratios.</p>
 
     <h4 class="mt-4">Music Library</h4>
     <pre><code>GET    /api/music/search?q=&lt;query&gt;&amp;page=1&amp;per_page=50&amp;folder=&lt;rel&gt;  (use q=% to list all)
@@ -160,7 +158,7 @@ GET      /logout</code></pre>
     <ul>
         <li>Public widgets/APIs: <code>/api/now</code>, <code>/api/now/widget</code>, <code>/api/now/recent-tracks</code>, <code>/api/stream/status</code>, <code>/api/schedule</code>, <code>/schedule/grid</code>, <code>/schedule/ical</code>, <code>/api/plugins/website/content</code>, <code>/api/djs</code>, <code>/api/weather/tempest</code>, <code>/api/psa/library</code>, <code>/dj/status</code>, <code>/logs/submit</code>.</li>
         <li>Logging & reports: <code>/logs/view</code>, <code>/logs/download/csv</code>, <code>/logs/download/docx</code>, <code>/api/reports/artist-frequency</code>, <code>/api/psa/compliance/&lt;run_id&gt;</code>.</li>
-        <li>Probes, runs, audits: <code>/api/probe</code>, <code>/api/probes/latest</code>, <code>/api/runs/&lt;id&gt;</code>, <code>/api/runs/&lt;id&gt;/logs</code>, <code>/api/audit/start</code>, <code>/api/audit/status/&lt;job_id&gt;</code>.</li>
+        <li>Probes and runs: <code>/api/probe</code>, <code>/api/probes/latest</code>, <code>/api/runs/&lt;id&gt;</code>, <code>/api/runs/&lt;id&gt;/logs</code>.</li>
         <li>Music library: <code>/api/music/search</code>, <code>/api/music/detail</code>, <code>/api/music/cover-image</code>, <code>/api/music/cover-art</code>, <code>/api/music/musicbrainz</code>, <code>/api/music/bulk-update</code>, <code>/api/music/scan/library</code>, <code>/api/music/cue</code>, <code>/api/music/saved-searches</code>, <code>/api/archivist/album-rip</code>, <code>/api/archivist/album-info</code>, archivist CSV import UI, <code>/music/</code> pages for search/detail/edit/cue.</li>
         <li>RadioDJ & stream: <code>/api/radiodj/psas</code>, <code>/api/radiodj/psas/&lt;id&gt;/enable</code>, <code>/api/radiodj/psas/&lt;id&gt;/disable</code>, <code>/api/radiodj/psas/&lt;id&gt;</code> (DELETE), <code>/api/radiodj/psas/&lt;id&gt;/metadata</code>, <code>/api/radiodj/import/news</code>, <code>/api/radiodj/import/community_calendar</code>, <code>/api/icecast/analytics</code>.</li>
         <li>Absences & DJs: <code>/dj/absence</code> (public form), <code>/absences</code> (manage/filter), <code>/djs</code> (list), <code>/djs/&lt;id&gt;</code> (profile), <code>/djs/add</code>, <code>/djs/&lt;id&gt;/edit</code>, <code>/djs/discipline</code>.</li>

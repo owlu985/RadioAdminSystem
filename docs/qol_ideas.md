@@ -18,7 +18,7 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 ## Scheduling & Show Ops
 - **Handoff notes**: DJs leave short notes for the next host; show on the DJ Status screen near show end.
 - **Prep checklists**: Per-show reminders (PSAs, contests, promos) surfaced on dashboard and DJ Status.
-- **Schedule exceptions**: One-off overrides/blackouts with audit trail and optional notifications to assigned DJs.
+- **Schedule exceptions**: One-off overrides/blackouts and optional notifications to assigned DJs.
 - **iCal write-back**: Optional sync to a shared calendar for visibility outside RAMS.
 
 ## Music Library & Metadata
@@ -43,7 +43,6 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 ## Compliance & Reporting
 - **Run-to-log alignment**: Auto-link recordings to log segments and jump-to-audio for spot checks.
 - **PSA pacing reports**: Per-show weekly counts with heatmaps showing where PSAs cluster or are missing.
-- **Audit scheduling**: Let audits run on a cadence (e.g., nightly) and deliver summaries via email/Discord.
 - **Regulatory exports**: One-click FCC-style affidavit/summary packs (CSV/PDF) combining PSAs, underwriting, and missed shows.
 
 ## Theming & UX
@@ -53,7 +52,7 @@ This document collects additional ideas to refine RAMS operations, monitoring, a
 
 ## Integrations & Extensibility
 - **Webhooks for track changes**: Push now-playing/track-change events to website/Discord; include CORS-friendly JSON for embeds.
-- **Plugin hooks**: Simple extension points for custom imports, audits, or export formats without touching core code.
+- **Plugin hooks**: Simple extension points for custom imports or export formats without touching core code.
 - **Alternate storage**: Optional S3/Wasabi backend for recordings/logs with signed URL delivery.
 
 ## Data Safety & Backups
