@@ -220,9 +220,14 @@
                                 <input class="form-check-input" type="checkbox" id="inline_help_enabled" name="inline_help_enabled" {% if inline_help_enabled %}checked{% endif %}>
                                 <label class="form-check-label" for="inline_help_enabled">Show inline help tips</label>
                             </div>
-                            <div class="form-check mb-0">
+                            <div class="form-check mb-2">
                                 <input class="form-check-input" type="checkbox" id="high_contrast_default" name="high_contrast_default" {% if high_contrast_default %}checked{% endif %}>
                                 <label class="form-check-label" for="high_contrast_default">High contrast by default</label>
+                            </div>
+                            <div class="form-check mb-0">
+                                <input class="form-check-input" type="checkbox" id="dj_status_overnight_screensaver_enabled" name="dj_status_overnight_screensaver_enabled" {% if dj_status_overnight_screensaver_enabled %}checked{% endif %}>
+                                <label class="form-check-label" for="dj_status_overnight_screensaver_enabled">Enable DJ Status overnight bouncing-logo screensaver</label>
+                                <div class="form-text">From 12:00 AM to 7:00 AM, the TV status screen dims into a DVD-style logo screensaver when no live show or marathon is active.</div>
                             </div>
                         </div>
                     </div>

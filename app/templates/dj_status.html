@@ -16,6 +16,15 @@
             font-style: normal;
             font-display: swap;
         }
+        :root {
+            --ok: #2ecc71;
+            --warn: #ffd166;
+            --danger: #ff3b3b;
+            --auto: #4de0ff;
+            --panel: rgba(0, 0, 0, 0.55);
+            --panel-soft: rgba(255, 255, 255, 0.08);
+            --border: rgba(255, 255, 255, 0.16);
+        }
         body, html {
             height: 100%;
             margin: 0;
@@ -25,301 +34,356 @@
             background-size: cover;
             background-position: center;
             background-repeat: no-repeat;
+            overflow: hidden;
         }
         .overlay {
-            backdrop-filter: blur(3px);
-            background: rgba(0,0,0,0.30);
             min-height: 100%;
+            padding: clamp(1rem, 2vw, 2rem);
+            background: linear-gradient(120deg, rgba(0,0,0,0.78), rgba(0,0,0,0.42));
+            backdrop-filter: blur(3px);
         }
+        .stage {
+            width: min(96vw, 1680px);
+            height: calc(100vh - clamp(2rem, 4vw, 4rem));
+            margin: 0 auto;
+            display: grid;
+            grid-template-rows: auto 1fr auto;
+            gap: 1rem;
+        }
+        .topbar, .main-grid, .bottom-grid { min-width: 0; }
+        .topbar {
+            display: grid;
+            grid-template-columns: 1fr auto 1fr;
+            align-items: center;
+            gap: 1rem;
+        }
+        .brand {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            min-width: 0;
+        }
+        .brand img { max-height: 84px; width: auto; object-fit: contain; }
+        .brand-title { font-size: clamp(1.4rem, 2vw, 2.4rem); font-weight: 800; line-height: 1; }
+        .brand-subtitle { color: rgba(255,255,255,0.82); font-size: clamp(0.9rem, 1.1vw, 1.15rem); }
         .clock {
-            font-size: 6.2rem;
+            font-size: clamp(4.5rem, 7.6vw, 8.6rem);
             font-weight: 700;
             letter-spacing: 0.1rem;
             font-family: 'DSEG14 Classic Mini Light', 'DSEG14 Classic Mini', 'Orbitron', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             color: #ff2d2d;
             background: #000;
-            padding: 0.4rem 1.2rem;
+            padding: 0.35rem 1.25rem;
             border-radius: 1.75rem;
             display: inline-block;
+            line-height: 1.05;
+            box-shadow: 0 0 30px rgba(255,45,45,0.18);
         }
-        .overlay .text-muted {
-            color: rgba(255, 255, 255, 0.8) !important;
+        .status-icons {
+            display: flex;
+            justify-content: flex-end;
+            gap: 0.8rem;
+            flex-wrap: wrap;
         }
-        .card {
-            background-color: rgba(0, 0, 0, 0.45);
-            color: #f8f9fa;
+        .icon-pill {
+            min-width: 118px;
+            padding: 0.65rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 1rem;
+            background: var(--panel);
+            text-align: center;
         }
-        .card-header {
-            color: #f8f9fa;
+        .icon-symbol { font-size: 2rem; line-height: 1; }
+        .icon-label { font-size: 0.78rem; color: rgba(255,255,255,0.72); text-transform: uppercase; letter-spacing: 0.08em; }
+        .icon-value { font-weight: 900; font-size: 1.05rem; }
+        .ok { color: var(--ok); } .warn { color: var(--warn); } .danger { color: var(--danger); } .auto { color: var(--auto); }
+        .alert-banner {
+            display: none;
+            border-radius: 1rem;
+            padding: 0.8rem 1.2rem;
+            text-align: center;
+            font-weight: 1000;
+            font-size: clamp(2rem, 4vw, 4rem);
+            letter-spacing: 0.08em;
+            background: rgba(255, 0, 0, 0.84);
+            color: #fff;
+            animation: flash 0.85s linear infinite;
         }
-        .card-body {
-            color: #f8f9fa;
-        }
-        .weather-grid .tile {
-            background-color: rgba(255, 255, 255, 0.06);
-            border-radius: 0.5rem;
-            padding: 0.5rem 0.75rem;
-            color: #f8f9fa;
-            min-width: 110px;
-        }
-        .weather-grid small {
-            color: rgba(255,255,255,0.8);
-        }
-        .weather-card-body {
-            max-height: min(65vh, 525px);
-            overflow: hidden;
-        }
-        .status-grid {
+        .alert-banner.show { display: block; }
+        @keyframes flash { 0%, 52%, 100% { opacity: 1; } 74% { opacity: 0.18; } }
+        .main-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-            gap: 0.75rem;
+            grid-template-columns: minmax(0, 1.22fr) minmax(330px, 0.78fr);
+            gap: 1rem;
+            min-height: 0;
         }
-        .status-tile {
-            background: rgba(255, 255, 255, 0.08);
-            border-radius: 0.5rem;
-            padding: 0.85rem;
-            font-size: 1.1rem;
-            font-weight: 600;
+        .panel {
+            background: var(--panel);
+            border: 1px solid var(--border);
+            border-radius: 1.35rem;
+            padding: clamp(1rem, 1.5vw, 1.35rem);
+            min-width: 0;
+            box-shadow: 0 18px 50px rgba(0,0,0,0.25);
         }
-        .status-label {
-            font-size: 0.9rem;
-            color: rgba(255,255,255,0.8);
+        .panel-title { color: rgba(255,255,255,0.72); text-transform: uppercase; letter-spacing: 0.1em; font-weight: 800; }
+        .show-name { font-size: clamp(2.4rem, 4.5vw, 5rem); line-height: 1; font-weight: 1000; }
+        .show-meta { font-size: clamp(1.2rem, 2vw, 2rem); color: rgba(255,255,255,0.86); }
+        .countdown-card {
+            margin-top: 1rem;
+            display: none;
+            padding: 0.85rem 1rem;
+            border-radius: 1rem;
+            background: rgba(255, 209, 102, 0.14);
+            border: 1px solid rgba(255, 209, 102, 0.55);
+            color: var(--warn);
+            font-size: clamp(1.8rem, 3.4vw, 3.4rem);
+            font-weight: 1000;
         }
-        .status-value {
-            font-size: 1.4rem;
+        .weather-now { display: grid; grid-template-columns: auto 1fr; gap: 1rem; align-items: center; }
+        .temp { font-size: clamp(3.7rem, 6vw, 6.6rem); font-weight: 1000; line-height: 0.95; }
+        .condition { font-size: clamp(1.25rem, 2vw, 2rem); font-weight: 900; }
+        .weather-detail { color: rgba(255,255,255,0.8); font-size: clamp(1rem, 1.4vw, 1.3rem); }
+        .mini-forecast { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0.7rem; margin-top: 1rem; }
+        .mini-tile { background: var(--panel-soft); border-radius: 0.9rem; padding: 0.75rem; text-align: center; }
+        .mini-label { color: rgba(255,255,255,0.72); font-size: 0.95rem; }
+        .mini-value { font-size: 1.25rem; font-weight: 900; }
+        .bottom-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+        .now-playing { display: none; }
+        .track-current { display: grid; grid-template-columns: 86px 1fr; gap: 0.9rem; align-items: center; }
+        .cover { width: 86px; height: 86px; border-radius: 0.8rem; background: var(--panel-soft); object-fit: cover; }
+        .track-title { font-size: clamp(1.35rem, 2vw, 2rem); font-weight: 900; line-height: 1.05; }
+        .track-artist { color: rgba(255,255,255,0.78); font-size: 1.15rem; }
+        .recent-list { margin: 0.65rem 0 0; padding: 0; list-style: none; display: grid; gap: 0.35rem; }
+        .recent-list li { display: flex; justify-content: space-between; gap: 0.7rem; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 0.35rem; color: rgba(255,255,255,0.84); }
+        .utility-line { color: rgba(255,255,255,0.7); font-size: 0.95rem; margin-top: 0.65rem; }
+        .screensaver {
+            position: fixed; inset: 0; display: none; background: #02040b; z-index: 50; overflow: hidden;
         }
-        .text-neon-blue {
-            color: #4de0ff;
-        }
-        .flash-red {
-            color: #ff4d4d;
-            font-weight: 800;
-            animation: flash 1s linear infinite;
-        }
-        @keyframes flash {
-            0%, 50% { opacity: 1; }
-            75% { opacity: 0.2; }
-            100% { opacity: 1; }
-        }
-        @media (max-width: 767px) {
-            .clock {
-                font-size: 4.25rem;
-            }
-            .weather-card-body {
-                max-height: none;
-            }
+        .screensaver.active { display: block; }
+        .screensaver.dimmed::after { content: ''; position: absolute; inset: 0; background: rgba(0,0,0,0.38); pointer-events: none; }
+        .dvd-logo { position: absolute; width: min(28vw, 360px); height: auto; filter: drop-shadow(0 0 26px rgba(77,224,255,0.35)); }
+        body.overnight-dim .overlay { filter: brightness(0.46); }
+        @media (max-width: 1050px) {
+            .topbar, .main-grid, .bottom-grid { grid-template-columns: 1fr; }
+            .status-icons { justify-content: center; }
+            .brand { justify-content: center; text-align: center; }
+            .stage { height: auto; overflow-y: auto; }
+            body, html { overflow: auto; }
         }
     </style>
 </head>
 <body>
-<div class="overlay d-flex flex-column justify-content-center align-items-center p-3 text-center">
-    <div class="mb-3">
-        <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo" style="max-height:90px; width:auto; object-fit:contain;">
-        <div class="fw-bold fs-4">{{ station_name }}</div>
-        <div class="text-muted">{{ station_slogan }}</div>
-    </div>
-
-    <div class="clock" id="clock">--:--:--</div>
-
-    <div class="row g-3 mt-4 w-100" style="max-width: 1200px;">
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header">Station Status</div>
-                <div class="card-body">
-                    <div class="status-grid mb-3" id="statusGrid">
-                        <div class="status-tile">
-                            <div class="status-label">Stream</div>
-                            <div class="status-value" id="streamUp">...</div>
-                        </div>
-                        <div class="status-tile">
-                            <div class="status-label">Probe</div>
-                            <div class="status-value" id="probeClass">...</div>
-                        </div>
-                    </div>
-                    <div class="status-grid" id="nowNext">
-                        <div class="status-tile">
-                            <div class="status-label">Current</div>
-                            <div class="status-value" id="currentShow">Loading...</div>
-                            <div class="small" id="currentWindow"></div>
-                        </div>
-                        <div class="status-tile">
-                            <div class="status-label">Next</div>
-                            <div class="status-value" id="nextShow">Loading...</div>
-                            <div class="small" id="nextWindow"></div>
-                        </div>
-                    </div>
+<div class="overlay">
+    <div class="stage">
+        <div class="topbar">
+            <div class="brand">
+                <img src="{{ url_for('static', filename='logo.png') }}" alt="Logo">
+                <div>
+                    <div class="brand-title">{{ station_name }}</div>
+                    <div class="brand-subtitle">{{ station_slogan }}</div>
                 </div>
+            </div>
+            <div class="clock" id="clock">--:--:--</div>
+            <div class="status-icons">
+                <div class="icon-pill" id="streamPill"><div class="icon-symbol" id="streamIcon">●</div><div class="icon-label">Stream</div><div class="icon-value" id="streamUp">...</div></div>
+                <div class="icon-pill" id="probePill"><div class="icon-symbol" id="probeIcon">◆</div><div class="icon-label">Probe</div><div class="icon-value" id="probeClass">...</div></div>
             </div>
         </div>
-        <div class="col-lg-6">
-            <div class="card h-100">
-                <div class="card-header">Weather</div>
-                <div class="card-body weather-card-body" id="weatherCard">
-                    <div class="d-flex align-items-center mb-2">
-                        <div class="display-6 me-3" id="currentTemp">--</div>
-                        <div>
-                            <div class="fw-semibold" id="currentCond">Loading...</div>
-                            <div class="small text-muted" id="currentIcon"></div>
-                        </div>
-                    </div>
-                    <div class="mb-2">
-                        <div class="fw-semibold">Next 1/2/4/8 hours</div>
-                        <div class="d-flex flex-wrap gap-2 weather-grid" id="hourlyWeather"></div>
-                    </div>
+
+        <div class="alert-banner" id="criticalBanner"></div>
+
+        <div class="main-grid">
+            <section class="panel">
+                <div class="panel-title">On Air</div>
+                <div class="show-name" id="currentShow">Loading...</div>
+                <div class="show-meta" id="currentWindow"></div>
+                <div class="countdown-card" id="stationIdReminder">Station ID in: --:--</div>
+                <div class="utility-line" id="nextShowLine">Next: Loading...</div>
+            </section>
+            <section class="panel">
+                <div class="panel-title">Weather at a Glance</div>
+                <div class="weather-now">
+                    <div class="temp" id="currentTemp">--</div>
                     <div>
-                        <div class="fw-semibold">Next 3 days</div>
-                        <div class="d-flex flex-wrap gap-2 weather-grid" id="dailyWeather"></div>
+                        <div class="condition" id="currentCond">Loading...</div>
+                        <div class="weather-detail" id="weatherQuick">Updating local conditions</div>
                     </div>
                 </div>
-            </div>
+                <div class="mini-forecast" id="hourlyWeather"></div>
+                <div class="utility-line" id="weatherUpdated">Weather updates every 5 minutes</div>
+            </section>
+        </div>
+
+        <div class="bottom-grid">
+            <section class="panel now-playing" id="nowPlayingPanel">
+                <div class="panel-title">Automation Now Playing</div>
+                <div class="track-current">
+                    <img class="cover" id="trackCover" src="{{ url_for('static', filename='logo.png') }}" alt="Album art">
+                    <div><div class="track-title" id="trackTitle">Loading...</div><div class="track-artist" id="trackArtist"></div></div>
+                </div>
+                <ul class="recent-list" id="recentTracks"></ul>
+            </section>
+            <section class="panel">
+                <div class="panel-title">System Summary</div>
+                <div class="show-meta" id="systemSummary">Gathering status...</div>
+                <div class="utility-line" id="lastUpdated">Last updated: --</div>
+            </section>
         </div>
     </div>
 </div>
+<div class="screensaver" id="screensaver"><img class="dvd-logo" id="dvdLogo" src="{{ url_for('static', filename='logo.png') }}" alt="{{ station_name }} logo"></div>
 
 {% include '_rams_url_helper.html' %}
 <script>
     const statusTimezone = {{ app_timezone|tojson }};
+    const overnightScreensaverEnabled = {{ dj_status_overnight_screensaver_enabled|tojson }};
+    let latestNowData = null;
+    let latestStreamData = null;
+    let activeMarathon = false;
+
     function updateClock() {
-        const formatter = new Intl.DateTimeFormat('en-US', {
-            timeZone: statusTimezone,
-            hour: '2-digit',
-            minute: '2-digit',
-            second: '2-digit',
-            hour12: false
-        });
+        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: statusTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
         document.getElementById('clock').textContent = formatter.format(new Date());
     }
-    setInterval(updateClock, 1000);
-    updateClock();
+    setInterval(updateClock, 1000); updateClock();
 
+    function zonedParts(date = new Date()) {
+        const parts = new Intl.DateTimeFormat('en-US', { timeZone: statusTimezone, hour: 'numeric', minute: 'numeric', second: 'numeric', hour12: false }).formatToParts(date);
+        return Object.fromEntries(parts.filter(p => p.type !== 'literal').map(p => [p.type, Number(p.value)]));
+    }
+    function setPill(pillId, iconId, valueId, icon, label, className) {
+        const pill = document.getElementById(pillId); const iconEl = document.getElementById(iconId); const value = document.getElementById(valueId);
+        pill.classList.remove('ok','warn','danger','auto'); iconEl.classList.remove('ok','warn','danger','auto'); value.classList.remove('ok','warn','danger','auto');
+        pill.classList.add(className); iconEl.classList.add(className); value.classList.add(className);
+        iconEl.textContent = icon; value.textContent = label;
+    }
+    function updateBanner() {
+        const banner = document.getElementById('criticalBanner');
+        const probeClass = latestStreamData?.probe?.classification;
+        if (latestStreamData && !latestStreamData.stream_up) { banner.textContent = 'CHECK STREAM'; banner.classList.add('show'); return; }
+        if (probeClass === 'dead_air') { banner.textContent = 'DEAD AIR'; banner.classList.add('show'); return; }
+        banner.classList.remove('show'); banner.textContent = '';
+    }
+    function updateSystemSummary() {
+        const streamText = latestStreamData?.stream_up ? 'Stream online' : 'Stream needs attention';
+        const probeText = latestStreamData?.probe?.classification ? latestStreamData.probe.classification.replace('_', ' ') : 'probe pending';
+        const modeText = latestNowData?.status === 'on_air' ? 'Live show active' : 'Automation / off-air mode';
+        document.getElementById('systemSummary').textContent = `${streamText} • ${probeText} • ${modeText}`;
+        document.getElementById('lastUpdated').textContent = `Last updated: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}`;
+    }
     async function refreshStatus() {
         try {
             const res = await fetch(window.ramsUrl('/api/stream/status'));
-            const data = await res.json();
-            const streamElem = document.getElementById('streamUp');
-            streamElem.textContent = data.stream_up ? 'Online' : 'Offline';
-            streamElem.style.color = data.stream_up ? '#2ecc71' : '#ff4d4d';
-
-            const probeElem = document.getElementById('probeClass');
-            probeElem.className = 'status-value';
-            probeElem.style.color = '';
-            if (data.probe) {
-                let label = 'No data';
-                if (data.probe.classification === 'automation' || data.probe.classification === 'off_air') {
-                    label = 'AUTO';
-                    probeElem.classList.add('text-neon-blue');
-                } else if (data.probe.classification === 'live_show') {
-                    label = 'LIVE SHOW';
-                    probeElem.style.color = '#2ecc71';
-                } else if (data.probe.classification === 'dead_air') {
-                    label = 'DEAD AIR';
-                    probeElem.classList.add('flash-red');
-                }
-                probeElem.textContent = label;
-            } else {
-                probeElem.textContent = 'No data';
-            }
+            latestStreamData = await res.json();
+            setPill('streamPill', 'streamIcon', 'streamUp', latestStreamData.stream_up ? '●' : '✕', latestStreamData.stream_up ? 'Online' : 'Down', latestStreamData.stream_up ? 'ok' : 'danger');
+            const cls = latestStreamData.probe?.classification;
+            if (cls === 'live_show') setPill('probePill','probeIcon','probeClass','🎙','Live','ok');
+            else if (cls === 'automation' || cls === 'off_air') setPill('probePill','probeIcon','probeClass','▶','Auto','auto');
+            else if (cls === 'dead_air') setPill('probePill','probeIcon','probeClass','⚠','Dead Air','danger');
+            else setPill('probePill','probeIcon','probeClass','…','Pending','warn');
         } catch (e) {
-            document.getElementById('streamUp').textContent = 'Error';
-            document.getElementById('probeClass').textContent = '';
+            latestStreamData = {stream_up: false};
+            setPill('streamPill','streamIcon','streamUp','✕','Error','danger');
+            setPill('probePill','probeIcon','probeClass','…','No Data','warn');
         }
+        updateBanner(); updateSystemSummary();
     }
-    setInterval(refreshStatus, 5000);
-    refreshStatus();
-
-    function renderTiles(containerId, items, formatter) {
-        const container = document.getElementById(containerId);
-        container.innerHTML = '';
-        if (!items || !items.length) {
-            const span = document.createElement('div');
-            span.className = 'text-muted';
-            span.textContent = 'No data';
-            container.appendChild(span);
-            return;
-        }
-        items.forEach(item => {
-            const tile = document.createElement('div');
-            tile.className = 'tile';
-            tile.innerHTML = formatter(item);
-            container.appendChild(tile);
-        });
-    }
+    setInterval(refreshStatus, 5000); refreshStatus();
 
     async function refreshWeather() {
         try {
             const res = await fetch(window.ramsUrl('/api/weather/tempest'));
             const data = await res.json();
-            if (!res.ok || data.status === 'error') {
-                throw new Error(data.message || 'Weather unavailable');
-            }
-            document.getElementById('currentTemp').textContent =
-                data.current?.temp !== undefined && data.current?.temp !== null ? `${Math.round(data.current.temp)}°` : '--';
-            document.getElementById('currentCond').textContent = data.current?.condition || '—';
-            document.getElementById('currentIcon').textContent = data.current?.icon || '';
-
-            renderTiles('hourlyWeather', data.next_hours, (h) => {
-                const t = h.temp !== undefined && h.temp !== null ? `${Math.round(h.temp)}°` : '--';
-                return `<div class="fw-semibold">${h.time || ''}</div><small>${h.condition || ''}</small><div>${t}</div>`;
-            });
-
-            renderTiles('dailyWeather', data.next_days, (d) => {
-                const high = d.high !== undefined && d.high !== null ? `${Math.round(d.high)}°` : '--';
-                const low = d.low !== undefined && d.low !== null ? `${Math.round(d.low)}°` : '--';
-                return `<div class="fw-semibold">${d.day || ''}</div><small>${d.condition || ''}</small><div>${high} / ${low}</div>`;
-            });
+            if (!res.ok || data.status === 'error') throw new Error(data.message || 'Weather unavailable');
+            document.getElementById('currentTemp').textContent = data.current?.temp !== undefined && data.current?.temp !== null ? `${Math.round(data.current.temp)}°` : '--';
+            document.getElementById('currentCond').textContent = data.current?.condition || 'Current conditions';
+            const next = data.next_hours?.[0];
+            document.getElementById('weatherQuick').textContent = next ? `Next hour: ${next.condition || '—'}, ${Math.round(next.temp ?? 0)}°` : 'Hourly forecast unavailable';
+            const slots = (data.next_hours || []).slice(0, 3);
+            document.getElementById('hourlyWeather').innerHTML = slots.map(h => `<div class="mini-tile"><div class="mini-label">${h.time || ''}</div><div class="mini-value">${h.temp !== undefined && h.temp !== null ? Math.round(h.temp) + '°' : '--'}</div><div class="mini-label">${h.condition || ''}</div></div>`).join('') || '<div class="mini-tile"><div class="mini-label">No forecast</div></div>';
+            document.getElementById('weatherUpdated').textContent = `Weather updated: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
         } catch (e) {
-            document.getElementById('currentTemp').textContent = '--';
-            document.getElementById('currentCond').textContent = 'Weather unavailable';
-            document.getElementById('currentIcon').textContent = '';
-            renderTiles('hourlyWeather', [], () => '');
-            renderTiles('dailyWeather', [], () => '');
+            document.getElementById('currentTemp').textContent = '--'; document.getElementById('currentCond').textContent = 'Weather unavailable'; document.getElementById('weatherQuick').textContent = 'Check Tempest configuration'; document.getElementById('hourlyWeather').innerHTML = '';
         }
     }
-    refreshWeather();
-    setInterval(refreshWeather, 300000);
+    refreshWeather(); setInterval(refreshWeather, 300000);
 
+    function msUntilNextHour() { const p = zonedParts(); return ((59 - p.minute) * 60 + (60 - p.second)) * 1000; }
+    function refreshStationIdReminder() {
+        const card = document.getElementById('stationIdReminder');
+        const showSoon = latestNowData?.status === 'on_air' || Boolean(latestNowData?.next_show);
+        const remainingMs = msUntilNextHour();
+        if (showSoon && remainingMs <= 180000) {
+            const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
+            card.textContent = `Station ID in: ${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+            card.style.display = 'block';
+        } else { card.style.display = 'none'; }
+    }
+    setInterval(refreshStationIdReminder, 1000);
+
+    async function refreshRecentTracks(currentTrack) {
+        try {
+            const res = await fetch(window.ramsUrl('/api/now/recent-tracks'));
+            const data = await res.json();
+            const tracks = (data.tracks || []).slice(0, 3);
+            document.getElementById('recentTracks').innerHTML = tracks.map(t => `<li><span>${t.title || 'Unknown title'} — ${t.artist || 'Unknown artist'}</span><span>${t.played_at ? new Date(t.played_at).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'}) : ''}</span></li>`).join('');
+            if (!currentTrack && tracks[0]) renderCurrentTrack(tracks[0]);
+        } catch (e) { document.getElementById('recentTracks').innerHTML = '<li>Recent tracks unavailable</li>'; }
+    }
+    function renderCurrentTrack(track) {
+        document.getElementById('trackTitle').textContent = track?.title || 'Automation';
+        document.getElementById('trackArtist').textContent = track?.artist || 'WLMC';
+        document.getElementById('trackCover').src = track?.cover_url ? window.ramsUrl(track.cover_url) : "{{ url_for('static', filename='logo.png') }}";
+    }
     async function refreshNowPlaying() {
         try {
-            const res = await fetch(window.ramsUrl('/api/now'));
-            const data = await res.json();
-            const currentElem = document.getElementById('currentShow');
-            const currentWindow = document.getElementById('currentWindow');
-
-            if (data.status === 'off_air') {
-                currentElem.textContent = 'AUTO';
-                currentElem.classList.add('text-neon-blue');
-                currentWindow.textContent = '';
-            } else if (data.show) {
+            const res = await fetch(window.ramsUrl('/api/now/widget'));
+            const data = await res.json(); latestNowData = data;
+            const currentElem = document.getElementById('currentShow'); const currentWindow = document.getElementById('currentWindow'); const nextLine = document.getElementById('nextShowLine');
+            const isLive = data.status === 'on_air' && data.show;
+            document.getElementById('nowPlayingPanel').style.display = isLive ? 'none' : 'block';
+            if (isLive) {
                 const hostLabel = data.absence && data.absence.replacement ? `${data.absence.replacement} (cover)` : data.show.host;
-                currentElem.innerHTML = `${data.show.name}<br><span class="small text-muted">${hostLabel}</span>`;
-                currentElem.classList.remove('text-neon-blue');
-                currentWindow.textContent = `${data.show.window.start_time} - ${data.show.window.end_time}`;
+                currentElem.textContent = data.show.name; currentWindow.textContent = `${hostLabel} • ${data.show.window.start_time} - ${data.show.window.end_time}`;
             } else {
-                currentElem.textContent = '—';
-                currentElem.classList.remove('text-neon-blue');
-                currentWindow.textContent = '';
+                currentElem.textContent = data.status === 'automation' ? 'Automation' : 'Off Air'; currentWindow.textContent = data.message || '';
+                renderCurrentTrack(data.track); refreshRecentTracks(data.track);
             }
-
-            const nextShow = data.next_show;
-            const nextElem = document.getElementById('nextShow');
-            const nextWindow = document.getElementById('nextWindow');
-            if (nextShow) {
-                const nextHost = nextShow.absence && nextShow.absence.replacement ? `${nextShow.absence.replacement} (cover)` : nextShow.host;
-                nextElem.innerHTML = `${nextShow.name}<br><span class="small text-muted">${nextHost}</span>`;
-                nextWindow.textContent = `${nextShow.window.start_time} - ${nextShow.window.end_time}`;
-            } else {
-                nextElem.textContent = '—';
-                nextWindow.textContent = '';
-            }
-        } catch (e) {
-            document.getElementById('currentShow').textContent = 'Error';
-            document.getElementById('currentWindow').textContent = '';
-            document.getElementById('nextShow').textContent = '—';
-            document.getElementById('nextWindow').textContent = '';
-        }
+            if (data.next_show) nextLine.textContent = `Next: ${data.next_show.name} • ${data.next_show.host} • ${data.next_show.window.start_time} - ${data.next_show.window.end_time}`;
+            else nextLine.textContent = 'Next: No scheduled show found';
+        } catch (e) { document.getElementById('currentShow').textContent = 'Status Error'; latestNowData = null; }
+        refreshStationIdReminder(); updateSystemSummary();
     }
-    setInterval(refreshNowPlaying, 5000);
-    refreshNowPlaying();
+    setInterval(refreshNowPlaying, 5000); refreshNowPlaying();
+
+    async function refreshMarathonState() {
+        try {
+            const res = await fetch(window.ramsUrl('/api/schedule')); const data = await res.json(); const now = new Date();
+            activeMarathon = (data.events || []).some(ev => ev.type === 'marathon' && ev.start_date && ev.end_date && new Date(ev.start_date) <= now && new Date(ev.end_date) > now);
+        } catch (e) { activeMarathon = false; }
+    }
+    refreshMarathonState(); setInterval(refreshMarathonState, 300000);
+
+    const saver = { x: 60, y: 60, vx: 2.6, vy: 2.1 };
+    function animateScreensaver() {
+        const logo = document.getElementById('dvdLogo'); const screen = document.getElementById('screensaver');
+        const maxX = Math.max(1, screen.clientWidth - logo.clientWidth); const maxY = Math.max(1, screen.clientHeight - logo.clientHeight);
+        saver.x += saver.vx; saver.y += saver.vy;
+        if (saver.x <= 0 || saver.x >= maxX) saver.vx *= -1;
+        if (saver.y <= 0 || saver.y >= maxY) saver.vy *= -1;
+        saver.x = Math.max(0, Math.min(maxX, saver.x)); saver.y = Math.max(0, Math.min(maxY, saver.y));
+        logo.style.transform = `translate(${saver.x}px, ${saver.y}px)`;
+        requestAnimationFrame(animateScreensaver);
+    }
+    requestAnimationFrame(animateScreensaver);
+    function refreshOvernightMode() {
+        const p = zonedParts(); const overnight = p.hour >= 0 && p.hour < 7; const liveOrSoon = latestNowData?.status === 'on_air';
+        const shouldScreensave = overnightScreensaverEnabled && overnight && !liveOrSoon && !activeMarathon;
+        document.body.classList.toggle('overnight-dim', overnight && !shouldScreensave);
+        document.getElementById('screensaver').classList.toggle('active', shouldScreensave);
+        document.getElementById('screensaver').classList.toggle('dimmed', overnight);
+    }
+    setInterval(refreshOvernightMode, 15000); setInterval(() => { refreshOvernightMode(); }, 1000); refreshOvernightMode();
 </script>
 </body>
 </html>

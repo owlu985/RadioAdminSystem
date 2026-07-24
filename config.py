@@ -62,6 +62,7 @@ class Config:
     # Accessibility / display
     HIGH_CONTRAST_DEFAULT = False
     FONT_SCALE_PERCENT = 100
+    DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED = True
 
     # Roles / auth
     CUSTOM_ROLES = []
