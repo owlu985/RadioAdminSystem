@@ -138,6 +138,7 @@ def inject_branding():
         "inline_help_enabled": current_app.config.get("INLINE_HELP_ENABLED", True),
         "high_contrast_default": current_app.config.get("HIGH_CONTRAST_DEFAULT", False),
         "font_scale_percent": current_app.config.get("FONT_SCALE_PERCENT", 100),
+        "dj_status_overnight_screensaver_enabled": current_app.config.get("DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED", True),
         "session_permissions": effective_permissions(),
         "can": lambda perm: (perm == "*" or ("*" in effective_permissions()) or (perm in effective_permissions())),
     }
@@ -2384,6 +2385,7 @@ def settings():
                 'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
                 'HIGH_CONTRAST_DEFAULT': 'high_contrast_default' in request.form,
                 'FONT_SCALE_PERCENT': int(request.form.get('font_scale_percent') or current_app.config.get('FONT_SCALE_PERCENT', 100)),
+                'DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED': 'dj_status_overnight_screensaver_enabled' in request.form,
                 'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
                 'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
                 'PSA_LIBRARY_PATH': request.form.get('psa_library_path', current_app.config.get('PSA_LIBRARY_PATH', '')).strip(),
@@ -2488,6 +2490,7 @@ def settings():
         'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
         'high_contrast_default': config.get('HIGH_CONTRAST_DEFAULT', False),
         'font_scale_percent': config.get('FONT_SCALE_PERCENT', 100),
+        'dj_status_overnight_screensaver_enabled': config.get('DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED', True),
         'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
         'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
         'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
