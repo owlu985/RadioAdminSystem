@@ -7,131 +7,119 @@
   <body>
     {% include '_nav.html' %}
     <div class="container my-4">
-      <h2 class="mb-3">Disciplinary Records</h2>
-      <p class="text-muted">Only management can view/add records. Use this to track warnings and resolutions.</p>
-      <form class="card mb-4" method="post">
-        <div class="card-body row g-3 align-items-end">
-          <div class="col-md-3">
-            <label class="form-label">DJ</label>
-            <select name="dj_id" class="form-select" required>
-              <option value="">Select DJ</option>
-              {% for dj in djs %}
-                <option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>
+      <div class="d-flex justify-content-between align-items-start gap-3 mb-3">
+        <div>
+          <h2 class="mb-1">Disciplinary Cases</h2>
+          <p class="text-muted mb-0">Track discipline cases with punishment-specific case numbers, approvals, and manual email templates.</p>
+        </div>
+        {% if can_approve and pending_count %}<span class="badge rounded-pill bg-danger fs-6">{{ pending_count }} pending review</span>{% endif %}
+      </div>
+
+      {% if can_approve and pending_records %}
+        <div class="alert alert-danger">There are discipline cases pending your review.</div>
+        <div class="card mb-4 border-danger">
+          <div class="card-header bg-danger text-white">Pending Discipline Review</div>
+          <div class="table-responsive">
+            <table class="table mb-0 align-middle">
+              <thead><tr><th>Case</th><th>DJ</th><th>Punishment</th><th>Reason</th><th>Submitted</th><th></th></tr></thead>
+              <tbody>
+              {% for rec in pending_records %}
+                <tr>
+                  <td><strong>{{ rec.case_number or ('Legacy #' ~ rec.id) }}</strong></td>
+                  <td>{{ rec.dj.first_name }} {{ rec.dj.last_name }}</td>
+                  <td>{{ punishments.get(rec.punishment_type or 'custom', {}).get('label', rec.punishment_type or rec.severity or 'Legacy') }}</td>
+                  <td>{{ rec.notes }}</td>
+                  <td>{{ rec.issued_at|datetime_local }} {{ app_timezone }}</td>
+                  <td class="text-end">
+                    <form method="post" class="d-inline"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="approve"><button class="btn btn-sm btn-success">Approve</button></form>
+                    <form method="post" class="d-inline"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="reject"><button class="btn btn-sm btn-outline-danger">Reject</button></form>
+                  </td>
+                </tr>
               {% endfor %}
-            </select>
+              </tbody>
+            </table>
           </div>
-          <div class="col-md-2">
-            <label class="form-label">Severity</label>
-            <select name="severity" class="form-select">
-              <option value="">Unspecified</option>
-              <option value="info">Info</option>
-              <option value="warning">Warning</option>
-              <option value="critical">Critical</option>
-            </select>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Notes</label>
-            <input type="text" class="form-control" name="notes" placeholder="Reason/details" required>
-          </div>
-          <div class="col-md-3">
-            <label class="form-label">Action</label>
-            <input type="text" class="form-control" name="action_taken" placeholder="Follow-up or action">
-          </div>
-          <div class="col-md-1 form-check mt-4">
-            <input class="form-check-input" type="checkbox" name="resolved" id="resolved">
-            <label class="form-check-label" for="resolved">Resolved</label>
-          </div>
-          <div class="col-12">
-            <button class="btn btn-primary">Save Record</button>
-          </div>
+        </div>
+      {% endif %}
+
+      {% if can_create %}
+      <form class="card mb-4" method="post">
+        <input type="hidden" name="action" value="create">
+        <div class="card-header">Create Case</div>
+        <div class="card-body row g-3">
+          <div class="col-md-4"><label class="form-label">DJ</label><select name="dj_id" class="form-select" required><option value="">Select DJ</option>{% for dj in djs %}<option value="{{ dj.id }}">{{ dj.first_name }} {{ dj.last_name }}</option>{% endfor %}</select></div>
+          <div class="col-md-4"><label class="form-label">Punishment</label><select name="punishment_type" class="form-select punishment-select" required>{% for key, item in punishments.items() %}<option value="{{ key }}">{{ item.label }}</option>{% endfor %}</select></div>
+          <div class="col-md-4"><label class="form-label">Severity</label><select name="severity" class="form-select"><option value="">Unspecified</option>{% for severity in severities %}<option value="{{ severity }}">{{ severity|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-4 custom-field"><label class="form-label">Custom Action Label</label><input type="text" class="form-control" name="custom_punishment"></div>
+          <div class="col-md-4"><label class="form-label">Effective Date</label><input type="date" class="form-control" name="effective_at"></div>
+          <div class="col-md-2 duration-field"><label class="form-label">Length (days)</label><input type="number" min="1" class="form-control" name="duration_days"></div>
+          <div class="col-md-2"><label class="form-label">End Date</label><input type="date" class="form-control" name="expires_at"></div>
+          <div class="col-md-6"><label class="form-label">Reason</label><input type="text" class="form-control" name="notes" required></div>
+          <div class="col-md-6"><label class="form-label">Action Taken</label><input type="text" class="form-control" name="action_taken"></div>
+          <div class="col-md-4"><label class="form-label">Linked Show</label><select name="linked_show_id" class="form-select"><option value="">None</option>{% for show in shows %}<option value="{{ show.id }}">{{ show.show_name }}</option>{% endfor %}</select></div>
+          <div class="col-md-4"><label class="form-label">Linked Log</label><select name="linked_log_id" class="form-select"><option value="">None</option>{% for log in logs %}<option value="{{ log.id }}">{{ log.show_name }} - {{ log.show_date }}</option>{% endfor %}</select></div>
+          <div class="col-md-4"><label class="form-label">Manual Reference</label><input type="text" class="form-control" name="manual_reference"></div>
+          <div class="col-12"><button class="btn btn-primary">Save Case</button></div>
+        </div>
+      </form>
+      {% endif %}
+
+      <form class="card card-body mb-3" method="get">
+        <div class="row g-2 align-items-end">
+          <div class="col-md-4"><label class="form-label">Search</label><input class="form-control" name="q" value="{{ search }}" placeholder="Case #, DJ, reason, action"></div>
+          <div class="col-md-2"><label class="form-label">Punishment</label><select class="form-select" name="punishment_type"><option value="">All</option>{% for key, item in punishments.items() %}<option value="{{ key }}" {% if filters.punishment_type==key %}selected{% endif %}>{{ item.label }}</option>{% endfor %}</select></div>
+          <div class="col-md-2"><label class="form-label">Status</label><select class="form-select" name="case_status"><option value="">All</option>{% for st in ['draft','active','resolved','expired','appealed','voided'] %}<option value="{{ st }}" {% if filters.case_status==st %}selected{% endif %}>{{ st|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-2"><label class="form-label">Approval</label><select class="form-select" name="approval_status"><option value="">All</option>{% for st in ['not_required','pending','approved','rejected'] %}<option value="{{ st }}" {% if filters.approval_status==st %}selected{% endif %}>{{ st|replace('_',' ')|title }}</option>{% endfor %}</select></div>
+          <div class="col-md-2"><div class="form-check"><input class="form-check-input" type="checkbox" name="include_voided" value="1" id="include_voided" {% if filters.include_voided %}checked{% endif %}><label class="form-check-label" for="include_voided">Include voided</label></div><button class="btn btn-outline-primary mt-2">Filter</button></div>
         </div>
       </form>
 
       <div class="table-responsive">
         <table class="table table-striped align-middle">
-          <thead>
-            <tr><th>DJ</th><th>Severity</th><th>Notes</th><th>Action</th><th>Status</th><th>When</th><th>By</th><th></th></tr>
-          </thead>
+          <thead><tr><th>Case</th><th>DJ</th><th>Punishment</th><th>Severity</th><th>Reason</th><th>Action</th><th>Status</th><th>When</th><th>By</th><th></th></tr></thead>
           <tbody>
             {% for rec in records %}
+              {% set ptype = rec.punishment_type or ('warning' if rec.severity == 'warning' else 'informal') %}
+              {% set plabel = rec.custom_punishment if ptype == 'custom' and rec.custom_punishment else punishments.get(ptype, {}).get('label', rec.severity or 'Legacy') %}
+              {% set locked = rec.approval_status == 'approved' and not can_approve %}
               <tr>
+                <td><strong>{{ rec.case_number or ('Legacy #' ~ rec.id) }}</strong></td>
                 <td>{{ rec.dj.first_name }} {{ rec.dj.last_name }}</td>
+                <td><span class="badge bg-secondary">{{ plabel }}</span></td>
                 <td class="text-uppercase small">{{ rec.severity or 'n/a' }}</td>
                 <td>{{ rec.notes }}</td>
                 <td>{{ rec.action_taken or '' }}</td>
-                <td>{% if rec.resolved %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">Open</span>{% endif %}</td>
+                <td>
+                  {% if rec.voided %}<span class="badge bg-dark">Voided</span>{% elif rec.case_status == 'appealed' %}<span class="badge bg-info text-dark">Appealed</span>{% elif rec.approval_status == 'pending' %}<span class="badge bg-danger">Pending Approval</span>{% elif rec.resolved or rec.case_status == 'resolved' %}<span class="badge bg-success">Resolved</span>{% else %}<span class="badge bg-warning text-dark">{{ rec.case_status|default('Open', true)|title }}</span>{% endif %}
+                  {% if rec.approval_status == 'approved' %}<span class="badge bg-success">Approved</span>{% endif %}
+                </td>
                 <td>{{ rec.issued_at|datetime_local }} {{ app_timezone }}</td>
                 <td>{{ rec.created_by or 'system' }}</td>
                 <td class="text-end">
-                  <div class="btn-group btn-group-sm" role="group">
-                    <button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#editModal{{ rec.id }}">Edit</button>
-                    <form method="post" class="d-inline">
-                      <input type="hidden" name="action" value="delete">
-                      <input type="hidden" name="record_id" value="{{ rec.id }}">
-                      <button class="btn btn-outline-danger" type="submit" onclick="return confirm('Delete this record?')">Delete</button>
-                    </form>
-                  </div>
-                  <div class="modal fade" id="editModal{{ rec.id }}" tabindex="-1" aria-labelledby="editModalLabel{{ rec.id }}" aria-hidden="true">
-                    <div class="modal-dialog modal-lg modal-dialog-centered">
-                      <div class="modal-content">
-                        <form method="post">
-                          <div class="modal-header">
-                            <h5 class="modal-title" id="editModalLabel{{ rec.id }}">Edit Record: {{ rec.dj.first_name }} {{ rec.dj.last_name }}</h5>
-                            <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
-                          </div>
-                          <div class="modal-body">
-                            <input type="hidden" name="action" value="update">
-                            <input type="hidden" name="record_id" value="{{ rec.id }}">
-                            <div class="row g-3">
-                              <div class="col-md-6">
-                                <label class="form-label">DJ</label>
-                                <select name="dj_id" class="form-select" required>
-                                  {% for dj in djs %}
-                                    <option value="{{ dj.id }}" {% if dj.id == rec.dj_id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>
-                                  {% endfor %}
-                                </select>
-                              </div>
-                              <div class="col-md-6">
-                                <label class="form-label">Severity</label>
-                                <select name="severity" class="form-select">
-                                  <option value="" {% if not rec.severity %}selected{% endif %}>Unspecified</option>
-                                  <option value="info" {% if rec.severity=='info' %}selected{% endif %}>Info</option>
-                                  <option value="warning" {% if rec.severity=='warning' %}selected{% endif %}>Warning</option>
-                                  <option value="critical" {% if rec.severity=='critical' %}selected{% endif %}>Critical</option>
-                                </select>
-                              </div>
-                              <div class="col-md-6">
-                                <label class="form-label">Notes</label>
-                                <input type="text" class="form-control" name="notes" value="{{ rec.notes }}" required>
-                              </div>
-                              <div class="col-md-6">
-                                <label class="form-label">Action</label>
-                                <input type="text" class="form-control" name="action_taken" value="{{ rec.action_taken or '' }}">
-                              </div>
-                              <div class="col-12">
-                                <div class="form-check">
-                                  <input class="form-check-input" type="checkbox" name="resolved" id="resolved{{ rec.id }}" {% if rec.resolved %}checked{% endif %}>
-                                  <label class="form-check-label" for="resolved{{ rec.id }}">Resolved</label>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                          <div class="modal-footer">
-                            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
-                            <button class="btn btn-primary" type="submit">Save Changes</button>
-                          </div>
-                        </form>
-                      </div>
-                    </div>
-                  </div>
+                  <div class="btn-group btn-group-sm"><button class="btn btn-outline-primary" type="button" data-bs-toggle="modal" data-bs-target="#editModal{{ rec.id }}">View/Edit</button>{% if ptype != 'informal' %}<button class="btn btn-outline-secondary" type="button" data-bs-toggle="modal" data-bs-target="#emailModal{{ rec.id }}">Email</button>{% endif %}</div>
+                  <div class="modal fade text-start" id="editModal{{ rec.id }}" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-centered"><div class="modal-content"><form method="post"><div class="modal-header"><h5 class="modal-title">Case {{ rec.case_number or ('Legacy #' ~ rec.id) }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body"><input type="hidden" name="action" value="update"><input type="hidden" name="record_id" value="{{ rec.id }}">{% if locked %}<div class="alert alert-warning">Approved records are locked unless you have discipline approval permission.</div>{% endif %}<div class="row g-3"><div class="col-md-4"><label class="form-label">DJ</label><select name="dj_id" class="form-select" {% if locked %}disabled{% endif %}>{% for dj in djs %}<option value="{{ dj.id }}" {% if dj.id == rec.dj_id %}selected{% endif %}>{{ dj.first_name }} {{ dj.last_name }}</option>{% endfor %}</select></div><div class="col-md-4"><label class="form-label">Punishment</label><select name="punishment_type" class="form-select" {% if locked %}disabled{% endif %}>{% for key, item in punishments.items() %}<option value="{{ key }}" {% if ptype==key %}selected{% endif %}>{{ item.label }}</option>{% endfor %}</select></div><div class="col-md-4"><label class="form-label">Severity</label><select name="severity" class="form-select" {% if locked %}disabled{% endif %}><option value="">Unspecified</option>{% for severity in severities %}<option value="{{ severity }}" {% if rec.severity==severity %}selected{% endif %}>{{ severity|title }}</option>{% endfor %}</select></div><div class="col-md-4"><label class="form-label">Custom Action Label</label><input name="custom_punishment" class="form-control" value="{{ rec.custom_punishment or '' }}" {% if locked %}disabled{% endif %}></div><div class="col-md-4"><label class="form-label">Effective Date</label><input type="date" class="form-control" name="effective_at" value="{{ rec.effective_at.strftime('%Y-%m-%d') if rec.effective_at else '' }}" {% if locked %}disabled{% endif %}></div><div class="col-md-2"><label class="form-label">Length</label><input type="number" min="1" class="form-control" name="duration_days" value="{{ rec.duration_days or '' }}" {% if locked %}disabled{% endif %}></div><div class="col-md-2"><label class="form-label">End Date</label><input type="date" class="form-control" name="expires_at" value="{{ rec.expires_at.strftime('%Y-%m-%d') if rec.expires_at else '' }}" {% if locked %}disabled{% endif %}></div><div class="col-md-6"><label class="form-label">Reason</label><input class="form-control" name="notes" value="{{ rec.notes or '' }}" {% if locked %}disabled{% endif %}></div><div class="col-md-6"><label class="form-label">Action Taken</label><input class="form-control" name="action_taken" value="{{ rec.action_taken or '' }}" {% if locked %}disabled{% endif %}></div><div class="col-12"><div class="form-check"><input class="form-check-input" type="checkbox" name="resolved" id="resolved{{ rec.id }}" {% if rec.resolved %}checked{% endif %} {% if locked %}disabled{% endif %}><label class="form-check-label" for="resolved{{ rec.id }}">Resolved</label></div></div></div><hr><h6>Links</h6><div class="mb-2 small text-muted">Current: {% for link in rec.case_links %}<span class="badge bg-light text-dark border">{{ link.link_type }}: {{ link.label }}</span> {% else %}None{% endfor %}</div><div class="row g-3"><div class="col-md-4"><select name="linked_show_id" class="form-select" {% if locked %}disabled{% endif %}><option value="">Linked show</option>{% for show in shows %}<option value="{{ show.id }}">{{ show.show_name }}</option>{% endfor %}</select></div><div class="col-md-4"><select name="linked_log_id" class="form-select" {% if locked %}disabled{% endif %}><option value="">Linked log</option>{% for log in logs %}<option value="{{ log.id }}">{{ log.show_name }} - {{ log.show_date }}</option>{% endfor %}</select></div><div class="col-md-4"><input name="manual_reference" class="form-control" placeholder="Manual reference" {% if locked %}disabled{% endif %}></div></div><hr><h6>Audit Trail</h6><ul class="small mb-0">{% for audit in rec.audit_entries|sort(attribute='created_at') %}<li>{{ audit.created_at|datetime_local }} {{ app_timezone }} — {{ audit.event_type }} by {{ audit.actor or 'system' }}{% if audit.message %}: {{ audit.message }}{% endif %}</li>{% else %}<li>No audit entries yet.</li>{% endfor %}</ul></div><div class="modal-footer">{% if not locked and can_edit %}<button class="btn btn-primary">Save Changes</button>{% endif %}</form>{% if can_approve and rec.approval_status == 'pending' %}<form method="post"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="approve"><button class="btn btn-success">Approve</button></form><form method="post"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="reject"><button class="btn btn-outline-danger">Reject</button></form>{% endif %}{% if not locked and can_edit and rec.case_status != 'appealed' %}<form method="post"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="appeal"><input type="text" name="appeal_notes" class="form-control form-control-sm" placeholder="Appeal notes"><button class="btn btn-info">Mark Appealed</button></form>{% endif %}{% if can_void and not rec.voided %}<form method="post"><input type="hidden" name="record_id" value="{{ rec.id }}"><input type="hidden" name="action" value="void"><input type="text" name="void_reason" class="form-control form-control-sm" placeholder="Void reason"><button class="btn btn-outline-danger">Void</button></form>{% endif %}<button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>
+                  {% if ptype != 'informal' %}<div class="modal fade text-start" id="emailModal{{ rec.id }}" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-lg"><div class="modal-content"><div class="modal-header"><h5 class="modal-title">Email Template: {{ rec.case_number or ('Legacy #' ~ rec.id) }}</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div><div class="modal-body">{% set start = rec.effective_at.strftime('%B %-d, %Y') if rec.effective_at else 'Immediately' %}{% set end = rec.expires_at.strftime('%B %-d, %Y') if rec.expires_at else '' %}<textarea class="form-control" rows="13" id="emailText{{ rec.id }}" readonly>Dear {{ rec.dj.first_name }},
+
+The following message is regarding disciplinary case #{{ rec.case_number or ('Legacy #' ~ rec.id) }} for your records. The following action has been taken:
+
+Reason: {{ rec.notes or '' }}
+
+Action Taken: {{ rec.action_taken or plabel }}
+
+Effective: {{ start }}{% if end %} - {{ end }}{% endif %}
+
+If you have any questions about this action, please contact {{ discipline_contact_email or '[discipline contact email]' }}. If you wish to appeal this action, please get in touch with the Faculty Advisor. This email was auto-generated by RAMS.</textarea></div><div class="modal-footer"><button class="btn btn-primary" type="button" onclick="copyDisciplineEmail('emailText{{ rec.id }}')">Copy Whole Email</button><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button></div></div></div></div>{% endif %}
                 </td>
               </tr>
-            {% endfor %}
+            {% else %}<tr><td colspan="10" class="text-center text-muted">No discipline cases found.</td></tr>{% endfor %}
           </tbody>
         </table>
       </div>
     </div>
     {% include '_footer.html' %}
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+      function copyDisciplineEmail(id){const el=document.getElementById(id);el.select();navigator.clipboard.writeText(el.value);}
+    </script>
   </body>
 </html>

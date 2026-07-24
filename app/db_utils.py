@@ -128,6 +128,60 @@ def ensure_schema(app, logger) -> None:
             conn.execute(text("UPDATE dj SET is_archived = 0 WHERE is_archived IS NULL"))
         if "periods" not in dj_cols:
             conn.execute(text("ALTER TABLE dj ADD COLUMN periods TEXT"))
+        if "dj_disciplinary" in insp.get_table_names():
+            discipline_cols = {c["name"] for c in insp.get_columns("dj_disciplinary")}
+            discipline_additions = {
+                "case_number": "VARCHAR(32)",
+                "punishment_type": "VARCHAR(32)",
+                "custom_punishment": "VARCHAR(255)",
+                "effective_at": "DATETIME",
+                "expires_at": "DATETIME",
+                "duration_days": "INTEGER",
+                "approval_status": "VARCHAR(32) DEFAULT 'not_required'",
+                "case_status": "VARCHAR(32) DEFAULT 'active'",
+                "approved_by": "VARCHAR(255)",
+                "approved_at": "DATETIME",
+                "approval_notes": "TEXT",
+                "voided": "BOOLEAN DEFAULT 0",
+                "voided_by": "VARCHAR(255)",
+                "voided_at": "DATETIME",
+                "void_reason": "TEXT",
+                "appealed_by": "VARCHAR(255)",
+                "appealed_at": "DATETIME",
+                "appeal_notes": "TEXT",
+            }
+            for col, col_type in discipline_additions.items():
+                if col not in discipline_cols:
+                    conn.execute(text(f"ALTER TABLE dj_disciplinary ADD COLUMN {col} {col_type}"))
+            conn.execute(text("UPDATE dj_disciplinary SET approval_status = 'not_required' WHERE approval_status IS NULL"))
+            conn.execute(text("UPDATE dj_disciplinary SET case_status = CASE WHEN resolved = 1 THEN 'resolved' ELSE 'active' END WHERE case_status IS NULL"))
+            conn.execute(text("UPDATE dj_disciplinary SET voided = 0 WHERE voided IS NULL"))
+        if "dj_disciplinary_audit" not in insp.get_table_names():
+            conn.execute(text(
+                """
+                CREATE TABLE IF NOT EXISTS dj_disciplinary_audit (
+                    id INTEGER PRIMARY KEY,
+                    record_id INTEGER NOT NULL,
+                    event_type VARCHAR(64) NOT NULL,
+                    actor VARCHAR(255),
+                    message TEXT,
+                    created_at DATETIME NOT NULL
+                )
+                """
+            ))
+        if "dj_disciplinary_link" not in insp.get_table_names():
+            conn.execute(text(
+                """
+                CREATE TABLE IF NOT EXISTS dj_disciplinary_link (
+                    id INTEGER PRIMARY KEY,
+                    record_id INTEGER NOT NULL,
+                    link_type VARCHAR(32) NOT NULL,
+                    linked_id INTEGER,
+                    label VARCHAR(255),
+                    created_at DATETIME NOT NULL
+                )
+                """
+            ))
         if "dj_absence" not in insp.get_table_names():
             conn.execute(text(
                 """
