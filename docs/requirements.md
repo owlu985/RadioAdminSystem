@@ -1,6 +1,6 @@
 # RAMS Dependencies
 
-These dependencies cover the full RAMS feature set (recording/detection, OAuth, music metadata editing, audits, and integrations). The `requirements.txt` file is intentionally left untouched—install these manually when setting up an environment.
+These dependencies cover the full RAMS feature set (recording/detection, OAuth, music metadata editing and integrations). The `requirements.txt` file is intentionally left untouched—install these manually when setting up an environment.
 
 ## Python packages
 - alembic==1.13.3

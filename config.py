@@ -134,12 +134,6 @@ class Config:
     RADIODJ_API_KEY = None
     NOW_PLAYING_OVERRIDE_ENABLED = False
 
-    # Audits
-    AUDIT_ITUNES_RATE_LIMIT_SECONDS = 3.1
-    AUDIT_MUSIC_MAX_FILES = 500
-    AUDIT_LYRICS_CHECK_ENABLED = False
-    AUDIT_RESULTS_DIR = os.path.join(DATA_ROOT, "audit_results")
-
     # Branding
     STATION_NAME = "WLMC"
     STATION_SLOGAN = "The Voice of Landmark College"

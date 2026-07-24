@@ -17,7 +17,7 @@ RAMS is a Flask-based station operations platform that combines:
 - Music library search/edit/CUE workflows
 - News upload/rotation support
 - DJ management and absences
-- Audits and analytics
+- Analytics
 - Extensible plugin modules (automation bridge, remote link, hosted audio, website content)
 
 Key route groups:
@@ -174,7 +174,7 @@ On first boot RAMS will:
 - `GET /api/show-automator/state`
 - `POST /api/show-automator/plan`
 
-#### Schedule, DJs, weather, plugins, indexing, audits
+#### Schedule, DJs, weather, plugins, and indexing
 - `GET /api/schedule`
 - `GET /api/djs`
 - `GET /api/weather/tempest`
@@ -183,11 +183,6 @@ On first boot RAMS will:
 - `GET /api/plugins/audio/embed/<item_id>`
 - `GET /api/library/index/status`
 - `POST /api/library/index/refresh`
-- `POST /api/audit/start`
-- `GET /api/audit/status/<job_id>`
-- `GET /api/audit/runs`
-- `GET /api/audit/runs/<run_id>`
-- `GET|DELETE /api/audit/runs/<run_id>/results`
 
 #### RadioDJ integration endpoints
 - `GET /api/radiodj/psas`
@@ -258,12 +253,6 @@ Examples:
 2. Go to **Show Add** page and create show metadata/time.
 3. Open schedule grid (`/schedule/grid`) and iCal feed (`/schedule/ical`) to verify publication.
 4. Optionally validate via `GET /api/schedule`.
-
-### Tutorial B — Run an audit job and fetch results
-1. Open **Audit** page (`/audit`) and start a job.
-2. Poll `GET /api/audit/status/<job_id>` until complete.
-3. Review list at `GET /api/audit/runs`.
-4. Fetch details/results using run-specific endpoints.
 
 ### Tutorial C — Music metadata cleanup at scale
 1. Search via `/music/search` or `GET /api/music/search`.
@@ -373,7 +362,7 @@ Examples:
 - User approvals, permissions, scheduling, settings export/import.
 
 ### Week 3 (technical maintainers)
-- API workflows, plugin management, audits, troubleshooting drills.
+- API workflows, plugin management, troubleshooting drills.
 
 ### Week 4 (hardening)
 - Document local SOPs, backup/restore drill, access review, incident simulations.

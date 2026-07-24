@@ -80,7 +80,6 @@ from app.services.library.dj_library import (
     match_text_playlist,
     match_youtube_playlist,
 )
-from app.services.audit import audit_recordings, audit_explicit_music
 from app.services.log_export import build_docx, read_log_csv, recording_csv_path
 from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
@@ -1787,31 +1786,6 @@ def music_cue_page():
         return redirect(url_for("main.music_cue_page", path=path))
     needs_generation = bool(track and (not analysis_ready or not cue_ready))
     return render_template("music_cue.html", track=track, cue=cue, needs_generation=needs_generation)
-
-
-@main_bp.route("/audit", methods=["GET", "POST"])
-@permission_required({"audit:run"})
-def audit_page():
-    recordings_results = None
-    explicit_results = None
-    if request.method == "POST":
-        action = request.form.get("action")
-        if action == "recordings":
-            folder = request.form.get("recordings_folder") or None
-            recordings_results = audit_recordings(folder)
-        if action == "explicit":
-            rate = float(request.form.get("rate_limit") or current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"])
-            limit = int(request.form.get("max_files") or current_app.config["AUDIT_MUSIC_MAX_FILES"])
-            lyrics_check = request.form.get("lyrics_check") == "1"
-            explicit_results = audit_explicit_music(rate_limit_s=rate, max_files=limit, lyrics_check=lyrics_check)
-    return render_template(
-        "audit.html",
-        recordings_results=recordings_results,
-        explicit_results=explicit_results,
-        default_rate=current_app.config["AUDIT_ITUNES_RATE_LIMIT_SECONDS"],
-        default_limit=current_app.config["AUDIT_MUSIC_MAX_FILES"],
-        default_lyrics=current_app.config.get("AUDIT_LYRICS_CHECK_ENABLED", False),
-    )
 
 
 @main_bp.route("/production/live-reads", methods=["GET", "POST"])

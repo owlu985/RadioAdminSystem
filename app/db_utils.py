@@ -259,20 +259,6 @@ def ensure_schema(app, logger) -> None:
                 )
                 """
             ))
-        if "audit_run" not in insp.get_table_names():
-            conn.execute(text(
-                """
-                CREATE TABLE IF NOT EXISTS audit_run (
-                    id INTEGER PRIMARY KEY,
-                    action VARCHAR(32) NOT NULL,
-                    status VARCHAR(32) NOT NULL,
-                    params_json TEXT,
-                    results_json TEXT,
-                    created_at DATETIME NOT NULL,
-                    completed_at DATETIME
-                )
-                """
-            ))
         if "plugin" not in insp.get_table_names():
             conn.execute(text(
                 """

@@ -20,7 +20,6 @@ PERMISSION_GROUPS = [
             {"key": "schedule:edit", "label": "Edit schedule", "description": "Create or edit shows and runs."},
             {"key": "schedule:publish", "label": "Publish schedule", "description": "Publish changes to the live schedule grid/iCal."},
             {"key": "schedule:marathon", "label": "Manage marathons", "description": "Create/cancel marathon recorders."},
-            {"key": "audit:run", "label": "Run audits", "description": "Access audit tools and history."},
         ],
     ),
     (
@@ -28,7 +27,7 @@ PERMISSION_GROUPS = [
         [
             {"key": "music:view", "label": "View music library", "description": "Search and view music records."},
             {"key": "music:edit", "label": "Edit metadata", "description": "Edit tags, cues, and artwork."},
-            {"key": "music:analyze", "label": "Run analysis", "description": "Trigger audits, waveform/QA jobs."},
+            {"key": "music:analyze", "label": "Run analysis", "description": "Trigger waveform/QA jobs."},
         ],
     ),
     (

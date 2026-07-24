@@ -7,7 +7,7 @@
 - **Detection & Monitoring**: Stream probes with silence/automation/live classification, Icecast listener analytics with ignored IPs, alerts pipeline (simulated until enabled), job self-heal tracking, and dashboard status cards.
 - **Logging & Compliance**: Public DJ log submission with autosave and HTML/CSV/DOCX exports, PSA compliance endpoint, log manager/viewer, and ShowRun fallback creation.
 - **News & Content**: Flexible news types with upload/rotation scheduling, website content & podcast plugin (API exposed), API docs page, and plugin registry/loader for modular extensions.
-- **Music Library & Audits**: NAS search with metadata editing/cue editor, M4A/MP4 tag handling, cover-art harvesting, MusicBrainz enrichment, explicit/audit tooling, waveform/loudness analysis, saved searches, and duplicate/quality queues.
+- **Music Library**: NAS search with metadata editing/cue editor, M4A/MP4 tag handling, cover-art harvesting, MusicBrainz enrichment, waveform/loudness analysis, saved searches, and duplicate/quality queues.
 - **DJ Experience**: DJ status page (clock, weather, station status), absence workflow with approvals, DJ profiles (shows, absences, logs, discipline), disciplinary tracking, public schedule grid + iCal, and now/next APIs.
 - **Backups & Settings**: Settings export/import, JSON backups for DJs/shows/discipline, configurable bind host/port, alert/webhook/email settings, Tempest weather config, and station background/branding assets.
 
@@ -19,7 +19,6 @@
 
 - **Auth & Roles UX**
   - Surface role/permission badges in the navbar dropdown and on approval queues.
-  - Add audit log entries for user approvals/role changes, viewable in admin tools.
   - Provide clearer OAuth setup diagnostics page (tests callbacks, shows detected scopes/domains/guilds).
 
 - **Scheduling & Recording**
@@ -33,7 +32,7 @@
   - Visualize Icecast listener trends with selectable windows (e.g., last 1h/24h/7d) and annotate alert events on the chart.
 
 - **Logging & Compliance**
-  - Add inline editing for submitted logs (with audit trail) and bulk export presets.
+  - Add inline editing for submitted logs and bulk export presets.
   - Enable PSA compliance widgets per ShowRun and reminders on the DJ status screen when under target.
   - Provide log templates per show (common PSA/live-read items prefilled for DJs).
 
@@ -42,9 +41,9 @@
   - Schedule front-page content/podcast entries with future publish/expiry and preview mode.
   - Allow bulk upload of podcast embeds via CSV for faster ingest.
 
-- **Music Library & Audits**
+- **Music Library**
   - Cache waveform/peaks for faster cue editing and add keyboard shortcuts for cue point jumps.
-  - Add “fix-it” actions from audit queues (e.g., normalize loudness, embed cover art) with one-click apply.
+  - Add “fix-it” actions for quality queues (e.g., normalize loudness, embed cover art) with one-click apply.
   - Improve saved searches with sharing per role and quick-pick chips for common filters (missing art, explicit, low bitrate).
 
 - **DJ Experience & Absences**

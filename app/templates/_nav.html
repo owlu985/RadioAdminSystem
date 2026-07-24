@@ -56,7 +56,7 @@
             </ul>
           </li>
           {% endif %}
-          {% set ops_menu = can_view('news:view') or can_view('news:edit') or can_view('audit:run') or can_view('schedule:marathon') or can_view('plugins:manage') or can_view('settings:edit') or can_view('users:manage') %}
+          {% set ops_menu = can_view('news:view') or can_view('news:edit') or can_view('schedule:marathon') or can_view('plugins:manage') or can_view('settings:edit') or can_view('users:manage') %}
           {% if ops_menu %}
           <li class="nav-item dropdown">
             <a class="nav-link dropdown-toggle" href="#" role="button" data-bs-toggle="dropdown">Ops</a>
@@ -64,7 +64,6 @@
               <li><h6 class="dropdown-header">Broadcast</h6></li>
               {% if can_view('news:view') %}<li><a class="dropdown-item" href="{{ url_for('news.news_dashboard') }}">News Dashboard</a></li>{% endif %}
               {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('news.upload_news') }}">Upload News</a></li>{% endif %}
-              {% if can_view('audit:run') %}<li><a class="dropdown-item" href="{{ url_for('main.audit_page') }}">Audit</a></li>{% endif %}
               {% if can_view('schedule:marathon') %}<li><a class="dropdown-item" href="{{ url_for('main.marathon_page') }}">Marathon Recorder</a></li>{% endif %}
               {% if can_view('news:edit') %}<li><a class="dropdown-item" href="{{ url_for('main.live_read_cards') }}">Live Read Cards</a></li>{% endif %}
               <li><hr class="dropdown-divider"></li>
