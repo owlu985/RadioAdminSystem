@@ -47,6 +47,20 @@
             <label class="form-check-label" for="isPublic">Show on public DJ API</label>
             <div class="form-text">Uncheck to hide this DJ from public API consumers (including the website).</div>
         </div>
+        <div class="mb-3 form-check">
+            <input class="form-check-input" type="checkbox" id="isArchived" name="is_archived" {% if dj and dj.is_archived %}checked{% endif %}>
+            <label class="form-check-label" for="isArchived">Archive DJ</label>
+            <div class="form-text">Archived DJs are hidden from DJ lists, dropdowns, and the public DJ API by default.</div>
+        </div>
+        <div class="mb-3">
+            <label class="form-label">Periods (hold Ctrl/Cmd to multi-select)</label>
+            <select class="form-select" name="periods" multiple size="{{ [periods|length, 3]|max }}">
+                {% for period in periods %}
+                    <option value="{{ period }}" {% if dj and period in dj.period_list %}selected{% endif %}>{{ period }}</option>
+                {% endfor %}
+            </select>
+            <div class="form-text">Uses the same periods configured for show recordings.</div>
+        </div>
         <div class="mb-3">
             <label class="form-label">Shows (hold Ctrl/Cmd to multi-select)</label>
             <select class="form-select" name="show_ids" multiple size="6">
@@ -66,10 +80,10 @@
         <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
             <div>
                 <h5 class="text-danger mb-1">Danger Zone</h5>
-                <p class="text-muted mb-0">Remove this DJ from the system permanently.</p>
+                <p class="text-muted mb-0">Delete this DJ from the database entirely.</p>
             </div>
-            <form method="post" action="{{ url_for('main.delete_dj', dj_id=dj.id) }}" onsubmit="return confirm('Remove {{ dj.first_name }} {{ dj.last_name }} from the system? This cannot be undone.');">
-                <button type="submit" class="btn btn-outline-danger">Remove DJ</button>
+            <form method="post" action="{{ url_for('main.delete_dj', dj_id=dj.id) }}" onsubmit="return confirm('Delete {{ dj.first_name }} {{ dj.last_name }} from the database entirely? This cannot be undone.');">
+                <button type="submit" class="btn btn-outline-danger">Delete DJ</button>
             </form>
         </div>
     {% endif %}

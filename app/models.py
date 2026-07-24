@@ -44,6 +44,18 @@ class DJ(db.Model):
     description = db.Column(db.Text, nullable=True)
     photo_url = db.Column(db.String(255), nullable=True)
     is_public = db.Column(db.Boolean, default=True, nullable=False)
+    is_archived = db.Column(db.Boolean, default=False, nullable=False)
+    periods = db.Column(db.Text, nullable=True)
+
+    @property
+    def period_list(self) -> list[str]:
+        if not self.periods:
+            return []
+        return [period.strip() for period in self.periods.split("\n") if period.strip()]
+
+    @period_list.setter
+    def period_list(self, values):
+        self.periods = "\n".join(dict.fromkeys(value.strip() for value in values if value and value.strip())) or None
 
     shows = db.relationship("Show", secondary=show_dj, back_populates="djs")
 
