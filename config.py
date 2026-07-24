@@ -67,6 +67,12 @@ class Config:
     CUSTOM_ROLES = []
     OAUTH_ONLY = False
 
+    # Discipline workflow
+    DISCIPLINE_CONTACT_EMAIL = ""
+    DISCIPLINE_APPROVAL_REQUIRED_TYPES = ["probation", "suspension", "removal"]
+    DISCIPLINE_CUSTOM_REQUIRES_APPROVAL = False
+    DISCIPLINE_WARNING_REQUIRES_APPROVAL = False
+
     # Alerts
     ALERTS_ENABLED = False
     ALERTS_DRY_RUN = True

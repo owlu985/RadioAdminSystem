@@ -48,7 +48,12 @@ PERMISSION_GROUPS = [
         "DJ & Ops",
         [
             {"key": "dj:manage", "label": "Manage DJs", "description": "Edit DJ profiles and assignments."},
-            {"key": "dj:discipline", "label": "Disciplinary records", "description": "Add or modify DJ disciplinary entries."},
+            {"key": "dj:discipline", "label": "Disciplinary records", "description": "Legacy broad access for disciplinary entries."},
+            {"key": "dj:discipline:view", "label": "View disciplinary cases", "description": "View DJ disciplinary cases."},
+            {"key": "dj:discipline:create", "label": "Create disciplinary cases", "description": "Draft or submit DJ disciplinary cases."},
+            {"key": "dj:discipline:edit", "label": "Edit disciplinary cases", "description": "Edit unlocked DJ disciplinary cases."},
+            {"key": "dj:discipline:void", "label": "Void disciplinary cases", "description": "Void disciplinary cases without deleting history."},
+            {"key": "dj:discipline:approve", "label": "Approve disciplinary cases", "description": "Approve/reject elevated discipline cases and edit locked cases. Must be assigned manually."},
             {"key": "dj:absence", "label": "Manage absences", "description": "Approve/reject DJ absences."},
         ],
     ),

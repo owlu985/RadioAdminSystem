@@ -81,6 +81,7 @@
                 <button class="list-group-item list-group-item-action" data-target="#tab-stream" type="button">Stream & Alerts</button>
                 <button class="list-group-item list-group-item-action" data-target="#tab-auth" type="button">Access & OAuth</button>
                 <button class="list-group-item list-group-item-action" data-target="#tab-library" type="button">Library & News</button>
+                <button class="list-group-item list-group-item-action" data-target="#tab-discipline" type="button">Discipline</button>
                 <button class="list-group-item list-group-item-action" data-target="#tab-backup" type="button">Backups & Limits</button>
             </div>
         </div>
@@ -454,6 +455,27 @@
                             </div>
                             <label class="form-label">Custom Roles (comma-separated)</label>
                             <input type="text" name="custom_roles" class="form-control" value="{{ custom_roles }}" placeholder="producer,engineering">
+                        </div>
+                    </div>
+                </div>
+
+                <div id="tab-discipline" class="tab-pane">
+                    <div class="card mb-3">
+                        <div class="card-header">Discipline Workflow</div>
+                        <div class="card-body">
+                            <div class="mb-3">
+                                <label for="discipline_contact_email" class="form-label">Discipline contact email</label>
+                                <input type="email" name="discipline_contact_email" id="discipline_contact_email" class="form-control" value="{{ discipline_contact_email }}" placeholder="discipline@example.edu">
+                                <div class="form-text">Used in copy/paste discipline email templates. RAMS does not send these emails automatically.</div>
+                            </div>
+                            <label class="form-label d-block">Punishments requiring approval</label>
+                            {% for ptype, label in [('warning','Warning'), ('probation','Probation'), ('suspension','Suspension'), ('removal','Removal'), ('custom','Custom Action')] %}
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" name="discipline_requires_{{ ptype }}" id="discipline_requires_{{ ptype }}" {% if ptype in discipline_approval_required_types %}checked{% endif %}>
+                                    <label class="form-check-label" for="discipline_requires_{{ ptype }}">{{ label }}</label>
+                                </div>
+                            {% endfor %}
+                            <div class="form-text mt-2">Case number prefixes are fixed: I, W, P, S, R, and C.</div>
                         </div>
                     </div>
                 </div>

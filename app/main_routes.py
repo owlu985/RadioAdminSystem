@@ -39,6 +39,8 @@ from .models import (
     DJAbsence,
     SavedSearch,
     DJDisciplinary,
+    DJDisciplinaryAudit,
+    DJDisciplinaryLink,
     DJ,
     LiveReadCard,
     ArchivistEntry,
@@ -52,7 +54,7 @@ from .models import (
     MusicAnalysis,
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
-from sqlalchemy import case, func, tuple_
+from sqlalchemy import case, func, tuple_, or_
 from sqlalchemy.orm import load_only, selectinload
 from .logger import init_logger
 from app.auth_utils import (
@@ -908,57 +910,231 @@ def dj_profile(dj_id: int):
         )
 
 
+DISCIPLINE_PUNISHMENTS = {
+    "informal": {"label": "Informal / Information", "prefix": "I"},
+    "warning": {"label": "Warning", "prefix": "W"},
+    "probation": {"label": "Probation", "prefix": "P"},
+    "suspension": {"label": "Suspension", "prefix": "S"},
+    "removal": {"label": "Removal", "prefix": "R"},
+    "custom": {"label": "Custom Action", "prefix": "C"},
+}
+DISCIPLINE_SEVERITIES = ["info", "low", "moderate", "serious", "critical"]
+
+
+def _discipline_actor():
+        return session.get("display_name") or session.get("user_email") or session.get("username") or "system"
+
+
+def _has_discipline_approval_permission():
+        return "dj:discipline:approve" in set(session.get("permissions") or [])
+
+
+def _can_discipline(permission):
+        perms = effective_permissions()
+        return "*" in perms or "dj:discipline" in perms or permission in perms
+
+
+def _parse_date_field(name):
+        value = (request.form.get(name) or "").strip()
+        if not value:
+                return None
+        try:
+                return datetime.strptime(value, "%Y-%m-%d")
+        except ValueError:
+                return None
+
+
+def _discipline_requires_approval(punishment_type):
+        required = set(current_app.config.get("DISCIPLINE_APPROVAL_REQUIRED_TYPES", ["probation", "suspension", "removal"]) or [])
+        if current_app.config.get("DISCIPLINE_CUSTOM_REQUIRES_APPROVAL", False):
+                required.add("custom")
+        return punishment_type in required
+
+
+def _next_discipline_case_number(punishment_type):
+        prefix = DISCIPLINE_PUNISHMENTS.get(punishment_type, DISCIPLINE_PUNISHMENTS["custom"])["prefix"]
+        existing = DJDisciplinary.query.filter(DJDisciplinary.case_number.like(f"{prefix}%")).all()
+        max_num = 0
+        for rec in existing:
+                suffix = (rec.case_number or "")[len(prefix):]
+                if suffix.isdigit():
+                        max_num = max(max_num, int(suffix))
+        return f"{prefix}{max_num + 1}"
+
+
+def _audit_discipline(rec, event_type, message=None):
+        db.session.add(DJDisciplinaryAudit(record=rec, event_type=event_type, actor=_discipline_actor(), message=message))
+
+
+def _sync_discipline_links(rec):
+        DJDisciplinaryLink.query.filter_by(record_id=rec.id).delete(synchronize_session=False)
+        show_id = request.form.get("linked_show_id", type=int)
+        log_id = request.form.get("linked_log_id", type=int)
+        manual = (request.form.get("manual_reference") or "").strip()
+        if show_id:
+                show = Show.query.get(show_id)
+                db.session.add(DJDisciplinaryLink(record=rec, link_type="show", linked_id=show_id, label=show.show_name if show else f"Show #{show_id}"))
+        if log_id:
+                log = LogSheet.query.get(log_id)
+                label = f"Log #{log_id}"
+                if log:
+                        label = f"{log.show_name} - {log.show_date}"
+                db.session.add(DJDisciplinaryLink(record=rec, link_type="log_sheet", linked_id=log_id, label=label))
+        if manual:
+                db.session.add(DJDisciplinaryLink(record=rec, link_type="manual_reference", label=manual))
+
+
+def _apply_discipline_form(rec, creating=False):
+        punishment_type = request.form.get("punishment_type") or "informal"
+        if punishment_type not in DISCIPLINE_PUNISHMENTS:
+                punishment_type = "custom"
+        effective_at = _parse_date_field("effective_at")
+        duration_days = request.form.get("duration_days", type=int)
+        expires_at = _parse_date_field("expires_at")
+        if duration_days and effective_at and not expires_at and punishment_type in {"probation", "suspension"}:
+                expires_at = effective_at + timedelta(days=duration_days)
+        rec.dj_id = request.form.get("dj_id", type=int) or rec.dj_id
+        rec.punishment_type = punishment_type
+        rec.custom_punishment = (request.form.get("custom_punishment") or "").strip() or None
+        rec.severity = request.form.get("severity") or None
+        rec.notes = request.form.get("notes") or None
+        rec.action_taken = request.form.get("action_taken") or None
+        rec.effective_at = effective_at
+        rec.duration_days = duration_days
+        rec.expires_at = expires_at
+        rec.resolved = bool(request.form.get("resolved"))
+        if rec.resolved:
+                rec.case_status = "resolved"
+        elif rec.case_status in {None, "resolved"}:
+                rec.case_status = "active"
+        if creating and not rec.case_number:
+                rec.case_number = _next_discipline_case_number(punishment_type)
+        if _discipline_requires_approval(punishment_type):
+                if _has_discipline_approval_permission():
+                        rec.approval_status = "approved"
+                        rec.approved_by = _discipline_actor()
+                        rec.approved_at = datetime.utcnow()
+                        rec.case_status = "active"
+                else:
+                        rec.approval_status = "pending"
+                        rec.case_status = "draft"
+        else:
+                rec.approval_status = "not_required"
+
+
 @main_bp.route("/djs/discipline", methods=["GET", "POST"])
-@permission_required({"dj:discipline"})
+@permission_required({"dj:discipline", "dj:discipline:view"})
 def manage_dj_discipline():
         djs = DJ.query.filter(DJ.is_archived.is_(False)).order_by(DJ.last_name, DJ.first_name).all()
+        shows = Show.query.order_by(Show.show_name).all()
+        logs = LogSheet.query.order_by(LogSheet.created_at.desc()).limit(100).all()
+        can_approve = _has_discipline_approval_permission()
+        can_create = _can_discipline("dj:discipline:create")
+        can_edit = _can_discipline("dj:discipline:edit")
+        can_void = _can_discipline("dj:discipline:void")
         if request.method == "POST":
                 action = request.form.get("action", "create")
-                if action == "delete":
-                        rec_id = request.form.get("record_id", type=int)
-                        if rec_id:
-                                rec = DJDisciplinary.query.get(rec_id)
-                                if rec:
-                                        db.session.delete(rec)
-                                        db.session.commit()
-                                        flash("Disciplinary record removed.", "success")
-                        return redirect(url_for("main.manage_dj_discipline"))
-
                 rec_id = request.form.get("record_id", type=int)
-                dj_id = request.form.get("dj_id", type=int)
-                severity = request.form.get("severity") or None
-                notes = request.form.get("notes") or None
-                action_taken = request.form.get("action_taken") or None
-                resolved = bool(request.form.get("resolved"))
-
-                if action == "update" and rec_id:
-                        rec = DJDisciplinary.query.get(rec_id)
-                        if rec:
-                                rec.dj_id = dj_id or rec.dj_id
-                                rec.severity = severity
-                                rec.notes = notes
-                                rec.action_taken = action_taken
-                                rec.resolved = resolved
+                rec = DJDisciplinary.query.get(rec_id) if rec_id else None
+                if action == "create":
+                        if not can_create:
+                                abort(403)
+                        dj_id = request.form.get("dj_id", type=int)
+                        if dj_id:
+                                rec = DJDisciplinary(dj_id=dj_id, created_by=_discipline_actor())
+                                _apply_discipline_form(rec, creating=True)
+                                db.session.add(rec)
+                                db.session.flush()
+                                _sync_discipline_links(rec)
+                                _audit_discipline(rec, "created", f"Case {rec.case_number} created.")
                                 db.session.commit()
-                                flash("Disciplinary record updated.", "success")
+                                flash("Discipline case saved." if rec.approval_status != "pending" else "Discipline case submitted for approval.", "success")
                         return redirect(url_for("main.manage_dj_discipline"))
-
-                if dj_id:
-                        rec = DJDisciplinary(
-                                dj_id=dj_id,
-                                severity=severity,
-                                notes=notes,
-                                action_taken=action_taken,
-                                resolved=resolved,
-                                created_by=session.get("display_name") or session.get("user_email"),
-                        )
-                        db.session.add(rec)
+                if not rec:
+                        return redirect(url_for("main.manage_dj_discipline"))
+                locked = rec.approval_status == "approved" and not can_approve
+                if action == "update":
+                        if locked or not can_edit:
+                                abort(403)
+                        _apply_discipline_form(rec)
+                        _sync_discipline_links(rec)
+                        _audit_discipline(rec, "updated", f"Case {rec.case_number or rec.id} updated.")
                         db.session.commit()
-                        flash("Disciplinary record saved.", "success")
+                        flash("Discipline case updated.", "success")
+                elif action in {"approve", "reject"}:
+                        if not can_approve:
+                                abort(403)
+                        rec.approval_status = "approved" if action == "approve" else "rejected"
+                        rec.case_status = "active" if action == "approve" else "draft"
+                        rec.approved_by = _discipline_actor() if action == "approve" else None
+                        rec.approved_at = datetime.utcnow() if action == "approve" else None
+                        rec.approval_notes = request.form.get("approval_notes") or rec.approval_notes
+                        _audit_discipline(rec, action, f"Case {rec.case_number or rec.id} {action}d.")
+                        db.session.commit()
+                        flash(f"Discipline case {action}d.", "success")
+                elif action == "void":
+                        if not can_void:
+                                abort(403)
+                        rec.voided = True
+                        rec.case_status = "voided"
+                        rec.voided_by = _discipline_actor()
+                        rec.voided_at = datetime.utcnow()
+                        rec.void_reason = request.form.get("void_reason") or None
+                        _audit_discipline(rec, "voided", rec.void_reason)
+                        db.session.commit()
+                        flash("Discipline case voided.", "success")
+                elif action == "appeal":
+                        if locked or not can_edit:
+                                abort(403)
+                        rec.case_status = "appealed"
+                        rec.appealed_by = _discipline_actor()
+                        rec.appealed_at = datetime.utcnow()
+                        rec.appeal_notes = request.form.get("appeal_notes") or None
+                        _audit_discipline(rec, "appealed", rec.appeal_notes)
+                        db.session.commit()
+                        flash("Discipline case marked as appealed; punishment canceled.", "success")
                 return redirect(url_for("main.manage_dj_discipline"))
 
-        records = DJDisciplinary.query.order_by(DJDisciplinary.issued_at.desc()).all()
-        return render_template("dj_discipline.html", djs=djs, records=records)
+        include_voided = request.args.get("include_voided") == "1"
+        query = DJDisciplinary.query.options(selectinload(DJDisciplinary.dj), selectinload(DJDisciplinary.case_links), selectinload(DJDisciplinary.audit_entries))
+        if not include_voided:
+                query = query.filter((DJDisciplinary.voided.is_(False)) | (DJDisciplinary.voided.is_(None)))
+        search = (request.args.get("q") or "").strip()
+        if search:
+                like = f"%{search}%"
+                query = query.join(DJ).filter(or_(DJDisciplinary.case_number.ilike(like), DJ.first_name.ilike(like), DJ.last_name.ilike(like), DJDisciplinary.notes.ilike(like), DJDisciplinary.action_taken.ilike(like)))
+        punishment_filter = request.args.get("punishment_type") or ""
+        status_filter = request.args.get("case_status") or ""
+        approval_filter = request.args.get("approval_status") or ""
+        if punishment_filter:
+                query = query.filter(DJDisciplinary.punishment_type == punishment_filter)
+        if status_filter:
+                query = query.filter(DJDisciplinary.case_status == status_filter)
+        if approval_filter:
+                query = query.filter(DJDisciplinary.approval_status == approval_filter)
+        records = query.order_by(DJDisciplinary.issued_at.desc()).all()
+        pending_records = []
+        pending_count = DJDisciplinary.query.filter_by(approval_status="pending", voided=False).count()
+        if can_approve:
+                pending_records = DJDisciplinary.query.options(selectinload(DJDisciplinary.dj)).filter_by(approval_status="pending", voided=False).order_by(DJDisciplinary.issued_at.asc()).all()
+        return render_template(
+                "dj_discipline.html",
+                djs=djs,
+                shows=shows,
+                logs=logs,
+                records=records,
+                pending_records=pending_records,
+                pending_count=pending_count,
+                can_approve=can_approve,
+                can_create=can_create,
+                can_edit=can_edit,
+                can_void=can_void,
+                punishments=DISCIPLINE_PUNISHMENTS,
+                severities=DISCIPLINE_SEVERITIES,
+                search=search,
+                filters={"punishment_type": punishment_filter, "case_status": status_filter, "approval_status": approval_filter, "include_voided": include_voided},
+                discipline_contact_email=current_app.config.get("DISCIPLINE_CONTACT_EMAIL", ""),
+        )
 
 
 @main_bp.route('/users', methods=['GET', 'POST'])
@@ -2196,6 +2372,10 @@ def settings():
                 'DISCORD_ALLOWED_GUILD_ID': _clean_optional(request.form.get('discord_allowed_guild_id', '').strip()),
                 'OAUTH_ONLY': 'oauth_only' in request.form,
                 'CUSTOM_ROLES': [r.strip() for r in request.form.get('custom_roles', '').split(',') if r.strip()],
+                'DISCIPLINE_CONTACT_EMAIL': _clean_optional(request.form.get('discipline_contact_email', '').strip()),
+                'DISCIPLINE_APPROVAL_REQUIRED_TYPES': [ptype for ptype in ["probation", "suspension", "removal", "warning", "custom"] if f"discipline_requires_{ptype}" in request.form],
+                'DISCIPLINE_CUSTOM_REQUIRES_APPROVAL': 'discipline_requires_custom' in request.form,
+                'DISCIPLINE_WARNING_REQUIRES_APPROVAL': 'discipline_requires_warning' in request.form,
                 'SETTINGS_BACKUP_INTERVAL_HOURS': int(request.form.get('settings_backup_interval_hours') or current_app.config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12)),
                 'SETTINGS_BACKUP_RETENTION': int(request.form.get('settings_backup_retention') or current_app.config.get('SETTINGS_BACKUP_RETENTION', 10)),
                 'DATA_BACKUP_DIRNAME': request.form.get('data_backup_dirname', current_app.config.get('DATA_BACKUP_DIRNAME', 'data_backups')).strip(),

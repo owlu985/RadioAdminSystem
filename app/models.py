@@ -66,13 +66,57 @@ class DJDisciplinary(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     dj_id = db.Column(db.Integer, db.ForeignKey("dj.id"), nullable=False)
     issued_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    case_number = db.Column(db.String(32), nullable=True, index=True)
+    punishment_type = db.Column(db.String(32), nullable=True)
+    custom_punishment = db.Column(db.String(255), nullable=True)
     severity = db.Column(db.String(32), nullable=True)
     notes = db.Column(db.Text, nullable=True)
     action_taken = db.Column(db.Text, nullable=True)
+    effective_at = db.Column(db.DateTime, nullable=True)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    duration_days = db.Column(db.Integer, nullable=True)
+    approval_status = db.Column(db.String(32), default="not_required", nullable=False)
+    case_status = db.Column(db.String(32), default="active", nullable=False)
+    approved_by = db.Column(db.String(255), nullable=True)
+    approved_at = db.Column(db.DateTime, nullable=True)
+    approval_notes = db.Column(db.Text, nullable=True)
     resolved = db.Column(db.Boolean, default=False, nullable=False)
     created_by = db.Column(db.String(255), nullable=True)
+    voided = db.Column(db.Boolean, default=False, nullable=False)
+    voided_by = db.Column(db.String(255), nullable=True)
+    voided_at = db.Column(db.DateTime, nullable=True)
+    void_reason = db.Column(db.Text, nullable=True)
+    appealed_by = db.Column(db.String(255), nullable=True)
+    appealed_at = db.Column(db.DateTime, nullable=True)
+    appeal_notes = db.Column(db.Text, nullable=True)
 
     dj = db.relationship("DJ", backref="disciplinary_records")
+
+
+class DJDisciplinaryAudit(db.Model):
+    __tablename__ = "dj_disciplinary_audit"
+
+    id = db.Column(db.Integer, primary_key=True)
+    record_id = db.Column(db.Integer, db.ForeignKey("dj_disciplinary.id"), nullable=False)
+    event_type = db.Column(db.String(64), nullable=False)
+    actor = db.Column(db.String(255), nullable=True)
+    message = db.Column(db.Text, nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    record = db.relationship("DJDisciplinary", backref="audit_entries")
+
+
+class DJDisciplinaryLink(db.Model):
+    __tablename__ = "dj_disciplinary_link"
+
+    id = db.Column(db.Integer, primary_key=True)
+    record_id = db.Column(db.Integer, db.ForeignKey("dj_disciplinary.id"), nullable=False)
+    link_type = db.Column(db.String(32), nullable=False)
+    linked_id = db.Column(db.Integer, nullable=True)
+    label = db.Column(db.String(255), nullable=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    record = db.relationship("DJDisciplinary", backref="case_links")
 
 
 class LogSheet(db.Model):
