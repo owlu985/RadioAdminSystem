@@ -9,6 +9,7 @@ from app.services.detection import probe_and_record
 from app.services.recording_periods import recordings_period_root
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
+from app.services.log_export import recording_csv_path, write_recording_metadata
 from app.services.barix import restart_instreamer
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
@@ -270,6 +271,21 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             suffix = "" if segment == 0 else f"_{segment}"
             output_file = f"{base_output_file}{suffix}.mp3"
             started_at = datetime.utcnow()
+            sidecar_start = started_at
+            sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
+            try:
+                write_recording_metadata(output_file, {
+                    "schema_version": 1,
+                    "show_name": show_name or label or "Unscheduled Show",
+                    "dj": ", ".join(hosts or []),
+                    "show_date": recorded_at.date().isoformat(),
+                    "show_start": sidecar_start.isoformat(),
+                    "show_end": sidecar_end.isoformat(),
+                    "log_file": os.path.basename(recording_csv_path(output_file)),
+                    "updated_at": datetime.utcnow().isoformat(),
+                })
+            except OSError as exc:
+                logger.warning("Unable to write recording metadata sidecar for %s: %s", output_file, exc)
             try:
                 process = subprocess.Popen([
                     'ffmpeg', '-y', '-i', stream_url, '-t', str(remaining_duration), '-acodec', 'copy', output_file,

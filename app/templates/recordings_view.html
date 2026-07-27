@@ -25,6 +25,32 @@
         </div>
     </div>
 
+    <div class="row g-3 mb-4">
+        <div class="col-lg-8">
+            <div class="alert {{ 'alert-success' if compliance.compliant else 'alert-danger' }} mb-0 h-100">
+                <strong>PSA Compliance:</strong>
+                {% if not compliance.has_log %}
+                    Flagged — no log was submitted for this recording.
+                {% elif not compliance.hour_counts %}
+                    Flagged — this log could not be matched to a show airing.
+                {% else %}
+                    {{ 'Compliant' if compliance.compliant else 'Flagged' }} —
+                    {% for count in compliance.hour_counts %}Hour {{ loop.index }}: {{ count }} PSA/live read{{ '' if count == 1 else 's' }}{% if not loop.last %}; {% endif %}{% endfor %}.
+                    At least two are required in each show hour; live reads count toward the total.
+                {% endif %}
+            </div>
+        </div>
+        <div class="col-lg-4">
+            <div class="card h-100">
+                <div class="card-body">
+                    <div class="text-muted small text-uppercase">Peak listeners</div>
+                    <div class="display-6">{{ peak_listeners if peak_listeners is not none else 'N/A' }}</div>
+                    <div class="small text-muted">Highest analytics sample during this show.</div>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <div class="card mb-4">
         <div class="card-header">Player</div>
         <div class="card-body">

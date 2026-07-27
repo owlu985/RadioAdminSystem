@@ -123,3 +123,17 @@ def load_listener_history(hours: Optional[int] = None) -> List[Dict[str, Any]]:
                 continue
             results.append(parsed)
     return results
+
+
+def peak_listeners_for_show(show_name: str, start: datetime, end: datetime) -> Optional[int]:
+    """Return the highest recorded listener sample in a show window."""
+    peaks: List[int] = []
+    for sample in load_listener_history():
+        try:
+            ts = datetime.fromisoformat(sample.get("ts", ""))
+            listeners = int(sample.get("listeners"))
+        except (TypeError, ValueError):
+            continue
+        if start <= ts <= end and (not sample.get("show") or sample.get("show") == show_name):
+            peaks.append(listeners)
+    return max(peaks) if peaks else None

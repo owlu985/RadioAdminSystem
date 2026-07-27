@@ -82,7 +82,7 @@ from app.services.library.dj_library import (
     match_text_playlist,
     match_youtube_playlist,
 )
-from app.services.log_export import build_docx, read_log_csv, recording_csv_path
+from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path
 from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
     UNASSIGNED_PERIOD_LABEL,
@@ -92,7 +92,8 @@ from app.services.recording_periods import (
     period_folder_name,
     recordings_base_root,
 )
-from app.services.health import get_health_snapshot
+from app.services.health import get_health_snapshot, reset_health_counts
+from app.services.listener_analytics import peak_listeners_for_show
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
 from app.services.archivist_db import import_archivist_csv, search_archivist
@@ -665,12 +666,52 @@ def recordings_view(token: str):
     csv_path = recording_csv_path(full)
     entries = read_log_csv(csv_path) if os.path.isfile(csv_path) else []
     recording_name = os.path.basename(full)
+    metadata = read_recording_metadata(full)
+    window_start = window_end = None
+    try:
+        window_start = datetime.fromisoformat(metadata["show_start"])
+        window_end = datetime.fromisoformat(metadata["show_end"])
+    except (KeyError, TypeError, ValueError):
+        pass
+    hour_counts = []
+    peak_listeners = None
+    if window_start and window_end:
+        hours = max(1, math.ceil((window_end - window_start).total_seconds() / 3600))
+        hour_counts = [0] * hours
+        for entry in entries:
+            if entry.entry_type not in {"psa", "live_read"} or not entry.time:
+                continue
+            try:
+                occurred = datetime.combine(window_start.date(), datetime.strptime(entry.time, "%H:%M").time())
+                if occurred < window_start:
+                    occurred += timedelta(days=1)
+                index = int((occurred - window_start).total_seconds() // 3600)
+                if 0 <= index < hours:
+                    hour_counts[index] += 1
+            except ValueError:
+                continue
+        peak_listeners = peak_listeners_for_show(metadata.get("show_name", ""), window_start, window_end)
+    compliance = {
+        "has_log": bool(entries),
+        "hour_counts": hour_counts,
+        "compliant": bool(entries) and bool(hour_counts) and all(count >= 2 for count in hour_counts),
+    }
     return render_template(
         "recordings_view.html",
         entries=entries,
         recording_name=recording_name,
         token=token,
+        compliance=compliance,
+        peak_listeners=peak_listeners,
     )
+
+
+@main_bp.post('/settings/health/reset')
+@permission_required({"settings:edit"})
+def reset_health_counters():
+    count = reset_health_counts()
+    flash(f"Reset self-heal and job-health counts for {count} jobs.", "success")
+    return redirect(url_for("main.settings"))
 
 
 @main_bp.route("/recordings/logs/view/<path:token>")

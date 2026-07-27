@@ -4,7 +4,9 @@ from dataclasses import dataclass
 from datetime import date
 import csv
 import io
+import json
 import os
+import tempfile
 import zipfile
 from typing import Iterable
 
@@ -24,6 +26,42 @@ class LogCsvEntry:
 def recording_csv_path(recording_path: str) -> str:
     base, _ = os.path.splitext(recording_path)
     return f"{base}.csv"
+
+
+def recording_metadata_path(recording_path: str) -> str:
+    """Return the JSON sidecar path that shares the recording's basename."""
+    base, _ = os.path.splitext(recording_path)
+    return f"{base}.json"
+
+
+def write_recording_metadata(recording_path: str, payload: dict) -> str:
+    """Atomically persist recording/show metadata without adding database rows."""
+    path = recording_metadata_path(recording_path)
+    directory = os.path.dirname(path) or "."
+    os.makedirs(directory, exist_ok=True)
+    fd, temporary = tempfile.mkstemp(prefix=".rams-recording-", suffix=".json", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, path)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return path
+
+
+def read_recording_metadata(recording_path: str) -> dict:
+    path = recording_metadata_path(recording_path)
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            payload = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return {}
+    return payload if isinstance(payload, dict) else {}
 
 
 def _safe_folder_name(value: str) -> str:

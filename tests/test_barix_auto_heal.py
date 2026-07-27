@@ -73,3 +73,20 @@ def test_probe_at_restart_threshold_records_restart_result(monkeypatch):
             "Stream probe restart: request_failed: Barix restart request failed: timed out"
         )
         assert JobHealth.query.filter_by(name="barix_auto_heal").first().restart_count == 0
+
+
+def test_manual_restart_bypasses_disabled_auto_heal(monkeypatch):
+    from app.services import barix
+
+    app = Flask(__name__)
+    app.config.update(BARIX_AUTO_RESTART_ENABLED=False, BARIX_RESTART_URL="http://barix/restart")
+
+    class Response:
+        status_code = 200
+
+    monkeypatch.setattr(barix.requests, "get", lambda *_args, **_kwargs: Response())
+    with app.app_context():
+        result = barix.restart_instreamer(reason="manual_test", force=True)
+
+    assert result.accepted is True
+    assert result.status == "accepted"

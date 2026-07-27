@@ -55,7 +55,7 @@ def _redact_url(url: str) -> str:
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
 
-def restart_instreamer(reason: Optional[str] = None) -> BarixRestartResult:
+def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> BarixRestartResult:
     """Attempt to restart a Barix InStreamer via its HTTP API.
 
     Supports either a direct restart URL or IP/credentials based URL building.
@@ -64,7 +64,7 @@ def restart_instreamer(reason: Optional[str] = None) -> BarixRestartResult:
     """
 
     cfg = current_app.config
-    if not cfg.get("BARIX_AUTO_RESTART_ENABLED", False):
+    if not force and not cfg.get("BARIX_AUTO_RESTART_ENABLED", False):
         return BarixRestartResult(
             attempted=False,
             accepted=False,
@@ -74,7 +74,7 @@ def restart_instreamer(reason: Optional[str] = None) -> BarixRestartResult:
 
     window_minutes = int(cfg.get("BARIX_RESTART_WINDOW_MINUTES", 20))
     max_restarts = int(cfg.get("BARIX_MAX_RESTARTS_PER_WINDOW", 3))
-    if is_locked_out():
+    if not force and is_locked_out():
         locked_out_until = _state.get("locked_out_until")
         logger.error("Barix auto-heal lockout active until %s", locked_out_until)
         return BarixRestartResult(
@@ -87,7 +87,7 @@ def restart_instreamer(reason: Optional[str] = None) -> BarixRestartResult:
 
     cutoff = _utcnow() - timedelta(minutes=window_minutes)
     _state["restart_attempts"] = [t for t in _state["restart_attempts"] if t >= cutoff]
-    if len(_state["restart_attempts"]) >= max_restarts:
+    if not force and len(_state["restart_attempts"]) >= max_restarts:
         locked_out_until = _utcnow() + timedelta(minutes=window_minutes)
         _state["locked_out_until"] = locked_out_until
         logger.error("Barix Down, auto-heal locked out; manual intervention required.")

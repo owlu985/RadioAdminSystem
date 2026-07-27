@@ -62,6 +62,27 @@
             <h5 class="mb-0">Entries</h5>
         </div>
 
+        <div class="card border-primary mb-3">
+            <div class="card-body">
+                <div class="d-flex flex-wrap align-items-end gap-3">
+                    <div>
+                        <label class="form-label" for="psaCount">Automatic PSA / Must Play set</label>
+                        <select class="form-select" id="psaCount">
+                            <option value="2">2 spots</option><option value="3">3 spots</option><option value="4">4 spots</option>
+                        </select>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="includeStationId">
+                        <label class="form-check-label" for="includeStationId">Play a pre-recorded Station ID last</label>
+                    </div>
+                    <button class="btn btn-primary mb-1" type="button" id="playPsaSet">Select &amp; Play</button>
+                    <button class="btn btn-outline-danger mb-1 d-none" type="button" id="stopPsaSet">Stop</button>
+                </div>
+                <div id="psaPlayerStatus" class="small text-muted mt-2">Selects unplayed PSAs whenever possible and logs each item when playback starts.</div>
+                <audio id="automaticPsaAudio" class="w-100 mt-2 d-none" controls></audio>
+            </div>
+        </div>
+
         <div id="rows"></div>
 
         <div class="d-flex gap-2">
@@ -147,6 +168,10 @@
     const showRunInput = document.getElementById('show_run_id');
     const showRunSelect = document.getElementById('show_run_select');
     const clearShowRun = document.getElementById('clearShowRun');
+    const automaticPsaAudio = document.getElementById('automaticPsaAudio');
+    const psaPlayerStatus = document.getElementById('psaPlayerStatus');
+    let automaticQueue = [];
+    let automaticCurrent = null;
 
     function populateDJFields(id) {
         const dj = djs.find(d => d.id === Number(id));
@@ -288,6 +313,90 @@
             handleTypeDisable(row.querySelector(`[name="type_${idx}"]`));
         }
     }
+
+    function playedStorageKey() {
+        const block = showRunInput.value || `${showSelect.value}-${showDateInput.value}`;
+        return `rams_psas_played_${block}`;
+    }
+
+    function shuffled(items) {
+        return [...items].sort(() => Math.random() - 0.5);
+    }
+
+    function beginNextAutomaticItem() {
+        automaticCurrent = automaticQueue.shift();
+        if (!automaticCurrent) {
+            automaticPsaAudio.classList.add('d-none');
+            document.getElementById('stopPsaSet').classList.add('d-none');
+            psaPlayerStatus.textContent = 'PSA set completed and added to the log.';
+            return;
+        }
+        automaticPsaAudio.src = automaticCurrent.url;
+        automaticPsaAudio.classList.remove('d-none');
+        psaPlayerStatus.textContent = `Now playing: ${automaticCurrent.title || automaticCurrent.name}`;
+        automaticPsaAudio.play().catch(() => {
+            psaPlayerStatus.textContent = 'Playback was blocked. Press play on the audio control to continue.';
+        });
+    }
+
+    automaticPsaAudio.addEventListener('play', () => {
+        if (!automaticCurrent || automaticCurrent.logged) return;
+        automaticCurrent.logged = true;
+        addRow({
+            time: logTimeFormatter.format(new Date()),
+            type: automaticCurrent.kind === 'imaging' ? 'event' : 'psa',
+            title: automaticCurrent.title || automaticCurrent.name,
+            artist: '',
+        });
+        if (automaticCurrent.kind === 'psa') {
+            const played = JSON.parse(localStorage.getItem(playedStorageKey()) || '[]');
+            if (!played.includes(automaticCurrent.token)) played.push(automaticCurrent.token);
+            localStorage.setItem(playedStorageKey(), JSON.stringify(played));
+        }
+        persistRows();
+    });
+    automaticPsaAudio.addEventListener('ended', beginNextAutomaticItem);
+
+    document.getElementById('playPsaSet').addEventListener('click', async () => {
+        const button = document.getElementById('playPsaSet');
+        button.disabled = true;
+        psaPlayerStatus.textContent = 'Selecting spots…';
+        try {
+            const [psaResponse, imagingResponse] = await Promise.all([
+                fetch(window.ramsUrl('/api/psa/library?kind=psa&per_page=100')),
+                fetch(window.ramsUrl('/api/psa/library?kind=imaging&per_page=100')),
+            ]);
+            if (!psaResponse.ok || !imagingResponse.ok) throw new Error('library unavailable');
+            const psas = (await psaResponse.json()).items || [];
+            const imaging = (await imagingResponse.json()).items || [];
+            const played = new Set(JSON.parse(localStorage.getItem(playedStorageKey()) || '[]'));
+            const eligible = psas.filter(item => !item.expires_on || item.expires_on >= showDateInput.value);
+            const fresh = shuffled(eligible.filter(item => !played.has(item.token)));
+            const fallback = shuffled(eligible.filter(item => played.has(item.token)));
+            const count = Number(document.getElementById('psaCount').value);
+            automaticQueue = [...fresh, ...fallback].slice(0, count);
+            if (document.getElementById('includeStationId').checked) {
+                const stationIds = imaging.filter(item => /station\s*id|legal\s*id/i.test(`${item.category || ''} ${item.title || ''} ${item.name || ''}`));
+                if (stationIds.length) automaticQueue.push(shuffled(stationIds)[0]);
+            }
+            if (!automaticQueue.length) throw new Error('No playable PSA assets were found.');
+            document.getElementById('stopPsaSet').classList.remove('d-none');
+            beginNextAutomaticItem();
+        } catch (error) {
+            psaPlayerStatus.textContent = error.message || 'Unable to load the PSA library.';
+        } finally {
+            button.disabled = false;
+        }
+    });
+
+    document.getElementById('stopPsaSet').addEventListener('click', () => {
+        automaticQueue = [];
+        automaticPsaAudio.pause();
+        automaticPsaAudio.removeAttribute('src');
+        automaticPsaAudio.classList.add('d-none');
+        document.getElementById('stopPsaSet').classList.add('d-none');
+        psaPlayerStatus.textContent = 'Automatic PSA playback stopped.';
+    });
 
     document.getElementById('addRow').addEventListener('click', () => addRow());
     document.getElementById('clearRows').addEventListener('click', () => {

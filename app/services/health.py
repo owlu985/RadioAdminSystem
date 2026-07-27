@@ -45,3 +45,17 @@ def get_health_snapshot():
         }
         for job in jobs
     }
+
+
+def reset_health_counts() -> int:
+    """Clear accumulated self-heal counters while retaining job rows."""
+    jobs = JobHealth.query.all()
+    for job in jobs:
+        job.failure_count = 0
+        job.restart_count = 0
+        job.last_failure_at = None
+        job.last_restart_at = None
+        job.last_failure_reason = None
+    db.session.commit()
+    logger.warning("Reset self-heal/job-health counters for %s jobs", len(jobs))
+    return len(jobs)

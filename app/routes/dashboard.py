@@ -1,13 +1,15 @@
 import random
 from datetime import datetime, timedelta
 
-from flask import current_app, redirect, render_template, session, url_for
+from flask import current_app, flash, redirect, render_template, session, url_for
 
 from app.auth_utils import admin_required
 from app.logger import init_logger
 from app.main_routes import main_bp
 from app.models import DJAbsence, Show
 from app.services.health import get_health_snapshot
+from app.services.barix import restart_instreamer
+from app.services.health import record_failure
 from app.services.stream_monitor import fetch_icecast_listeners
 from app.utils import format_show_window, get_current_show, get_config_timezone_name
 
@@ -62,6 +64,19 @@ def dashboard():
         listeners=listeners,
         greeting=greeting,
     )
+
+
+@main_bp.post('/dashboard/barix/restart')
+@admin_required
+def manual_barix_restart():
+    result = restart_instreamer(reason="manual_dashboard_restart", force=True)
+    record_failure(
+        "barix_manual_restart",
+        reason=f"{result.status}: {result.message}",
+        restarted=result.accepted,
+    )
+    flash(result.message, "success" if result.accepted else "danger")
+    return redirect(url_for("main.dashboard"))
 
 
 @main_bp.route("/api-docs")
