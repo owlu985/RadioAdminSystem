@@ -327,6 +327,10 @@
                                         <input type="number" name="barix_max_restarts_per_window" id="barix_max_restarts_per_window" class="form-control" value="{{ barix_max_restarts_per_window }}" min="1">
                                     </div>
                                 </div>
+                                <div class="border-top mt-3 pt-3">
+                                    <button class="btn btn-sm btn-outline-danger" type="submit" form="resetHealthForm">Reset all failure counts</button>
+                                    <span class="small text-muted ms-2">Clears self-heal failures, restart totals, and last failure details.</span>
+                                </div>
                             </div>
                             <div class="border rounded p-3 bg-light">
                                 <h6>Alerts</h6>
@@ -608,6 +612,7 @@
     </div>
 </div>
 {% include '_footer.html' %}
+<form id="resetHealthForm" method="post" action="{{ url_for('main.reset_health_counters') }}" onsubmit="return confirm('Reset every self-heal and job-health count?');"></form>
 <script>
     const tabButtons = document.querySelectorAll('#settingsTab button');
     const panes = document.querySelectorAll('.tab-pane');

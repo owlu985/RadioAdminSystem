@@ -1,4 +1,4 @@
-from datetime import datetime, date, time
+from datetime import datetime, date, time, timedelta
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import DJ, Show, ShowRun
@@ -8,6 +8,7 @@ from app.services.log_export import (
     LogCsvEntry,
     build_recording_base_path,
     recording_csv_path,
+    write_recording_metadata,
     write_log_csv,
 )
 from app.services.recording_periods import recordings_period_root
@@ -129,6 +130,27 @@ def submit_log():
         recording_path = f"{recording_base}.mp3"
         csv_path = recording_csv_path(recording_path)
         write_log_csv(csv_path=csv_path, entries=csv_entries)
+        if selected_run:
+            window_start = selected_run.start_time
+            window_end = selected_run.end_time or (selected_run.start_time + timedelta(hours=2))
+        elif show_obj:
+            window_start = datetime.combine(show_date, show_obj.start_time)
+            window_end = datetime.combine(show_date, show_obj.end_time)
+            if window_end <= window_start:
+                window_end += timedelta(days=1)
+        else:
+            window_start = datetime.combine(show_date, time.min)
+            window_end = window_start + timedelta(hours=2)
+        write_recording_metadata(recording_path, {
+            "schema_version": 1,
+            "show_name": show_name,
+            "dj": f"{dj_first} {dj_last}".strip(),
+            "show_date": show_date.isoformat(),
+            "show_start": window_start.isoformat(),
+            "show_end": window_end.isoformat(),
+            "log_file": os.path.basename(csv_path),
+            "updated_at": datetime.utcnow().isoformat(),
+        })
         logger.info("Log CSV written to %s with %s entries.", csv_path, len(csv_entries))
         flash("Log submitted successfully!", "success")
         logger.info("Log CSV saved with %s entries", len(rows))

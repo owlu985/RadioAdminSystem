@@ -834,14 +834,35 @@ def run_logs(run_id: int):
 
 @api_bp.route("/psa/compliance/<int:run_id>")
 def psa_compliance(run_id: int):
-    psa_entries = LogEntry.query.filter_by(show_run_id=run_id, entry_type="psa").count()
-    live_reads = LogEntry.query.filter_by(show_run_id=run_id, entry_type="live_read").count()
+    run = ShowRun.query.get_or_404(run_id)
+    entries = LogEntry.query.filter(
+        LogEntry.show_run_id == run_id,
+        LogEntry.entry_type.in_(["psa", "live_read"]),
+    ).all()
+    psa_entries = sum(entry.entry_type == "psa" for entry in entries)
+    live_reads = sum(entry.entry_type == "live_read" for entry in entries)
     total = psa_entries + live_reads
+    end = run.end_time or (run.start_time + timedelta(hours=2))
+    hour_count = max(1, int((end - run.start_time + timedelta(hours=1) - timedelta(microseconds=1)).total_seconds() // 3600))
+    hourly = [0] * hour_count
+    for entry in entries:
+        occurred = entry.timestamp
+        if entry.entry_time:
+            occurred = datetime.combine(run.start_time.date(), entry.entry_time)
+            if occurred < run.start_time:
+                occurred += timedelta(days=1)
+        index = int((occurred - run.start_time).total_seconds() // 3600)
+        if 0 <= index < hour_count:
+            hourly[index] += 1
     return jsonify({
         "show_run_id": run_id,
         "psa_entries": psa_entries,
         "live_reads": live_reads,
-        "meets_requirement": total >= 2,
+        "total": total,
+        "hourly_counts": hourly,
+        "required_per_hour": 2,
+        "has_log": bool(entries),
+        "meets_requirement": bool(entries) and all(count >= 2 for count in hourly),
     })
 
 
