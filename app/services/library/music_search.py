@@ -3,6 +3,7 @@ import json
 import hashlib
 import time
 import re
+import tempfile
 from typing import List, Dict, Optional, Tuple
 from datetime import datetime
 from flask import current_app
@@ -60,8 +61,16 @@ def _load_music_index_file() -> Dict:
 def _write_music_index_file(payload: Dict) -> None:
     path = _music_index_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh)
+    fd, temp_path = tempfile.mkstemp(prefix="music-index-", suffix=".json", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def _library_editor_index_path() -> str:
@@ -82,8 +91,16 @@ def _load_library_editor_index_file() -> Dict:
 def _write_library_editor_index_file(payload: Dict) -> None:
     path = _library_editor_index_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)
-    with open(path, "w", encoding="utf-8") as fh:
-        json.dump(payload, fh)
+    fd, temp_path = tempfile.mkstemp(prefix="library-editor-index-", suffix=".json", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as fh:
+            json.dump(payload, fh)
+            fh.flush()
+            os.fsync(fh.fileno())
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def invalidate_library_editor_index_cache() -> None:

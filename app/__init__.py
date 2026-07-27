@@ -228,15 +228,17 @@ def create_app(config_class=Config):
     if _startup_enabled("RUN_CLEANUP_ON_STARTUP", True):
         try:
             with app.app_context():
-                past_shows = Show.query.filter(Show.end_date < datetime.now().date()).all()
-                initial_logger.info(f"Past shows: {past_shows}")
-                if not past_shows:
+                past_shows = Show.query.filter(Show.end_date < datetime.now().date())
+                count = past_shows.count()
+                initial_logger.info("Past shows eligible for cleanup: %s", count)
+                if not count:
                     initial_logger.info("No past shows to delete on Init.")
                 else:
-                    for show in past_shows:
+                    # Preserve ORM cascades while avoiding one giant result list.
+                    for show in past_shows.yield_per(100):
                         db.session.delete(show)
                     db.session.commit()
-                    initial_logger.info(f"{past_shows} shows deleted on Init.")
+                    initial_logger.info("%s shows deleted on Init.", count)
         except Exception as e:
             initial_logger.error(f"Error deleting past shows on Init: {e}")
 

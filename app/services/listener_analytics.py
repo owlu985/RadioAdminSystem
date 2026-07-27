@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
 from datetime import datetime, timedelta
 from typing import Any, Dict, List, Optional
 
@@ -12,6 +13,7 @@ from app.models import StreamProbe
 from app.utils import get_current_show, show_display_title
 
 logger = init_logger()
+_last_pruned_date = None
 
 
 def _history_path() -> str:
@@ -63,13 +65,45 @@ def _parse_line(line: str) -> Optional[Dict[str, Any]]:
 def _last_entry(path: str) -> Optional[Dict[str, Any]]:
     if not os.path.exists(path):
         return None
-    last: Optional[Dict[str, Any]] = None
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            parsed = _parse_line(line)
-            if parsed:
-                last = parsed
-    return last
+    with open(path, "rb") as f:
+        f.seek(0, os.SEEK_END)
+        pos = f.tell()
+        data = bytearray()
+        while pos > 0:
+            pos -= 1
+            f.seek(pos)
+            char = f.read(1)
+            if char == b"\n" and data:
+                break
+            if char != b"\n":
+                data.extend(char)
+    return _parse_line(bytes(reversed(data)).decode("utf-8", "replace")) if data else None
+
+
+def _prune_history(path: str, now: datetime) -> None:
+    global _last_pruned_date
+    if _last_pruned_date == now.date() or not os.path.exists(path):
+        return
+    _last_pruned_date = now.date()
+    days = int(current_app.config.get("ICECAST_ANALYTICS_RETENTION_DAYS", 365) or 0)
+    if days <= 0:
+        return
+    cutoff = now - timedelta(days=days)
+    fd, temp_path = tempfile.mkstemp(prefix="listener-history-", suffix=".jsonl", dir=os.path.dirname(path))
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as output, open(path, "r", encoding="utf-8") as source:
+            for line in source:
+                parsed = _parse_line(line)
+                try:
+                    ts = datetime.fromisoformat(parsed.get("ts", "")) if parsed else None
+                except ValueError:
+                    ts = None
+                if ts and ts >= cutoff:
+                    output.write(line)
+        os.replace(temp_path, path)
+    finally:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
 
 
 def append_listener_sample(listeners: int) -> Dict[str, Any]:
@@ -87,6 +121,7 @@ def append_listener_sample(listeners: int) -> Dict[str, Any]:
     }
 
     path = _history_path()
+    _prune_history(path, now)
     last = _last_entry(path)
     if last and last.get("ts") == entry["ts"]:
         return entry
@@ -128,7 +163,8 @@ def load_listener_history(hours: Optional[int] = None) -> List[Dict[str, Any]]:
 def peak_listeners_for_show(show_name: str, start: datetime, end: datetime) -> Optional[int]:
     """Return the highest recorded listener sample in a show window."""
     peaks: List[int] = []
-    for sample in load_listener_history():
+    hours = max(1, int((datetime.utcnow() - start).total_seconds() / 3600) + 1)
+    for sample in load_listener_history(hours=hours):
         try:
             ts = datetime.fromisoformat(sample.get("ts", ""))
             listeners = int(sample.get("listeners"))

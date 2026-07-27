@@ -28,6 +28,13 @@ scheduler = BackgroundScheduler()
 ACTIVE_RECORDINGS = {}
 logger = None
 flask_app = None
+SHOW_JOB_PREFIX = "show:"
+TEMP_SHOW_JOB_PREFIX = "temporary-show-delete:"
+MARATHON_JOB_PREFIX = "marathon:"
+
+
+def _job_options() -> dict:
+    return {"coalesce": True, "max_instances": 1, "misfire_grace_time": 120}
 
 
 def _scheduler_executor_shutdown() -> bool:
@@ -76,12 +83,20 @@ def init_scheduler(app):
             schedule_radiodj_now_playing()
             schedule_library_index_job()
             schedule_transcode_cache_cleanup()
+            schedule_schedule_refresh()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
     try:
+        if not scheduler.running:
+            api_cache.invalidate("schedule")
+            return
         if table_exists("show"):
-            scheduler.remove_all_jobs()
+            # Maintenance jobs must survive schedule edits.  Only replace jobs
+            # derived from shows and marathon database rows.
+            for job in scheduler.get_jobs():
+                if job.id.startswith((SHOW_JOB_PREFIX, TEMP_SHOW_JOB_PREFIX, MARATHON_JOB_PREFIX)):
+                    scheduler.remove_job(job.id)
             for show in Show.query.all():
                 schedule_recording(show)
             logger.info("Schedule refreshed with latest shows.")
@@ -99,10 +114,15 @@ def pause_shows_until(date):
     """Pause all recordings until a specified date."""
 
     try:
+        if not scheduler.running:
+            return
         scheduler.add_job(
             update_user_config, 'date',
             run_date=date,
-            args=[{"PAUSE_SHOWS_RECORDING": False, "PAUSE_END_DATE": None}]
+            args=[{"PAUSE_SHOWS_RECORDING": False, "PAUSE_END_DATE": None}],
+            id="pause_resume_job",
+            replace_existing=True,
+            **_job_options(),
         )
         logger.info(f"Recordings resume job added.")
     except Exception as e:
@@ -286,6 +306,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 })
             except OSError as exc:
                 logger.warning("Unable to write recording metadata sidecar for %s: %s", output_file, exc)
+            key = None
+            process = None
             try:
                 process = subprocess.Popen([
                     'ffmpeg', '-y', '-i', stream_url, '-t', str(remaining_duration), '-acodec', 'copy', output_file,
@@ -301,7 +323,7 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                     'stop_reason': None,
                 }
                 _, stderr = process.communicate()
-                state = ACTIVE_RECORDINGS.pop(key, None) or {}
+                state = ACTIVE_RECORDINGS.get(key, {})
                 if process.returncode not in (0, 255) and not state.get('stop_requested'):
                     err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
                     raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
@@ -317,6 +339,19 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             except Exception as exc:  # noqa: BLE001
                 record_failure("recorder", reason=str(exc), restarted=False)
                 logger.error(f"Recording error (segment {segment}): {exc}")
+            finally:
+                if key is not None:
+                    ACTIVE_RECORDINGS.pop(key, None)
+                if process is not None and process.poll() is None:
+                    try:
+                        process.terminate()
+                        process.wait(timeout=10)
+                    except Exception:
+                        try:
+                            process.kill()
+                            process.wait(timeout=5)
+                        except Exception:
+                            logger.warning("Unable to reap recorder process for %s", output_file)
 
             elapsed = max(1, int((datetime.utcnow() - started_at).total_seconds()))
             remaining_duration = max(0, remaining_duration - elapsed)
@@ -419,6 +454,9 @@ def schedule_recording(show):
             ],
             start_date=start_time,
             end_date=schedule_end,
+            id=f"{SHOW_JOB_PREFIX}{show.id}",
+            replace_existing=True,
+            **_job_options(),
         )
         logger.info(f"Recording scheduled for show {show.id}.")
 
@@ -426,7 +464,10 @@ def schedule_recording(show):
             scheduler.add_job(
                 delete_show, 'date',
                 run_date=schedule_end + timedelta(hours=1),
-                args=[show.id]
+                args=[show.id],
+                id=f"{TEMP_SHOW_JOB_PREFIX}{show.id}",
+                replace_existing=True,
+                **_job_options(),
             )
             logger.info(f"Deletion scheduled for temporary show {show.id} after last airing.")
     except Exception as e:
@@ -453,7 +494,7 @@ def _schedule_marathon_jobs(event: MarathonEvent):
         chunk_end = min(current + timedelta(hours=event.chunk_hours), event.end_time)
         label = f"{event.safe_name}_{current.strftime('%a_%I%p').lstrip('0')}_{chunk_end.strftime('%I%p').lstrip('0')}"
         output_file = os.path.join(base_folder, label)
-        job_id = f"marathon_{event.id}_{int(current.timestamp())}"
+        job_id = f"{MARATHON_JOB_PREFIX}{event.id}:{int(current.timestamp())}"
         try:
             scheduler.add_job(
                 record_stream,
@@ -474,6 +515,7 @@ def _schedule_marathon_jobs(event: MarathonEvent):
                     None,
                 ],
                 replace_existing=True,
+                **_job_options(),
             )
             job_ids.append(job_id)
             logger.info("Scheduled marathon chunk %s from %s to %s", job_id, current, chunk_end)
@@ -490,8 +532,6 @@ def schedule_marathon_event(name: str, start_dt: datetime, end_dt: datetime, chu
     Schedule a temporary marathon recording window in fixed-size chunks.
     Files are written under OUTPUT_FOLDER/Marathons/<name>/Name_day_start_end_RAWDATA.mp3
     """
-    if flask_app is None:
-        return
     if end_dt <= start_dt:
         return
     safe_name = name.replace(" ", "_")
@@ -507,7 +547,8 @@ def schedule_marathon_event(name: str, start_dt: datetime, end_dt: datetime, chu
     db.session.add(event)
     db.session.commit()
 
-    _schedule_marathon_jobs(event)
+    if scheduler.running and flask_app is not None:
+        _schedule_marathon_jobs(event)
     api_cache.invalidate("schedule")
 
 
@@ -518,7 +559,7 @@ def cancel_marathon_event(event_id: int):
     job_ids = (event.job_ids or "").split(',') if event.job_ids else []
     now = datetime.utcnow()
     for job_id in job_ids:
-        job = scheduler.get_job(job_id.strip())
+        job = scheduler.get_job(job_id.strip()) if scheduler.running else None
         if job and job.next_run_time and job.next_run_time > now:
             scheduler.remove_job(job_id)
     _update_marathon_status(event_id, "cancelled", canceled=True)
@@ -540,6 +581,7 @@ def schedule_stream_probe():
             minutes=interval_minutes,
             id="stream_probe_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("Stream probe job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -557,6 +599,7 @@ def schedule_icecast_analytics():
             minutes=interval_minutes,
             id="icecast_analytics_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("Icecast analytics job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -575,6 +618,7 @@ def schedule_nas_watch():
             minutes=interval,
             id="nas_watch_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("NAS watch job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -592,6 +636,7 @@ def schedule_settings_backup():
             hours=hours,
             id="settings_backup_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("Settings backup job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -609,6 +654,7 @@ def schedule_radiodj_now_playing():
             seconds=8,
             id="radiodj_now_playing_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("RadioDJ now-playing job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -626,6 +672,7 @@ def schedule_library_index_job(run_now: bool = False):
             hours=hours,
             id="library_index_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("Library index job scheduled.")
         if run_now:
@@ -646,6 +693,7 @@ def schedule_news_rotation():
             minute=5,
             id="news_rotation_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("News rotation job scheduled.")
     except Exception as e:  # noqa: BLE001
@@ -662,10 +710,50 @@ def schedule_transcode_cache_cleanup():
             hours=24,
             id="transcode_cache_cleanup_job",
             replace_existing=True,
+            **_job_options(),
         )
         logger.info("Transcode cache cleanup job scheduled.")
     except Exception as e:  # noqa: BLE001
         logger.error(f"Error scheduling transcode cache cleanup: {e}")
+
+
+def schedule_schedule_refresh():
+    """Reconcile database schedule changes made by stateless web workers."""
+    seconds = int(flask_app.config.get("SCHEDULE_REFRESH_INTERVAL_SECONDS", 60))
+    scheduler.add_job(
+        run_schedule_refresh_job,
+        "interval",
+        seconds=max(15, seconds),
+        id="schedule_refresh_job",
+        replace_existing=True,
+        **_job_options(),
+    )
+    _schedule_pause_resume_from_config()
+
+
+def _schedule_pause_resume_from_config():
+    path = os.path.join(flask_app.instance_path, "user_config.json")
+    try:
+        with open(path, "r", encoding="utf-8") as handle:
+            config = json.load(handle)
+        raw_end = config.get("PAUSE_END_DATE")
+        if not config.get("PAUSE_SHOWS_RECORDING") or not raw_end:
+            return
+        run_date = datetime.fromisoformat(raw_end) if isinstance(raw_end, str) else raw_end
+        if run_date <= datetime.now():
+            update_user_config({"PAUSE_SHOWS_RECORDING": False, "PAUSE_END_DATE": None})
+            return
+        pause_shows_until(run_date)
+    except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:
+        logger.warning("Unable to reconcile pause resume job: %s", exc)
+
+
+def run_schedule_refresh_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        refresh_schedule()
+        _schedule_pause_resume_from_config()
 
 
 def run_news_rotation_job():
@@ -765,6 +853,7 @@ def run_transcode_cache_cleanup_job():
     if not os.path.exists(cache_dir):
         return
     removed = 0
+    retained = []
     for entry in os.scandir(cache_dir):
         if not entry.is_file():
             continue
@@ -775,6 +864,23 @@ def run_transcode_cache_cleanup_job():
         if mtime <= cutoff:
             try:
                 os.remove(entry.path)
+                removed += 1
+            except OSError:
+                continue
+        else:
+            try:
+                retained.append((entry.stat().st_mtime, entry.stat().st_size, entry.path))
+            except OSError:
+                continue
+    max_bytes = int(flask_app.config.get("TRANSCODE_CACHE_MAX_BYTES", 0) or 0)
+    total_bytes = sum(item[1] for item in retained)
+    if max_bytes > 0 and total_bytes > max_bytes:
+        for _, size, path in sorted(retained):
+            if total_bytes <= max_bytes:
+                break
+            try:
+                os.remove(path)
+                total_bytes -= size
                 removed += 1
             except OSError:
                 continue
