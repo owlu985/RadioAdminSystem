@@ -11,12 +11,13 @@ from flask import jsonify, request
 _cache = SimpleCache(default_timeout=0)
 
 
-def _client_ip() -> str:
-    """Resolve the client IP, honoring common proxy headers if present."""
+def _client_ip(trusted_proxies: Iterable[str] = ()) -> str:
+    """Resolve forwarding headers only when the direct peer is trusted."""
+    remote = request.remote_addr or "unknown"
     forwarded = request.headers.get("X-Forwarded-For")
-    if forwarded:
+    if forwarded and _is_trusted(remote, trusted_proxies):
         return forwarded.split(",")[0].strip()
-    return request.remote_addr or "unknown"
+    return remote
 
 
 def _is_trusted(ip: str, trusted: Iterable[str]) -> bool:
@@ -49,24 +50,22 @@ def rate_limit_check(app):
     window = int(cfg.get("RATE_LIMIT_WINDOW_SECONDS", 60) or 60)
     trusted = cfg.get("RATE_LIMIT_TRUSTED_IPS") or []
 
-    client_ip = _client_ip()
+    client_ip = _client_ip(cfg.get("RATE_LIMIT_TRUSTED_PROXIES") or [])
     if _is_trusted(client_ip, trusted):
         return None
 
     now = time.time()
     key = f"rl:{client_ip}"
-    timestamps = _cache.get(key) or []
-
-    # prune old entries
-    timestamps = [ts for ts in timestamps if now - ts < window]
-    if len(timestamps) >= limit:
-        reset = int(window - (now - timestamps[0]))
+    bucket = _cache.get(key)
+    if not bucket or now - bucket["started_at"] >= window:
+        bucket = {"started_at": now, "count": 0}
+    if bucket["count"] >= limit:
+        reset = int(window - (now - bucket["started_at"]))
         resp = jsonify({"error": "rate_limited", "message": "Too many requests. Please slow down."})
         resp.status_code = 429
         resp.headers["Retry-After"] = str(max(reset, 1))
         return resp
 
-    timestamps.append(now)
-    _cache.set(key, timestamps, timeout=window)
+    bucket["count"] += 1
+    _cache.set(key, bucket, timeout=window)
     return None
-

@@ -3,7 +3,13 @@ from datetime import datetime
 
 from flask import Flask
 
-from app.services.listener_analytics import peak_listeners_for_show
+from app.services.listener_analytics import _last_entry, peak_listeners_for_show
+
+
+def test_last_entry_reads_tail_without_loading_history(tmp_path):
+    history = tmp_path / "listeners.jsonl"
+    history.write_text('{"ts":"first"}\n{"ts":"last"}\n', encoding="utf-8")
+    assert _last_entry(str(history)) == {"ts": "last"}
 
 
 def test_peak_listeners_for_show_filters_window_and_show(tmp_path):

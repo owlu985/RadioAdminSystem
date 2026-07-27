@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import threading
 import time
+import fcntl
 from datetime import datetime
 from typing import Dict
 
@@ -45,13 +46,14 @@ def _build_index(app) -> None:
             _set_state(status="idle", progress=0, total=0, error=None)
             return
 
-        files = list(music_search._walk_music())
-        total = len(files)
+        # Two streaming passes trade a directory walk for avoiding a potentially
+        # enormous in-memory list of every path.
+        total = sum(1 for _ in music_search._walk_music())
         _set_state(status="running", progress=0, total=total, error=None)
 
         existing_files = (existing or {}).get("files", {})
         new_files: Dict[str, Dict] = {}
-        for idx, path in enumerate(files):
+        for idx, path in enumerate(music_search._walk_music()):
             full = os.path.normpath(path)
             try:
                 stat = os.stat(full)
@@ -130,7 +132,15 @@ def start_library_index_job() -> bool:
 
 def _run_job(app) -> None:
     try:
-        _build_index(app)
+        lock_path = os.path.join(app.instance_path, "library-index.lock")
+        os.makedirs(os.path.dirname(lock_path), exist_ok=True)
+        with open(lock_path, "w", encoding="utf-8") as lock_file:
+            try:
+                fcntl.flock(lock_file, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                _set_state(status="idle", error="Index is running in another process")
+                return
+            _build_index(app)
     except Exception as exc:  # noqa: BLE001
         _set_state(status="error", error=str(exc))
 

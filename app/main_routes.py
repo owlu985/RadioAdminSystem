@@ -15,6 +15,10 @@ import base64
 import hashlib
 import zipfile
 import re
+import threading
+import tempfile
+import weakref
+from collections import deque
 from tempfile import NamedTemporaryFile
 from .scheduler import refresh_schedule, pause_shows_until, schedule_marathon_event, cancel_marathon_event, stop_active_show_recording
 from .utils import (
@@ -93,6 +97,7 @@ from app.services.recording_periods import (
     recordings_base_root,
 )
 from app.services.health import get_health_snapshot, reset_health_counts
+from app.services.system_resources import get_memory_status
 from app.services.listener_analytics import peak_listeners_for_show
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
@@ -1763,6 +1768,24 @@ def _transcode_cache_dir() -> str:
     return cache_dir
 
 
+_transcode_guard = threading.Lock()
+_transcode_locks: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
+_transcode_slots: threading.BoundedSemaphore | None = None
+
+
+def _transcode_slot() -> threading.BoundedSemaphore:
+    global _transcode_slots
+    if _transcode_slots is None:
+        count = max(1, int(current_app.config.get("TRANSCODE_MAX_CONCURRENCY", 2)))
+        _transcode_slots = threading.BoundedSemaphore(count)
+    return _transcode_slots
+
+
+def _target_lock(target: str) -> threading.Lock:
+    with _transcode_guard:
+        return _transcode_locks.setdefault(target, threading.Lock())
+
+
 def _transcode_cache_path(path: str) -> str:
     stat = os.stat(path)
     key_text = f"{path}:{stat.st_mtime}:{stat.st_size}"
@@ -1783,35 +1806,53 @@ def _ensure_transcoded_mp3(path: str) -> str | None:
     target = _transcode_cache_path(path)
     if os.path.exists(target):
         return target
+    lock = _target_lock(target)
+    timeout = max(1, int(current_app.config.get("TRANSCODE_TIMEOUT_SECONDS", 900)))
+    acquired_slot = False
+    temp_path = None
     try:
-        subprocess.run(
-            [
-                "ffmpeg",
-                "-nostdin",
-                "-hide_banner",
-                "-loglevel",
-                "error",
-                "-y",
-                "-i",
-                path,
-                "-vn",
-                "-c:a",
-                "libmp3lame",
-                "-b:a",
-                "192k",
-                target,
-            ],
-            check=True,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.DEVNULL,
-        )
-    except (OSError, subprocess.CalledProcessError):
-        if os.path.exists(target):
+        with lock:
+            if os.path.exists(target):
+                return target
+            acquired_slot = _transcode_slot().acquire(timeout=timeout)
+            if not acquired_slot:
+                return None
+            fd, temp_path = tempfile.mkstemp(prefix="transcode-", suffix=".mp3", dir=_transcode_cache_dir())
+            os.close(fd)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-nostdin",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    path,
+                    "-vn",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "192k",
+                    temp_path,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+            )
+            os.replace(temp_path, target)
+            temp_path = None
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        if temp_path and os.path.exists(temp_path):
             try:
-                os.remove(target)
+                os.remove(temp_path)
             except OSError:
                 pass
         return None
+    finally:
+        if acquired_slot:
+            _transcode_slot().release()
     return target
 
 
@@ -2460,6 +2501,7 @@ def settings():
 
     config = current_app.config
     settings_data = {
+        'memory_status': get_memory_status(),
         'admin_username': config['ADMIN_USERNAME'],
         'admin_password': config['ADMIN_PASSWORD'],
         'bind_host': config.get('BIND_HOST', '127.0.0.1'),
@@ -2562,8 +2604,8 @@ def view_system_log():
             # ensure the log file exists so the viewer can open it without raising
             open(log_path, 'a', encoding='utf-8').close()
         with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
-            raw_lines = fh.readlines()
-        for line in raw_lines[-800:]:
+            raw_lines = deque(fh, maxlen=800)
+        for line in raw_lines:
             level = 'info'
             if ' - ERROR - ' in line:
                 level = 'error'
@@ -2711,7 +2753,7 @@ def pause():
         if pause_end_date:
             pause_end_date = datetime.strptime(pause_end_date, '%Y-%m-%d')
             pause_shows_until(pause_end_date)
-            update_user_config({"PAUSE_SHOW_END_DATE": pause_end_date.strftime('%Y-%m-%d')})
+            update_user_config({"PAUSE_END_DATE": pause_end_date.isoformat()})
 
         update_user_config({"PAUSE_SHOWS_RECORDING": True})
 
