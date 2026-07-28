@@ -3,764 +3,1101 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Music Search & Bulk Tools</title>
+    <title>Music Library</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        .browser-list {
-            max-height: 360px;
-            overflow-y: auto;
-        }
-        .browser-list .list-group-item {
-            cursor: pointer;
-        }
-        .browser-list .list-group-item.active {
+        .list-group-item-action.active {
             background-color: #0d6efd;
             border-color: #0d6efd;
         }
-        .browser-meta-label {
-            font-size: 0.8rem;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
+        .library-pane {
+            max-height: 68vh;
+            overflow: auto;
         }
-        .metadata-cover {
-            max-width: 100%;
+        .library-controls {
+            background: #fff;
+            position: sticky;
+            top: 0;
+            z-index: 2;
+        }
+        .grid-card {
+            border: 1px solid rgba(0,0,0,0.1);
             border-radius: 0.5rem;
+            padding: 0.75rem;
+            height: 100%;
+        }
+        .grid-card.active {
+            border-color: #0d6efd;
+            box-shadow: 0 0 0 2px rgba(13,110,253,0.2);
+        }
+        .sort-header {
+            cursor: pointer;
+        }
+        .sort-header .sort-indicator {
+            font-size: 0.7rem;
+            margin-left: 0.25rem;
+        }
+        .cover-preview {
+            width: 96px;
+            height: 96px;
+            border-radius: 0.5rem;
+            border: 1px solid rgba(0,0,0,0.1);
+            object-fit: cover;
+            background-color: #f8f9fa;
+        }
+        .cue-link-card {
+            border: 1px dashed rgba(13,110,253,0.4);
+            border-radius: 0.5rem;
+            padding: 0.75rem;
+            transition: background-color 0.2s ease, border-color 0.2s ease;
+        }
+        .cue-link-card:hover {
+            background-color: rgba(13,110,253,0.05);
+            border-color: rgba(13,110,253,0.65);
+        }
+        #cueEditorLink.disabled {
+            pointer-events: none;
+            opacity: 0.6;
+        }
+        .workspace-card { min-height: 70vh; }
+        .editor-column { position: sticky; top: 1rem; align-self: flex-start; }
+        .track-row { cursor: pointer; }
+        .advanced-panel { background: #f8f9fa; }
+        @media (max-width: 991.98px) {
+            .editor-column { position: static; }
+            .workspace-card { min-height: auto; }
+            .library-pane { max-height: 45vh; }
         }
     </style>
 </head>
 <body>
 {% include '_nav.html' %}
-<div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-3">
-        <h2>Music Library</h2>
-        <div class="d-flex gap-2">
-            <button class="btn btn-outline-secondary btn-sm" id="scanBtn">Run duplicate/quality scan</button>
-            <button class="btn btn-outline-primary btn-sm" id="queuesBtn">Refresh queues</button>
+<div class="container-fluid px-4">
+    <div class="d-flex flex-wrap justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-0">Music Library</h2>
+            <div class="text-muted small">Search, browse, preview, edit, and maintain music, PSAs, and imaging in one workspace.</div>
+        </div>
+        <div class="d-flex gap-2 align-items-center">
+            <button class="btn btn-outline-secondary btn-sm" id="scanBtn" type="button">Quality scan</button>
+            <button class="btn btn-outline-primary btn-sm" id="queuesBtn" type="button">Queues</button>
+            <span class="badge bg-secondary">Index loaded</span>
         </div>
     </div>
-    <form class="row g-2 mb-3" id="searchForm">
-        <div class="col-md-6">
-            <input type="text" class="form-control" id="query" placeholder="Search title, artist, album, composer (use % to list all)" required aria-describedby="searchHelp">
-            <small class="text-muted" id="searchHelp">Tip: enter % to show the entire library. Press Tab/Enter to move through results.</small>
-            <div class="help-hint text-info">Need guidance? See the Music Search section in the API docs for filters and saved searches.</div>
-        </div>
-        <div class="col-md-3">
-            <button type="submit" class="btn btn-primary w-100">Search</button>
-        </div>
-        <div class="col-md-3 d-flex gap-2 align-items-stretch">
-            <button type="button" class="btn btn-outline-success w-100 h-100" id="saveSearchBtn">Save search</button>
-            <div class="dropdown w-100">
-                <button class="btn btn-outline-secondary dropdown-toggle w-100 h-100" type="button" data-bs-toggle="dropdown">Saved</button>
-                <ul class="dropdown-menu" id="savedList"></ul>
-            </div>
-        </div>
-        <div class="col-12 col-lg-4">
-            <label class="form-label">Sort mode</label>
-            <select id="sortMode" class="form-select">
-                <option value="title">Title</option>
-                <option value="artist">Artist → Album → Title</option>
-                <option value="album">Album → Track</option>
-                <option value="duration_seconds">Length</option>
-            </select>
-        </div>
-        <div class="col-12 col-lg-4">
-            <label class="form-label">Folder</label>
-            <select id="folderFilter" class="form-select">
-                <option value="">All folders</option>
-            </select>
-        </div>
-        <div class="col-12 col-lg-3">
-            <label class="form-label">Genre</label>
-            <select id="genreFilter" class="form-select">
-                <option value="">All genres</option>
-            </select>
-        </div>
-        <div class="col-12 col-lg-3">
-            <label class="form-label">Year</label>
-            <select id="yearFilter" class="form-select">
-                <option value="">All years</option>
-            </select>
-        </div>
-        <div class="col-12 col-lg-3">
-            <label class="form-label">Mood</label>
-            <select id="moodFilter" class="form-select">
-                <option value="">All moods</option>
-            </select>
-        </div>
-        <div class="col-12 col-lg-3 d-flex align-items-end">
-            <div class="form-check">
-                <input class="form-check-input" type="checkbox" id="explicitFilter">
-                <label class="form-check-label" for="explicitFilter">Explicit only</label>
-            </div>
-        </div>
-    </form>
 
-    <div class="row g-3 mb-4">
-        <div class="col-lg-9">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Library Browser</span>
-                    <small class="text-muted">Use ↑↓ to move, ←→ to switch columns, Enter to open track.</small>
+    <div class="card advanced-panel mb-3">
+        <div class="card-body py-3">
+            <div class="row g-2 align-items-end">
+                <div class="col-lg-5">
+                    <label class="form-label fw-semibold" for="librarySearch">Find anything</label>
+                    <input class="form-control" id="librarySearch" type="search" placeholder="Try Home, Alabama, Lynyrd Skynyrd, or Sweet*Alabama" autocomplete="off">
+                    <div class="form-text">Matches words anywhere in metadata. Use <code>*</code> for any text and <code>?</code> for one character.</div>
                 </div>
-                <div class="card-body">
-                    <div class="row g-3">
-                        <div class="col-md-4">
-                            <div class="browser-meta-label text-muted mb-1">Artists</div>
-                            <div class="list-group browser-list" id="artistList" role="listbox" aria-label="Artists"></div>
+                <div class="col-6 col-lg-2"><label class="form-label" for="yearFilter">Year</label><select class="form-select" id="yearFilter"><option value="">All years</option></select></div>
+                <div class="col-6 col-lg-2"><label class="form-label" for="genreFilter">Genre</label><select class="form-select" id="genreFilter"><option value="">All genres</option></select></div>
+                <div class="col-6 col-lg-1"><div class="form-check mb-2"><input class="form-check-input" id="explicitFilter" type="checkbox"><label class="form-check-label" for="explicitFilter">Explicit</label></div></div>
+                <div class="col-6 col-lg-2 d-flex gap-1">
+                    <button class="btn btn-outline-success flex-fill" id="saveSearchBtn" type="button">Save</button>
+                    <div class="dropdown flex-fill"><button class="btn btn-outline-secondary dropdown-toggle w-100" data-bs-toggle="dropdown" type="button">Saved</button><ul class="dropdown-menu dropdown-menu-end" id="savedList"></ul></div>
+                </div>
+            </div>
+            <div class="alert alert-light border mt-3 mb-0 d-none" id="maintenanceResults" role="status"></div>
+        </div>
+    </div>
+
+    <div class="row g-3">
+        <div class="col-lg-3">
+            <div class="card h-100">
+                <div class="card-header">
+                    <ul class="nav nav-pills card-header-pills" id="libraryTabs">
+                        <li class="nav-item">
+                            <button class="nav-link active" data-mode="music" type="button">Music</button>
+                        </li>
+                        <li class="nav-item">
+                            <button class="nav-link" data-mode="psa" type="button">PSA / Imaging</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body p-0">
+                    <div class="library-controls border-bottom p-3" id="musicControls">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <div class="fw-semibold small text-uppercase text-muted">Browse</div>
+                            <div class="btn-group btn-group-sm" id="browseModeToggle" role="group" aria-label="Browse mode">
+                                <button class="btn btn-outline-secondary active" data-browse="artist" type="button">Artist</button>
+                                <button class="btn btn-outline-secondary" data-browse="genre" type="button">Genre</button>
+                            </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="browser-meta-label text-muted mb-1">Albums</div>
-                            <div class="list-group browser-list" id="albumList" role="listbox" aria-label="Albums"></div>
+                        <div class="small text-muted">The search and filters above narrow every browser view.</div>
+                    </div>
+                    <div class="library-pane p-3">
+                        <div id="musicBrowser">
+                            <div id="artistBrowser">
+                                <div class="mb-3">
+                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                    <div class="list-group list-group-flush" id="artistList"></div>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold small text-uppercase text-muted">Albums</div>
+                                    <div class="list-group list-group-flush" id="albumList"></div>
+                                </div>
+                            </div>
+                            <div id="genreBrowser" class="d-none">
+                                <div class="mb-3">
+                                    <div class="fw-semibold small text-uppercase text-muted">Genres</div>
+                                    <div class="list-group list-group-flush" id="genreList"></div>
+                                </div>
+                                <div>
+                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
+                                    <div class="list-group list-group-flush" id="genreArtistList"></div>
+                                </div>
+                            </div>
                         </div>
-                        <div class="col-md-4">
-                            <div class="browser-meta-label text-muted mb-1">Tracks</div>
-                            <div class="list-group browser-list" id="trackList" role="listbox" aria-label="Tracks"></div>
+                        <div id="psaBrowser" class="d-none">
+                            <div class="mb-3">
+                                <div class="fw-semibold small text-uppercase text-muted">Collections</div>
+                                <div class="list-group list-group-flush" id="psaCategoryList"></div>
+                            </div>
+                            <div>
+                                <div class="fw-semibold small text-uppercase text-muted">Items</div>
+                                <div class="list-group list-group-flush" id="psaItemList"></div>
+                            </div>
                         </div>
                     </div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-3">
-            <div class="card h-100" id="metadataSidebar">
-                <div class="card-header">Selection Metadata</div>
+        <div class="col-lg-5">
+            <div class="card h-100 workspace-card">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Library Items</span>
+                    <div class="btn-group btn-group-sm" role="group">
+                        <button class="btn btn-outline-secondary active" id="listToggle" type="button">List</button>
+                        <button class="btn btn-outline-secondary" id="gridToggle" type="button">Grid</button>
+                    </div>
+                </div>
                 <div class="card-body">
-                    <div id="metadataBody" class="text-muted small">Select an artist, album, or track to see details.</div>
-                </div>
-                <div class="card-footer">
-                    <button class="btn btn-sm btn-outline-primary w-100" id="openDetailBtn" disabled>Open track detail</button>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="row">
-        <div class="col-lg-8">
-            <table class="table table-striped" id="resultsTable">
-                <thead>
-                <tr>
-                    <th><input type="checkbox" id="selectAll"></th>
-                    <th role="button" data-sort="title">Title</th>
-                    <th role="button" data-sort="artist">Artist</th>
-                    <th role="button" data-sort="album">Album</th>
-                    <th role="button" data-sort="duration_seconds">Length</th>
-                </tr>
-                </thead>
-                <tbody></tbody>
-            </table>
-            <div class="d-flex justify-content-between align-items-center">
-                <div class="text-muted small" id="resultsMeta">No results loaded.</div>
-                <div class="btn-group btn-group-sm" role="group" aria-label="Pagination">
-                    <button class="btn btn-outline-secondary" id="prevPage">Prev</button>
-                    <button class="btn btn-outline-secondary" id="nextPage">Next</button>
+                    <div class="d-flex justify-content-between align-items-center mb-2">
+                        <div class="text-muted small" id="selectionSummary">Select an artist, album, or PSA collection.</div>
+                        <div class="text-muted small">Sort by: <span id="sortLabel">Artist</span></div>
+                    </div>
+                    <div class="btn-group btn-group-sm mb-2" id="trackFilter" role="group" aria-label="Track filters">
+                        <button class="btn btn-outline-secondary active" data-filter="all" type="button">All</button>
+                        <button class="btn btn-outline-secondary" data-filter="recent" type="button">Recent</button>
+                        <button class="btn btn-outline-secondary" data-filter="missing_cues" type="button">Missing Cues</button>
+                    </div>
+                    <div class="table-responsive" id="listView">
+                        <table class="table table-sm table-hover align-middle">
+                            <thead>
+                                <tr>
+                                    <th><input class="form-check-input" id="selectAll" type="checkbox" aria-label="Select all shown tracks"></th>
+                                    <th class="sort-header" data-sort="artist">Artist<span class="sort-indicator" id="sort-artist"></span></th>
+                                    <th class="sort-header" data-sort="album">Album<span class="sort-indicator" id="sort-album"></span></th>
+                                    <th>Title</th>
+                                    <th class="sort-header" data-sort="year">Year<span class="sort-indicator" id="sort-year"></span></th>
+                                    <th class="sort-header" data-sort="genre">Genre<span class="sort-indicator" id="sort-genre"></span></th>
+                                </tr>
+                            </thead>
+                            <tbody id="trackTableBody"></tbody>
+                        </table>
+                    </div>
+                    <div class="row g-2 d-none" id="gridView"></div>
                 </div>
             </div>
         </div>
-        <div class="col-lg-4">
-            <div class="card mb-3">
-                <div class="card-header">Bulk Edit / Cover</div>
+        <div class="col-lg-4 editor-column">
+            <div class="card h-100">
+                <div class="card-header d-flex justify-content-between"><span id="editorHeading">Metadata Editor</span><span class="badge bg-primary d-none" id="bulkCount"></span></div>
                 <div class="card-body">
-                    <div class="mb-2"><small class="text-muted">Applies to selected rows</small></div>
-                    <div class="mb-2"><input class="form-control" name="title" placeholder="Title"></div>
-                    <div class="mb-2"><input class="form-control" name="artist" placeholder="Artist"></div>
-                    <div class="mb-2"><input class="form-control" name="album" placeholder="Album"></div>
-                    <div class="mb-2"><input class="form-control" name="composer" placeholder="Composer"></div>
-                    <div class="mb-2"><input class="form-control" name="isrc" placeholder="ISRC"></div>
-                    <div class="mb-2"><input class="form-control" name="year" placeholder="Year"></div>
-                    <div class="mb-2"><input class="form-control" name="track" placeholder="Track #"></div>
-                    <div class="mb-2"><input class="form-control" name="disc" placeholder="Disc #"></div>
-                    <div class="mb-3"><input class="form-control" type="file" id="cover" accept="image/*"></div>
-                    <button class="btn btn-primary w-100" id="bulkApply" type="button">Apply to selected</button>
-                    <div class="text-muted small mt-2" id="bulkStatus"></div>
+                    <form id="metadataForm">
+                        <div class="mb-3">
+                            <div class="d-flex align-items-center gap-3 flex-wrap">
+                                <img class="cover-preview" id="previewCover" alt="Album cover preview">
+                                <div class="flex-grow-1">
+                                    <div class="small text-muted text-uppercase">Preview Player</div>
+                                    <div class="fw-semibold" id="previewTitle">Select a track to preview.</div>
+                                    <div class="text-muted small" id="previewSubtitle">Album art and audio preview will appear here.</div>
+                                    <audio class="w-100 mt-2" id="previewPlayer" controls preload="none"></audio>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Artist</label>
+                            <input type="text" class="form-control" id="metaArtist" placeholder="Artist name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Album</label>
+                            <input type="text" class="form-control" id="metaAlbum" placeholder="Album name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Title</label>
+                            <input type="text" class="form-control" id="metaTitle" placeholder="Song or spot title">
+                        </div>
+                        <div class="row g-2">
+                            <div class="col-sm-6">
+                                <label class="form-label">Year</label>
+                                <input type="text" class="form-control" id="metaYear" placeholder="YYYY">
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">Genre</label>
+                                <input type="text" class="form-control" id="metaGenre" placeholder="Genre">
+                            </div>
+                        </div>
+                        <div class="form-check form-switch mt-3">
+                            <input class="form-check-input" type="checkbox" id="metaExplicit">
+                            <label class="form-check-label" for="metaExplicit">Explicit</label>
+                        </div>
+                        <hr>
+                        <a class="text-decoration-none" id="cueEditorLink" href="#" target="_blank" rel="noopener">
+                            <div class="cue-link-card">
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <div>
+                                        <div class="fw-semibold">Cues</div>
+                                        <div class="text-muted small">Open the cue editor for this track.</div>
+                                    </div>
+                                    <span class="text-primary fw-semibold">Edit →</span>
+                                </div>
+                            </div>
+                        </a>
+                        <div class="mt-3">
+                            <label class="form-label small text-muted">File Path</label>
+                            <input type="text" class="form-control form-control-sm" id="metaPath" readonly>
+                        </div>
+                        <div class="text-muted small mt-2" id="saveStatus"></div>
+                        <div class="d-flex justify-content-end gap-2 mt-3">
+                            <button class="btn btn-outline-primary btn-sm" type="button" id="openDetail" disabled>Details</button>
+                            <button class="btn btn-outline-secondary btn-sm" type="button" id="resetMetadata">Reset</button>
+                            <button class="btn btn-primary btn-sm" type="button" id="saveMetadata" disabled>Save</button>
+                        </div>
+                    </form>
+                    <hr>
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div><div class="fw-semibold">Bulk edit</div><div class="text-muted small">Select rows, enter only fields to change, then apply.</div></div>
+                        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#bulkEditor">Open</button>
+                    </div>
+                    <div class="collapse mt-3" id="bulkEditor">
+                        <div class="row g-2">
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="artist" placeholder="Artist"></div>
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="album" placeholder="Album"></div>
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="genre" placeholder="Genre"></div>
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="year" placeholder="Year"></div>
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="composer" placeholder="Composer"></div>
+                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="isrc" placeholder="ISRC"></div>
+                            <div class="col-12"><label class="form-label small">Cover artwork</label><input class="form-control form-control-sm" id="bulkCover" type="file" accept="image/*"></div>
+                            <div class="col-12"><button class="btn btn-primary btn-sm w-100" id="applyBulk" type="button" disabled>Apply to selected</button></div>
+                        </div>
+                        <div class="small mt-2" id="bulkStatus"></div>
+                    </div>
                 </div>
             </div>
-            <div class="card">
-                <div class="card-header">Queues</div>
-                <div class="card-body" id="queues">
-                    <p class="text-muted mb-0">Click "Refresh queues" to load.</p>
-                </div>
-            </div>
-        </div>
-    </div>
-
-    <div class="card mt-3" id="scanResults" style="display:none;">
-        <div class="card-header">Duplicate / Quality Report</div>
-        <div class="card-body">
-            <div id="scanBody"></div>
         </div>
     </div>
 </div>
-{% include '_footer.html' %}
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>
-    const form = document.getElementById('searchForm');
-    const tbody = document.querySelector('#resultsTable tbody');
-    const selectAll = document.getElementById('selectAll');
-    const queuesBox = document.getElementById('queues');
-    const genreFilter = document.getElementById('genreFilter');
-    const yearFilter = document.getElementById('yearFilter');
-    const moodFilter = document.getElementById('moodFilter');
-    const explicitFilter = document.getElementById('explicitFilter');
+    const libraryData = {{ library_index | tojson }};
+    let savedSearches = [];
+    const normalizeText = (value) => (value ?? '').toString().toLowerCase();
+    const state = {
+        mode: 'music',
+        artists: libraryData.music || [],
+        genres: libraryData.genres || [],
+        psa: libraryData.psa_imaging || [],
+        musicBrowseMode: 'artist',
+        searchTerm: '',
+        artistIndex: new Map(),
+        genreIndex: new Map(),
+        artistSearch: new Map(),
+        albumSearch: new Map(),
+        genreSearch: new Map(),
+        genreArtistSearch: new Map(),
+        selectedArtist: null,
+        selectedAlbum: null,
+        selectedGenre: null,
+        selectedGenreArtist: null,
+        selectedCategory: null,
+        selectedItem: null,
+        tracks: [],
+        trackFilter: 'all',
+        view: 'list',
+        sortKey: 'artist',
+        sortDir: 'asc',
+        year: '',
+        genre: '',
+        explicitOnly: false,
+        selectedPaths: new Set()
+    };
+
     const artistList = document.getElementById('artistList');
     const albumList = document.getElementById('albumList');
-    const trackList = document.getElementById('trackList');
-    const metadataBody = document.getElementById('metadataBody');
-    const openDetailBtn = document.getElementById('openDetailBtn');
-    let savedSearches = {{ saved_searches|default([])|tojson }};
-    let resultsData = [];
-    let selectedArtist = null;
-    let selectedAlbum = null;
-    let selectedTrackPath = null;
-    let sortState = { key: null, dir: 1 };
-    let currentPage = 1;
-    let lastQuery = '';
-    const perPage = 50;
-    const folderFilter = document.getElementById('folderFilter');
+    const genreList = document.getElementById('genreList');
+    const genreArtistList = document.getElementById('genreArtistList');
+    const psaCategoryList = document.getElementById('psaCategoryList');
+    const psaItemList = document.getElementById('psaItemList');
+    const trackTableBody = document.getElementById('trackTableBody');
+    const gridView = document.getElementById('gridView');
+    const listView = document.getElementById('listView');
+    const selectionSummary = document.getElementById('selectionSummary');
+    const sortLabel = document.getElementById('sortLabel');
+    const librarySearch = document.getElementById('librarySearch');
+    const trackFilterGroup = document.getElementById('trackFilter');
+    const musicControls = document.getElementById('musicControls');
+    const selectAll = document.getElementById('selectAll');
+    const applyBulk = document.getElementById('applyBulk');
+    const bulkCount = document.getElementById('bulkCount');
 
-    function renderSaved() {
-        const list = document.getElementById('savedList');
-        if (!list) return;
-        if (!savedSearches.length) {
-            list.innerHTML = '<li><span class="dropdown-item text-muted">No saved searches</span></li>';
-            return;
-        }
-        list.innerHTML = savedSearches.map(s => `
-            <li class="d-flex align-items-center">
-              <a class="dropdown-item flex-grow-1" href="#" data-query="${s.query}">${s.name}</a>
-              <button class="btn btn-link text-danger px-2 py-1" data-delete="${s.id}">×</button>
-            </li>`).join('');
-    }
+    const formFields = {
+        artist: document.getElementById('metaArtist'),
+        album: document.getElementById('metaAlbum'),
+        title: document.getElementById('metaTitle'),
+        year: document.getElementById('metaYear'),
+        genre: document.getElementById('metaGenre'),
+        explicit: document.getElementById('metaExplicit'),
+        path: document.getElementById('metaPath')
+    };
+    const previewCover = document.getElementById('previewCover');
+    const previewPlayer = document.getElementById('previewPlayer');
+    const previewTitle = document.getElementById('previewTitle');
+    const previewSubtitle = document.getElementById('previewSubtitle');
+    const cueEditorLink = document.getElementById('cueEditorLink');
+    const saveMetadataBtn = document.getElementById('saveMetadata');
+    const saveStatus = document.getElementById('saveStatus');
+    const placeholderCover = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100%25" height="100%25" fill="%23f8f9fa"/><text x="50%25" y="50%25" font-family="Arial" font-size="20" fill="%2399a0a7" dominant-baseline="middle" text-anchor="middle">No Cover</text></svg>';
+    const formState = {
+        baseline: null,
+        saving: false
+    };
+    previewCover.src = placeholderCover;
+    cueEditorLink.classList.add('disabled');
 
-    function buildSelectOptions(select, values, defaultLabel) {
-        const current = select.value;
-        const opts = [`<option value="">${defaultLabel}</option>`];
-        values.forEach(val => {
-            const safe = val || '';
-            opts.push(`<option value="${safe}">${safe}</option>`);
-        });
-        if (current && !values.includes(current)) {
-            opts.push(`<option value="${current}">${current}</option>`);
-        }
-        select.innerHTML = opts.join('');
-        if (current) {
-            select.value = current;
-        }
-    }
+    const debounce = (callback, wait = 200) => {
+        let timeout;
+        return (...args) => {
+            window.clearTimeout(timeout);
+            timeout = window.setTimeout(() => callback(...args), wait);
+        };
+    };
 
-    function updateFilterOptions(payload) {
-        buildSelectOptions(genreFilter, payload.genres || [], 'All genres');
-        buildSelectOptions(yearFilter, payload.years || [], 'All years');
-        buildSelectOptions(moodFilter, payload.moods || [], 'All moods');
-    }
+    const allMusicTracks = () => state.artists.flatMap(artist =>
+        (artist.albums || []).flatMap(album => album.tracks || [])
+    );
 
-    function getArtists(items) {
-        const map = new Map();
-        items.forEach(item => {
-            const value = item.artist || '';
-            const label = item.artist || 'Unknown Artist';
-            const entry = map.get(value) || { value, label, count: 0 };
-            entry.count += 1;
-            map.set(value, entry);
-        });
-        return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
-    }
+    const showAllMatchingTracks = () => {
+        if (state.mode !== 'music') return;
+        state.tracks = allMusicTracks();
+        state.selectedArtist = null;
+        state.selectedAlbum = null;
+        renderTracks();
+    };
 
-    function getAlbums(items, artistValue) {
-        const map = new Map();
-        items.filter(item => (item.artist || '') === artistValue).forEach(item => {
-            const value = item.album || '';
-            const label = item.album || 'Unknown Album';
-            const entry = map.get(value) || { value, label, count: 0 };
-            entry.count += 1;
-            map.set(value, entry);
-        });
-        return Array.from(map.values()).sort((a, b) => a.label.localeCompare(b.label));
-    }
-
-    function getTracks(items, artistValue, albumValue) {
-        return items.filter(item => (item.artist || '') === artistValue && (item.album || '') === albumValue)
-            .sort((a, b) => {
-                const disc = (a.disc_num || 0) - (b.disc_num || 0);
-                if (disc !== 0) return disc;
-                const track = (a.track_num || 0) - (b.track_num || 0);
-                if (track !== 0) return track;
-                return (a.title || '').localeCompare(b.title || '');
+    const buildArtistCache = () => {
+        const artistIndex = new Map();
+        const artistSearch = new Map();
+        const albumSearch = new Map();
+        state.artists.forEach(artist => {
+            const albumSearchMap = new Map();
+            const artistParts = [artist.name];
+            (artist.albums || []).forEach(album => {
+                const albumParts = [album.name, album.genre, album.year];
+                (album.tracks || []).forEach(track => {
+                    albumParts.push(track.title, track.genre, track.artist, track.album, track.composer, track.isrc, track.folder, track.mood);
+                });
+                const albumBlob = normalizeText(albumParts.join(' '));
+                albumSearchMap.set(album.name, albumBlob);
+                artistParts.push(albumBlob);
             });
-    }
-
-    function renderList(container, items, selectedValue, type) {
-        container.innerHTML = '';
-        if (!items.length) {
-            const empty = document.createElement('div');
-            empty.className = 'text-muted small';
-            empty.textContent = 'No results';
-            container.appendChild(empty);
-            return;
-        }
-        items.forEach(item => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action d-flex justify-content-between align-items-center';
-            btn.dataset.type = type;
-            btn.dataset.value = item.value;
-            btn.textContent = item.label;
-            if (item.count) {
-                const badge = document.createElement('span');
-                badge.className = 'badge bg-secondary rounded-pill';
-                badge.textContent = item.count;
-                btn.appendChild(badge);
-            }
-            if (selectedValue === item.value) {
-                btn.classList.add('active');
-                btn.setAttribute('aria-selected', 'true');
-            } else {
-                btn.setAttribute('aria-selected', 'false');
-            }
-            container.appendChild(btn);
+            artistIndex.set(artist.name, { ...artist, albumSearchMap });
+            artistSearch.set(artist.name, normalizeText(artistParts.join(' ')));
+            albumSearch.set(artist.name, albumSearchMap);
         });
-    }
+        state.artistIndex = artistIndex;
+        state.artistSearch = artistSearch;
+        state.albumSearch = albumSearch;
+    };
 
-    function renderTrackList(container, tracks, selectedPath) {
-        container.innerHTML = '';
-        if (!tracks.length) {
-            const empty = document.createElement('div');
-            empty.className = 'text-muted small';
-            empty.textContent = 'No tracks';
-            container.appendChild(empty);
+    const buildGenreCache = () => {
+        const genreIndex = new Map();
+        const genreSearch = new Map();
+        const genreArtistSearch = new Map();
+        state.genres.forEach(genre => {
+            const artistSearchMap = new Map();
+            const genreParts = [genre.name];
+            (genre.tracks || []).forEach(track => {
+                const artistName = track.artist || 'Unknown Artist';
+                const artistBlob = artistSearchMap.get(artistName) || '';
+                const nextBlob = `${artistBlob} ${track.title || ''} ${track.album || ''} ${track.genre || ''} ${track.composer || ''} ${track.isrc || ''} ${track.folder || ''} ${track.mood || ''}`.trim();
+                artistSearchMap.set(artistName, normalizeText(nextBlob));
+                genreParts.push(track.artist, track.album, track.title, track.genre);
+            });
+            genreIndex.set(genre.name, genre);
+            genreSearch.set(genre.name, normalizeText(genreParts.join(' ')));
+            genreArtistSearch.set(genre.name, artistSearchMap);
+        });
+        state.genreIndex = genreIndex;
+        state.genreSearch = genreSearch;
+        state.genreArtistSearch = genreArtistSearch;
+    };
+
+    const buildCaches = () => {
+        buildArtistCache();
+        buildGenreCache();
+    };
+
+    const setActiveListItem = (container, activeValue) => {
+        container.querySelectorAll('.list-group-item').forEach(item => {
+            item.classList.toggle('active', item.dataset.value === activeValue);
+        });
+    };
+
+    const updateMetadataForm = (item) => {
+        formFields.artist.value = item?.artist || '';
+        formFields.album.value = item?.album || '';
+        formFields.title.value = item?.title || '';
+        formFields.year.value = item?.year || '';
+        formFields.genre.value = item?.genre || '';
+        formFields.explicit.checked = Boolean(item?.explicit);
+        formFields.path.value = item?.path || '';
+        const title = item?.title || 'Select a track to preview.';
+        const artist = item?.artist || '';
+        const album = item?.album || '';
+        previewTitle.textContent = title;
+        previewSubtitle.textContent = [artist, album].filter(Boolean).join(' · ') || 'Album art and audio preview will appear here.';
+        const path = item?.path || '';
+        previewPlayer.src = path ? `/music/stream?path=${encodeURIComponent(path)}` : '';
+        previewCover.src = path ? `/music/cover?path=${encodeURIComponent(path)}` : placeholderCover;
+        previewCover.onerror = () => {
+            previewCover.src = placeholderCover;
+        };
+        cueEditorLink.href = path ? `/music/cue?path=${encodeURIComponent(path)}` : '#';
+        cueEditorLink.classList.toggle('disabled', !path);
+        cueEditorLink.setAttribute('aria-disabled', path ? 'false' : 'true');
+        document.getElementById('openDetail').disabled = !path;
+        saveStatus.textContent = '';
+        formState.baseline = getFormState();
+        updateSaveState();
+    };
+
+    const getFormState = () => ({
+        artist: formFields.artist.value.trim(),
+        album: formFields.album.value.trim(),
+        title: formFields.title.value.trim(),
+        year: formFields.year.value.trim(),
+        genre: formFields.genre.value.trim(),
+        explicit: formFields.explicit.checked,
+        path: formFields.path.value
+    });
+
+    const hasFormChanges = () => {
+        if (!formState.baseline) {
+            return false;
+        }
+        const current = getFormState();
+        return Object.keys(current).some(key => current[key] !== formState.baseline[key]);
+    };
+
+    const updateSaveState = () => {
+        const allowSave = state.selectedItem && hasFormChanges() && !formState.saving;
+        saveMetadataBtn.disabled = !allowSave;
+    };
+
+    const sortTracks = (tracks) => {
+        const key = state.sortKey;
+        const dir = state.sortDir === 'asc' ? 1 : -1;
+        tracks.sort((a, b) => {
+            const aVal = (a[key] ?? '').toString().toLowerCase();
+            const bVal = (b[key] ?? '').toString().toLowerCase();
+            if (key === 'year') {
+                return dir * ((parseInt(aVal || '0', 10)) - (parseInt(bVal || '0', 10)));
+            }
+            if (aVal < bVal) return -1 * dir;
+            if (aVal > bVal) return 1 * dir;
+            return 0;
+        });
+    };
+
+    const applyTrackFilters = (tracks) => {
+        return tracks.filter(track => {
+            const blob = normalizeText([track.title, track.artist, track.album, track.genre, track.year, track.composer, track.isrc, track.folder, track.mood].filter(Boolean).join(' '));
+            if (!matchesSearch(blob)) return false;
+            if (state.mode === 'music' && state.year && String(track.year || '') !== state.year) return false;
+            if (state.mode === 'music' && state.genre && normalizeText(track.genre) !== normalizeText(state.genre)) return false;
+            if (state.mode === 'music' && state.explicitOnly && !track.explicit) return false;
+            if (state.mode === 'music' && state.trackFilter === 'recent' && !track.is_recent) return false;
+            if (state.mode === 'music' && state.trackFilter === 'missing_cues' && !track.missing_cues) return false;
+            return true;
+        });
+    };
+
+    const updateBulkState = () => {
+        const count = state.selectedPaths.size;
+        bulkCount.textContent = `${count} selected`;
+        bulkCount.classList.toggle('d-none', count === 0);
+        applyBulk.disabled = count === 0;
+    };
+
+    const renderTracks = () => {
+        const baseTracks = state.tracks;
+        const filteredTracks = applyTrackFilters(baseTracks);
+        const sortedTracks = [...filteredTracks];
+        sortTracks(sortedTracks);
+        trackTableBody.innerHTML = '';
+        gridView.innerHTML = '';
+        if (!baseTracks.length) {
+            trackTableBody.innerHTML = '<tr><td colspan="6" class="text-muted">No items selected.</td></tr>';
+            if (state.mode === 'psa') {
+                selectionSummary.textContent = 'Select a PSA collection.';
+            } else if (state.musicBrowseMode === 'genre') {
+                selectionSummary.textContent = 'Select a genre to view tracks.';
+            } else {
+                selectionSummary.textContent = 'Select an artist or album.';
+            }
             return;
         }
-        tracks.forEach(track => {
+        if (!filteredTracks.length) {
+            trackTableBody.innerHTML = '<tr><td colspan="6" class="text-muted">No items match the current filter.</td></tr>';
+            selectionSummary.textContent = `0 of ${baseTracks.length} items shown`;
+            return;
+        }
+        selectionSummary.textContent = filteredTracks.length === baseTracks.length
+            ? `${filteredTracks.length} items shown`
+            : `${filteredTracks.length} of ${baseTracks.length} items shown`;
+        sortedTracks.forEach((track, idx) => {
+            const row = document.createElement('tr');
+            row.className = `track-row ${track.path === state.selectedItem?.path ? 'table-primary' : ''}`;
+            row.innerHTML = `
+                <td><input class="form-check-input track-select" type="checkbox" ${state.selectedPaths.has(track.path) ? 'checked' : ''} aria-label="Select ${track.title || 'track'}"></td>
+                <td>${track.artist || '-'}</td>
+                <td>${track.album || '-'}</td>
+                <td>${track.title || '-'}</td>
+                <td>${track.year || '-'}</td>
+                <td>${track.genre || '-'}</td>
+            `;
+            row.querySelector('.track-select').addEventListener('click', event => {
+                event.stopPropagation();
+                if (event.currentTarget.checked) state.selectedPaths.add(track.path);
+                else state.selectedPaths.delete(track.path);
+                updateBulkState();
+            });
+            row.addEventListener('click', () => {
+                state.selectedItem = track;
+                updateMetadataForm(track);
+                renderTracks();
+            });
+            trackTableBody.appendChild(row);
+
+            const col = document.createElement('div');
+            col.className = 'col-12';
+            if (state.view === 'grid') {
+                col.className = 'col-md-6';
+            }
+            const card = document.createElement('div');
+            card.className = `grid-card ${track.path === state.selectedItem?.path ? 'active' : ''}`;
+            card.innerHTML = `
+                <div class="fw-semibold">${track.title || '-'}</div>
+                <div class="text-muted small">${track.artist || 'Unknown Artist'} · ${track.album || 'Unknown Album'}</div>
+                <div class="small mt-1">Year: ${track.year || '—'} · Genre: ${track.genre || '—'}</div>
+            `;
+            card.addEventListener('click', () => {
+                state.selectedItem = track;
+                updateMetadataForm(track);
+                renderTracks();
+            });
+            col.appendChild(card);
+            gridView.appendChild(col);
+        });
+        selectAll.checked = sortedTracks.length > 0 && sortedTracks.every(track => state.selectedPaths.has(track.path));
+        selectAll.dataset.visiblePaths = JSON.stringify(sortedTracks.map(track => track.path));
+        updateBulkState();
+    };
+
+    const matchesSearch = (blob) => {
+        if (!state.searchTerm) {
+            return true;
+        }
+        const haystack = normalizeText(blob);
+        const terms = state.searchTerm.split(/\s+/).filter(Boolean);
+        return terms.every(term => {
+            if (!term.includes('*') && !term.includes('?')) return haystack.includes(term);
+            const escaped = term.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+            return new RegExp(escaped, 'i').test(haystack);
+        });
+    };
+
+    const getFilteredArtists = () => state.artists.filter(artist => {
+        const blob = state.artistSearch.get(artist.name) || '';
+        return matchesSearch(blob);
+    });
+
+    const getFilteredGenres = () => state.genres.filter(genre => {
+        const blob = state.genreSearch.get(genre.name) || '';
+        return matchesSearch(blob);
+    });
+
+    const renderArtists = () => {
+        artistList.innerHTML = '';
+        const filteredArtists = getFilteredArtists();
+        if (!filteredArtists.length) {
+            artistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
+        }
+        if (state.selectedArtist && !filteredArtists.find(artist => artist.name === state.selectedArtist)) {
+            state.selectedArtist = null;
+            state.selectedAlbum = null;
+            state.tracks = [];
+            renderTracks();
+        }
+        filteredArtists.forEach(artist => {
             const btn = document.createElement('button');
             btn.type = 'button';
             btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.type = 'track';
-            btn.dataset.path = track.path;
-            const num = track.track_num ? `${track.track_num}. ` : '';
-            btn.textContent = `${num}${track.title || 'Untitled'}`;
-            if (selectedPath === track.path) {
-                btn.classList.add('active');
-                btn.setAttribute('aria-selected', 'true');
-            } else {
-                btn.setAttribute('aria-selected', 'false');
-            }
-            container.appendChild(btn);
-        });
-    }
-
-    function setSelectionDefaults() {
-        const artists = getArtists(resultsData);
-        if (!selectedArtist || !artists.find(a => a.value === selectedArtist)) {
-            selectedArtist = artists.length ? artists[0].value : null;
-        }
-        const albums = selectedArtist ? getAlbums(resultsData, selectedArtist) : [];
-        if (!selectedAlbum || !albums.find(a => a.value === selectedAlbum)) {
-            selectedAlbum = albums.length ? albums[0].value : null;
-        }
-        const tracks = (selectedArtist && selectedAlbum) ? getTracks(resultsData, selectedArtist, selectedAlbum) : [];
-        if (!selectedTrackPath || !tracks.find(t => t.path === selectedTrackPath)) {
-            selectedTrackPath = tracks.length ? tracks[0].path : null;
-        }
-    }
-
-    function updateMetadata() {
-        if (!metadataBody) return;
-        const artistLabel = selectedArtist || 'Unknown Artist';
-        const albumLabel = selectedAlbum || 'Unknown Album';
-        const track = resultsData.find(item => item.path === selectedTrackPath);
-        const artistTracks = selectedArtist ? resultsData.filter(item => (item.artist || '') === selectedArtist) : [];
-        const albumTracks = selectedArtist && selectedAlbum
-            ? resultsData.filter(item => (item.artist || '') === selectedArtist && (item.album || '') === selectedAlbum)
-            : [];
-
-        let html = `
-            <div class="browser-meta-label text-muted">Artist</div>
-            <div class="fw-semibold mb-2">${artistLabel}</div>
-            <div class="browser-meta-label text-muted">Album</div>
-            <div class="fw-semibold mb-3">${albumLabel}</div>
-            <div class="d-flex justify-content-between mb-2"><span>Albums</span><span>${new Set(artistTracks.map(t => t.album || 'Unknown Album')).size || 0}</span></div>
-            <div class="d-flex justify-content-between mb-3"><span>Tracks</span><span>${artistTracks.length}</span></div>
-        `;
-
-        if (track) {
-            const explicitLabel = track.explicit === true ? 'Yes' : track.explicit === false ? 'No' : 'Unknown';
-            html = `
-                <div class="text-center mb-3">
-                    <img class="metadata-cover mb-2" src="${window.ramsUrl(`/music/cover?path=${encodeURIComponent(track.path)}`)}" alt="cover">
-                </div>
-                <div class="browser-meta-label text-muted">Track</div>
-                <div class="fw-semibold mb-2">${track.title || 'Untitled'}</div>
-                <div class="small mb-1"><strong>Artist:</strong> ${track.artist || 'Unknown'}</div>
-                <div class="small mb-1"><strong>Album:</strong> ${track.album || 'Unknown'}</div>
-                <div class="small mb-1"><strong>Year:</strong> ${track.year || '—'}</div>
-                <div class="small mb-1"><strong>Genre:</strong> ${track.genre || '—'}</div>
-                <div class="small mb-1"><strong>Mood:</strong> ${track.mood || '—'}</div>
-                <div class="small mb-1"><strong>Explicit:</strong> ${explicitLabel}</div>
-                <div class="small mb-1"><strong>Length:</strong> ${track.duration_seconds ? track.duration_seconds.toFixed(1) + 's' : '—'}</div>
-                <div class="small"><strong>Folder:</strong> ${track.folder || '—'}</div>
-            `;
-        }
-        metadataBody.innerHTML = html;
-        if (openDetailBtn) {
-            openDetailBtn.disabled = !track;
-            openDetailBtn.dataset.path = track ? track.path : '';
-        }
-    }
-
-    function renderBrowser() {
-        setSelectionDefaults();
-        const artists = getArtists(resultsData);
-        const albums = selectedArtist ? getAlbums(resultsData, selectedArtist) : [];
-        const tracks = (selectedArtist && selectedAlbum) ? getTracks(resultsData, selectedArtist, selectedAlbum) : [];
-        renderList(artistList, artists, selectedArtist, 'artist');
-        renderList(albumList, albums, selectedAlbum, 'album');
-        renderTrackList(trackList, tracks, selectedTrackPath);
-        updateMetadata();
-        document.querySelectorAll('.result-row').forEach(row => {
-            row.classList.toggle('table-active', row.dataset.path === selectedTrackPath);
-        });
-    }
-
-    function renderResults(data) {
-        resultsData = data.slice();
-        tbody.innerHTML = data.map(item => `
-            <tr class="result-row" tabindex="0" data-path="${item.path}">
-                <td><input type="checkbox" value="${item.path}" aria-label="Select ${item.title || 'track'}"></td>
-                <td><a href="${window.ramsUrl(`/music/detail?path=${encodeURIComponent(item.path)}`)}">${item.title || ''}</a></td>
-                <td>${item.artist || ''}</td>
-                <td>${item.album || ''}</td>
-                <td>${item.duration_seconds ? item.duration_seconds.toFixed(1)+'s' : ''}</td>
-            </tr>
-        `).join('');
-        document.querySelectorAll('.result-row').forEach(row => {
-            row.addEventListener('keydown', (ev) => {
-                if (ev.key === ' ' || ev.key === 'Spacebar') {
-                    ev.preventDefault();
-                    const cb = row.querySelector('input[type=checkbox]');
-                    if (cb) { cb.checked = !cb.checked; }
-                }
-                if (ev.key === 'Enter') {
-                    const link = row.querySelector('a');
-                    if (link) { link.click(); }
-                }
+            btn.dataset.value = artist.name;
+            btn.textContent = artist.name;
+            btn.addEventListener('click', () => {
+                state.selectedArtist = artist.name;
+                state.selectedAlbum = null;
+                setActiveListItem(artistList, artist.name);
+                renderAlbums();
+                state.tracks = artist.albums.flatMap(album => album.tracks);
+                renderTracks();
             });
-            row.addEventListener('click', (ev) => {
-                if (ev.target && ev.target.matches('input[type=checkbox]')) {
-                    return;
-                }
-                selectTrack(row.dataset.path);
-            });
+            artistList.appendChild(btn);
         });
-        renderBrowser();
-    }
+    };
 
-    function selectArtist(value) {
-        selectedArtist = value;
-        selectedAlbum = null;
-        selectedTrackPath = null;
-        renderBrowser();
-    }
-
-    function selectAlbum(value) {
-        selectedAlbum = value;
-        selectedTrackPath = null;
-        renderBrowser();
-    }
-
-    function selectTrack(path) {
-        selectedTrackPath = path;
-        renderBrowser();
-    }
-
-    function moveFocus(list, direction) {
-        const items = Array.from(list.querySelectorAll('button.list-group-item'));
-        if (!items.length) return;
-        const active = document.activeElement;
-        const currentIndex = items.indexOf(active);
-        let nextIndex = currentIndex + direction;
-        if (currentIndex === -1) {
-            nextIndex = 0;
-        }
-        nextIndex = Math.max(0, Math.min(items.length - 1, nextIndex));
-        items[nextIndex].focus();
-    }
-
-    function focusNeighborList(current, direction) {
-        const lists = [artistList, albumList, trackList];
-        const idx = lists.indexOf(current);
-        const nextIdx = idx + direction;
-        if (nextIdx >= 0 && nextIdx < lists.length) {
-            const nextList = lists[nextIdx];
-            const firstItem = nextList.querySelector('button.list-group-item');
-            if (firstItem) {
-                firstItem.focus();
-            }
-        }
-    }
-
-    function handleListClick(event) {
-        const btn = event.target.closest('button.list-group-item');
-        if (!btn) return;
-        if (btn.dataset.type === 'artist') {
-            selectArtist(btn.dataset.value);
-        } else if (btn.dataset.type === 'album') {
-            selectAlbum(btn.dataset.value);
-        } else if (btn.dataset.type === 'track') {
-            selectTrack(btn.dataset.path);
-        }
-    }
-
-    function handleListKeydown(event) {
-        const list = event.currentTarget;
-        if (event.key === 'ArrowDown') {
-            event.preventDefault();
-            moveFocus(list, 1);
-        }
-        if (event.key === 'ArrowUp') {
-            event.preventDefault();
-            moveFocus(list, -1);
-        }
-        if (event.key === 'ArrowRight') {
-            event.preventDefault();
-            focusNeighborList(list, 1);
-        }
-        if (event.key === 'ArrowLeft') {
-            event.preventDefault();
-            focusNeighborList(list, -1);
-        }
-        if (event.key === 'Enter' || event.key === ' ') {
-            const btn = document.activeElement;
-            if (btn && btn.classList.contains('list-group-item')) {
-                btn.click();
-                if (btn.dataset.type === 'track') {
-                    window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(btn.dataset.path)}`);
-                }
-            }
-        }
-    }
-
-    [artistList, albumList, trackList].forEach(list => {
-        list.addEventListener('click', handleListClick);
-        list.addEventListener('keydown', handleListKeydown);
-    });
-
-    renderSaved();
-
-    function applySort(key) {
-        if (!key) return;
-        if (sortState.key === key) {
-            sortState.dir *= -1;
-        } else {
-            sortState = { key, dir: 1 };
-        }
-        const sorted = resultsData.slice().sort((a, b) => {
-            const av = a[key] || '';
-            const bv = b[key] || '';
-            if (key === 'artist') {
-                return (a.artist || '').localeCompare(b.artist || '') || (a.album || '').localeCompare(b.album || '') || (a.title || '').localeCompare(b.title || '');
-            }
-            if (key === 'album') {
-                return (a.album || '').localeCompare(b.album || '') || ((a.track || 0) - (b.track || 0));
-            }
-            if (typeof av === 'number' && typeof bv === 'number') {
-                return (av - bv) * sortState.dir;
-            }
-            return av.toString().localeCompare(bv.toString()) * sortState.dir;
-        });
-        renderResults(sorted);
-    }
-
-    document.querySelectorAll('#resultsTable thead [data-sort]').forEach(th => {
-        th.addEventListener('click', () => applySort(th.dataset.sort));
-        th.addEventListener('keydown', (e) => {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                applySort(th.dataset.sort);
-            }
-        });
-        th.tabIndex = 0;
-    });
-
-    document.getElementById('sortMode').addEventListener('change', (e) => {
-        const key = e.target.value;
-        applySort(key);
-    });
-
-    document.getElementById('savedList').addEventListener('click', async (e) => {
-        const load = e.target.getAttribute('data-query');
-        const delId = e.target.getAttribute('data-delete');
-        if (load) {
-            e.preventDefault();
-            document.getElementById('query').value = load;
-            form.requestSubmit();
-        }
-        if (delId) {
-            e.preventDefault();
-            await fetch(window.ramsUrl(`/api/music/saved-searches?id=${delId}`), {method: 'DELETE'});
-            savedSearches = savedSearches.filter(s => s.id != delId);
-            renderSaved();
-        }
-    });
-
-    document.getElementById('saveSearchBtn').addEventListener('click', async () => {
-        const q = document.getElementById('query').value.trim();
-        if (!q) return;
-        const name = prompt('Name this search?', q.slice(0, 30) || 'Saved search');
-        if (!name) return;
-        const res = await fetch(window.ramsUrl('/api/music/saved-searches'), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({name, query: q})
-        });
-        const data = await res.json();
-        if (data.status === 'ok') {
-            savedSearches.unshift({id: data.id, name, query: q});
-            renderSaved();
-        }
-    });
-
-    form.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const q = document.getElementById('query').value.trim();
-        if (!q) return;
-        currentPage = 1;
-        lastQuery = q;
-        await fetchPage();
-    });
-
-    async function fetchPage() {
-        if (!lastQuery) return;
-        const folder = folderFilter.value || '';
-        const genre = genreFilter.value || '';
-        const year = yearFilter.value || '';
-        const mood = moodFilter.value || '';
-        const explicitOnly = explicitFilter.checked;
-        const params = new URLSearchParams({
-            q: lastQuery,
-            page: currentPage,
-            per_page: perPage,
-        });
-        if (folder) params.set('folder', folder);
-        if (genre) params.set('genre', genre);
-        if (year) params.set('year', year);
-        if (mood) params.set('mood', mood);
-        if (explicitOnly) params.set('explicit', '1');
-        const res = await fetch(window.ramsUrl(`/api/music/search?${params.toString()}`));
-        const data = await res.json();
-        renderResults(data.items || []);
-        updateFilterOptions(data);
-        if (data.folders) {
-            const opts = ['<option value="">All folders</option>'];
-            data.folders.filter(Boolean).sort().forEach(f => {
-                opts.push(`<option value="${f}">${f}</option>`);
-            });
-            folderFilter.innerHTML = opts.join('');
-            if (folder) folderFilter.value = folder;
-        }
-        const total = data.total || 0;
-        const start = total ? ((data.page - 1) * data.per_page) + 1 : 0;
-        const end = Math.min(total, data.page * data.per_page);
-        document.getElementById('resultsMeta').textContent = total
-            ? `Showing ${start}-${end} of ${total}`
-            : 'No results found.';
-        document.getElementById('prevPage').disabled = data.page <= 1;
-        document.getElementById('nextPage').disabled = end >= total;
-    }
-
-    document.getElementById('prevPage').addEventListener('click', async () => {
-        if (currentPage <= 1) return;
-        currentPage -= 1;
-        await fetchPage();
-    });
-    document.getElementById('nextPage').addEventListener('click', async () => {
-        currentPage += 1;
-        await fetchPage();
-    });
-    folderFilter.addEventListener('change', async () => {
-        currentPage = 1;
-        await fetchPage();
-    });
-    genreFilter.addEventListener('change', async () => {
-        currentPage = 1;
-        await fetchPage();
-    });
-    yearFilter.addEventListener('change', async () => {
-        currentPage = 1;
-        await fetchPage();
-    });
-    moodFilter.addEventListener('change', async () => {
-        currentPage = 1;
-        await fetchPage();
-    });
-    explicitFilter.addEventListener('change', async () => {
-        currentPage = 1;
-        await fetchPage();
-    });
-
-    selectAll.addEventListener('change', () => {
-        document.querySelectorAll('#resultsTable tbody input[type=checkbox]').forEach(cb => {
-            cb.checked = selectAll.checked;
-        });
-    });
-
-    openDetailBtn.addEventListener('click', () => {
-        const path = openDetailBtn.dataset.path;
-        if (path) {
-            window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(path)}`);
-        }
-    });
-
-    document.getElementById('bulkApply').addEventListener('click', async () => {
-        const paths = Array.from(document.querySelectorAll('#resultsTable tbody input[type=checkbox]:checked')).map(cb => cb.value);
-        if (!paths.length) {
-            document.getElementById('bulkStatus').textContent = 'Select at least one track.';
+    const renderAlbums = () => {
+        albumList.innerHTML = '';
+        const artist = state.artists.find(a => a.name === state.selectedArtist);
+        if (!artist) {
+            albumList.innerHTML = '<div class="text-muted small">Select an artist to view albums.</div>';
             return;
         }
-        const updates = {};
-        document.querySelectorAll('.card-body input.form-control').forEach(inp => {
-            if (inp.name) { updates[inp.name] = inp.value; }
+        const albumSearchMap = state.albumSearch.get(artist.name) || new Map();
+        const filteredAlbums = (artist.albums || []).filter(album => {
+            if (!state.searchTerm) {
+                return true;
+            }
+            return matchesSearch(albumSearchMap.get(album.name) || '');
         });
-        let coverArt = null;
-        const coverFile = document.getElementById('cover').files[0];
-        if (coverFile) {
-            const buf = await coverFile.arrayBuffer();
-            coverArt = btoa(String.fromCharCode(...new Uint8Array(buf)));
+        if (!filteredAlbums.length) {
+            albumList.innerHTML = '<div class="text-muted small">No albums match the current search.</div>';
+            return;
         }
-        const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
-            method: 'POST',
-            headers: {'Content-Type': 'application/json'},
-            body: JSON.stringify({paths, updates, cover_art: coverArt})
+        filteredAlbums.forEach(album => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = album.name;
+            btn.innerHTML = `<div class="fw-semibold">${album.name}</div><div class="small text-muted">${album.year || 'Year n/a'} · ${album.genre || 'Genre n/a'}</div>`;
+            btn.addEventListener('click', () => {
+                state.selectedAlbum = album.name;
+                setActiveListItem(albumList, album.name);
+                state.tracks = album.tracks;
+                renderTracks();
+            });
+            albumList.appendChild(btn);
         });
-        const data = await res.json();
-        document.getElementById('bulkStatus').textContent = JSON.stringify(data);
+    };
+
+    const renderGenres = () => {
+        genreList.innerHTML = '';
+        const filteredGenres = getFilteredGenres();
+        if (!filteredGenres.length) {
+            genreList.innerHTML = '<div class="text-muted small">No genres match the current search.</div>';
+        }
+        if (state.selectedGenre && !filteredGenres.find(genre => genre.name === state.selectedGenre)) {
+            state.selectedGenre = null;
+            state.selectedGenreArtist = null;
+            state.tracks = [];
+            renderTracks();
+        }
+        filteredGenres.forEach(genre => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = genre.name;
+            btn.textContent = genre.name;
+            btn.addEventListener('click', () => {
+                state.selectedGenre = genre.name;
+                state.selectedGenreArtist = null;
+                setActiveListItem(genreList, genre.name);
+                renderGenreArtists();
+                state.tracks = genre.tracks || [];
+                renderTracks();
+            });
+            genreList.appendChild(btn);
+        });
+    };
+
+    const renderGenreArtists = () => {
+        genreArtistList.innerHTML = '';
+        const genre = state.genres.find(g => g.name === state.selectedGenre);
+        if (!genre) {
+            genreArtistList.innerHTML = '<div class="text-muted small">Select a genre to view artists.</div>';
+            return;
+        }
+        const artistSearchMap = state.genreArtistSearch.get(genre.name) || new Map();
+        const artists = (genre.artists || []).filter(name => {
+            if (!state.searchTerm) {
+                return true;
+            }
+            return matchesSearch(artistSearchMap.get(name) || '');
+        });
+        if (!artists.length) {
+            genreArtistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
+            return;
+        }
+        if (state.selectedGenreArtist && !artists.includes(state.selectedGenreArtist)) {
+            state.selectedGenreArtist = null;
+            state.tracks = genre.tracks || [];
+            renderTracks();
+        }
+        artists.forEach(name => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = name;
+            btn.textContent = name;
+            btn.addEventListener('click', () => {
+                state.selectedGenreArtist = name;
+                setActiveListItem(genreArtistList, name);
+                state.tracks = (genre.tracks || []).filter(track => track.artist === name);
+                renderTracks();
+            });
+            genreArtistList.appendChild(btn);
+        });
+    };
+
+    const renderPsaCategories = () => {
+        psaCategoryList.innerHTML = '';
+        state.psa.forEach(category => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = category.category;
+            btn.textContent = category.category;
+            btn.addEventListener('click', () => {
+                state.selectedCategory = category.category;
+                setActiveListItem(psaCategoryList, category.category);
+                renderPsaItems();
+            });
+            psaCategoryList.appendChild(btn);
+        });
+    };
+
+    const renderPsaItems = () => {
+        psaItemList.innerHTML = '';
+        const category = state.psa.find(c => c.category === state.selectedCategory);
+        if (!category) {
+            psaItemList.innerHTML = '<div class="text-muted small">Select a collection to see items.</div>';
+            state.tracks = [];
+            renderTracks();
+            return;
+        }
+        category.items.forEach(item => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'list-group-item list-group-item-action';
+            btn.dataset.value = item.path;
+            btn.textContent = item.title;
+            btn.addEventListener('click', () => {
+                state.selectedItem = item;
+                updateMetadataForm(item);
+                setActiveListItem(psaItemList, item.path);
+            });
+            psaItemList.appendChild(btn);
+        });
+        state.tracks = category.items.map(item => ({
+            ...item,
+            artist: item.artist || category.category,
+            album: item.album || item.folder || category.category
+        }));
+        renderTracks();
+    };
+
+    const renderMusicLists = () => {
+        document.getElementById('artistBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'artist');
+        document.getElementById('genreBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'genre');
+        if (state.musicBrowseMode === 'artist') {
+            renderArtists();
+            renderAlbums();
+        } else {
+            renderGenres();
+            renderGenreArtists();
+        }
+    };
+
+    const setBrowseMode = (browseMode) => {
+        state.musicBrowseMode = browseMode;
+        state.selectedArtist = null;
+        state.selectedAlbum = null;
+        state.selectedGenre = null;
+        state.selectedGenreArtist = null;
+        state.tracks = [];
+        renderMusicLists();
+        renderTracks();
+    };
+
+    const setMode = (mode) => {
+        state.mode = mode;
+        musicControls.classList.toggle('d-none', mode !== 'music');
+        document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
+        document.getElementById('psaBrowser').classList.toggle('d-none', mode !== 'psa');
+        trackFilterGroup.classList.toggle('d-none', mode !== 'music');
+        if (mode === 'music') {
+            state.selectedCategory = null;
+            state.tracks = [];
+            renderMusicLists();
+            renderTracks();
+        } else {
+            state.selectedArtist = null;
+            state.selectedAlbum = null;
+            state.selectedGenre = null;
+            state.selectedGenreArtist = null;
+            state.tracks = [];
+            renderPsaCategories();
+            renderPsaItems();
+        }
+    };
+
+    document.querySelectorAll('#libraryTabs .nav-link').forEach(tab => {
+        tab.addEventListener('click', () => {
+            document.querySelectorAll('#libraryTabs .nav-link').forEach(btn => btn.classList.remove('active'));
+            tab.classList.add('active');
+            setMode(tab.dataset.mode);
+        });
     });
 
-    async function loadQueues() {
+    document.querySelectorAll('#browseModeToggle .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#browseModeToggle .btn').forEach(toggle => toggle.classList.remove('active'));
+            btn.classList.add('active');
+            setBrowseMode(btn.dataset.browse);
+        });
+    });
+
+    librarySearch.addEventListener('input', debounce(() => {
+        state.searchTerm = normalizeText(librarySearch.value);
+        renderMusicLists();
+        showAllMatchingTracks();
+    }, 250));
+
+    const yearFilter = document.getElementById('yearFilter');
+    const genreFilter = document.getElementById('genreFilter');
+    const years = [...new Set(allMusicTracks().map(track => String(track.year || '')).filter(Boolean))].sort().reverse();
+    const genres = [...new Set(allMusicTracks().map(track => track.genre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
+    years.forEach(year => yearFilter.add(new Option(year, year)));
+    genres.forEach(genre => genreFilter.add(new Option(genre, genre)));
+    yearFilter.addEventListener('change', () => { state.year = yearFilter.value; showAllMatchingTracks(); });
+    genreFilter.addEventListener('change', () => { state.genre = genreFilter.value; showAllMatchingTracks(); });
+    document.getElementById('explicitFilter').addEventListener('change', event => { state.explicitOnly = event.target.checked; showAllMatchingTracks(); });
+
+    selectAll.addEventListener('change', () => {
+        const visible = JSON.parse(selectAll.dataset.visiblePaths || '[]');
+        visible.forEach(path => selectAll.checked ? state.selectedPaths.add(path) : state.selectedPaths.delete(path));
+        renderTracks();
+    });
+
+    document.getElementById('openDetail').addEventListener('click', () => {
+        if (state.selectedItem?.path) window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(state.selectedItem.path)}`);
+    });
+
+    document.getElementById('listToggle').addEventListener('click', () => {
+        state.view = 'list';
+        listView.classList.remove('d-none');
+        gridView.classList.add('d-none');
+        document.getElementById('listToggle').classList.add('active');
+        document.getElementById('gridToggle').classList.remove('active');
+    });
+
+    document.getElementById('gridToggle').addEventListener('click', () => {
+        state.view = 'grid';
+        listView.classList.add('d-none');
+        gridView.classList.remove('d-none');
+        document.getElementById('gridToggle').classList.add('active');
+        document.getElementById('listToggle').classList.remove('active');
+        renderTracks();
+    });
+
+    document.querySelectorAll('#trackFilter .btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            document.querySelectorAll('#trackFilter .btn').forEach(filterBtn => filterBtn.classList.remove('active'));
+            btn.classList.add('active');
+            state.trackFilter = btn.dataset.filter || 'all';
+            renderTracks();
+        });
+    });
+
+    document.querySelectorAll('.sort-header').forEach(header => {
+        header.addEventListener('click', () => {
+            const key = header.dataset.sort;
+            if (!key) return;
+            if (state.sortKey === key) {
+                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
+            } else {
+                state.sortKey = key;
+                state.sortDir = 'asc';
+            }
+            sortLabel.textContent = key.charAt(0).toUpperCase() + key.slice(1);
+            document.querySelectorAll('.sort-indicator').forEach(indicator => indicator.textContent = '');
+            const indicator = document.getElementById(`sort-${key}`);
+            indicator.textContent = state.sortDir === 'asc' ? '▲' : '▼';
+            renderTracks();
+        });
+    });
+
+    document.getElementById('resetMetadata').addEventListener('click', () => {
+        updateMetadataForm(state.selectedItem);
+    });
+
+    Object.values(formFields).forEach(field => {
+        if (!field) return;
+        const eventName = field.type === 'checkbox' ? 'change' : 'input';
+        field.addEventListener(eventName, () => {
+            updateSaveState();
+        });
+    });
+
+    saveMetadataBtn.addEventListener('click', async () => {
+        if (!state.selectedItem) return;
+        const current = getFormState();
+        const baseline = formState.baseline || {};
+        if (!current.path) return;
+        const updates = {};
+        ['artist', 'album', 'title', 'year', 'genre', 'explicit'].forEach(key => {
+            if (current[key] !== baseline[key]) {
+                updates[key] = current[key];
+            }
+        });
+        if (!Object.keys(updates).length) {
+            updateSaveState();
+            return;
+        }
+        formState.saving = true;
+        updateSaveState();
+        saveStatus.textContent = 'Saving changes...';
+        saveStatus.classList.remove('text-danger');
+        try {
+            const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ paths: [current.path], updates })
+            });
+            const payload = await res.json();
+            if (!res.ok || payload.status !== 'ok') {
+                throw new Error(payload.message || 'Unable to save changes.');
+            }
+            Object.assign(state.selectedItem, updates);
+            formState.baseline = getFormState();
+            saveStatus.textContent = 'Saved successfully.';
+            saveStatus.classList.remove('text-danger');
+            renderTracks();
+        } catch (error) {
+            saveStatus.textContent = error?.message || 'Unable to save changes.';
+            saveStatus.classList.add('text-danger');
+        } finally {
+            formState.saving = false;
+            updateSaveState();
+            setTimeout(() => {
+                saveStatus.classList.remove('text-danger');
+            }, 2000);
+        }
+    });
+
+    const fileAsBase64 = file => new Promise((resolve, reject) => {
+        if (!file) return resolve(null);
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result).split(',')[1]);
+        reader.onerror = reject;
+        reader.readAsDataURL(file);
+    });
+
+    applyBulk.addEventListener('click', async () => {
+        const updates = {};
+        document.querySelectorAll('.bulk-field').forEach(input => {
+            if (input.value.trim()) updates[input.dataset.key] = input.value.trim();
+        });
+        const coverFile = document.getElementById('bulkCover').files[0];
+        if (!Object.keys(updates).length && !coverFile) {
+            document.getElementById('bulkStatus').textContent = 'Enter at least one change.';
+            return;
+        }
+        if (!window.confirm(`Apply these changes to ${state.selectedPaths.size} selected item(s)?`)) return;
+        applyBulk.disabled = true;
+        const status = document.getElementById('bulkStatus');
+        status.textContent = 'Applying changes…';
+        try {
+            const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({paths: [...state.selectedPaths], updates, cover_art: await fileAsBase64(coverFile)})
+            });
+            const payload = await res.json();
+            if (!res.ok || payload.status !== 'ok') throw new Error(payload.message || 'Bulk update failed.');
+            allMusicTracks().filter(track => state.selectedPaths.has(track.path)).forEach(track => Object.assign(track, updates));
+            status.textContent = `Updated ${state.selectedPaths.size} item(s).`;
+            status.classList.remove('text-danger');
+            buildCaches(); renderMusicLists(); renderTracks();
+        } catch (error) {
+            status.textContent = error.message || 'Bulk update failed.';
+            status.classList.add('text-danger');
+        } finally { updateBulkState(); }
+    });
+
+    const savedList = document.getElementById('savedList');
+    const renderSavedSearches = () => {
+        savedList.innerHTML = savedSearches.length ? '' : '<li><span class="dropdown-item-text text-muted">No saved searches</span></li>';
+        savedSearches.forEach(saved => {
+            const li = document.createElement('li');
+            li.innerHTML = `<div class="dropdown-item d-flex align-items-center gap-2"><button class="btn btn-link p-0 text-start flex-grow-1 saved-open" type="button"></button><button class="btn btn-link text-danger p-0 saved-delete" aria-label="Delete saved search" type="button">×</button></div>`;
+            li.querySelector('.saved-open').textContent = saved.name;
+            li.querySelector('.saved-open').addEventListener('click', () => {
+                librarySearch.value = saved.query || '';
+                const filters = saved.filters || {};
+                yearFilter.value = filters.year || ''; genreFilter.value = filters.genre || '';
+                document.getElementById('explicitFilter').checked = Boolean(filters.explicit);
+                state.searchTerm = normalizeText(librarySearch.value); state.year = yearFilter.value; state.genre = genreFilter.value; state.explicitOnly = Boolean(filters.explicit);
+                renderMusicLists(); showAllMatchingTracks();
+            });
+            li.querySelector('.saved-delete').addEventListener('click', async event => {
+                event.stopPropagation();
+                await fetch(window.ramsUrl(`/api/music/saved-searches?id=${saved.id}`), {method: 'DELETE'});
+                savedSearches = savedSearches.filter(item => item.id !== saved.id); renderSavedSearches();
+            });
+            savedList.appendChild(li);
+        });
+    };
+    const loadSavedSearches = async () => {
+        const res = await fetch(window.ramsUrl('/api/music/saved-searches'));
+        if (res.ok) savedSearches = await res.json();
+        renderSavedSearches();
+    };
+    document.getElementById('saveSearchBtn').addEventListener('click', async () => {
+        const name = window.prompt('Name this search:');
+        if (!name) return;
+        const res = await fetch(window.ramsUrl('/api/music/saved-searches'), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, query: librarySearch.value, filters: {year: state.year, genre: state.genre, explicit: state.explicitOnly}})});
+        if (res.ok) await loadSavedSearches();
+    });
+
+    const maintenanceResults = document.getElementById('maintenanceResults');
+    const showMaintenance = html => { maintenanceResults.innerHTML = html; maintenanceResults.classList.remove('d-none'); };
+    document.getElementById('queuesBtn').addEventListener('click', async () => {
+        showMaintenance('Loading queues…');
         const res = await fetch(window.ramsUrl('/api/music/scan/library'));
         const data = await res.json();
         const metrics = data.metrics || {};
-        const renderList = (arr, label) => `<div class="mb-2"><strong>${label}</strong><br>${arr.slice(0,5).map(t => t.title || t.path).join('<br>') || 'None'}</div>`;
-        queuesBox.innerHTML = [
-            renderList(metrics.recently_added || [], 'Recently Added'),
-            renderList(metrics.needs_metadata || [], 'Needs metadata'),
-            renderList(metrics.missing_art || [], 'Missing cover art'),
-            renderList(metrics.low_bitrate || [], 'Low bitrate'),
-        ].join('');
-        return data;
-    }
-
-    document.getElementById('queuesBtn').addEventListener('click', loadQueues);
-
-    document.getElementById('scanBtn').addEventListener('click', async () => {
-        const data = await loadQueues();
-        const metrics = data.metrics || {};
-        const dupes = metrics.duplicates || [];
-        const target = document.getElementById('scanBody');
-        target.innerHTML = '';
-        if (dupes.length) {
-            target.innerHTML += '<h6>Duplicates</h6>' + dupes.map(pair => `<div>${pair[0].title || pair[0].path} == ${pair[1].title || pair[1].path}</div>`).join('');
-        } else {
-            target.innerHTML += '<div>No duplicates found.</div>';
-        }
-        document.getElementById('scanResults').style.display = 'block';
+        const list = (items, label) => `<strong>${label}</strong>: ${items?.length ? items.slice(0, 5).map(item => item.title || item.path).join(', ') : 'None'}`;
+        showMaintenance(`${list(metrics.low_bitrate, 'Low bitrate')}<br>${list(metrics.missing_art, 'Missing art')}<br>${list(metrics.needs_metadata, 'Needs metadata')}<br>${list(metrics.recently_added, 'Recently added')}`);
     });
+    document.getElementById('scanBtn').addEventListener('click', async () => {
+        showMaintenance('Running duplicate and quality scan…');
+        const res = await fetch(window.ramsUrl('/api/music/scan/library?refresh=1'));
+        const data = await res.json();
+        const metrics = data.metrics || {};
+        showMaintenance(`Scan complete. ${metrics.duplicates?.length || 0} duplicate pair(s), ${metrics.low_bitrate?.length || 0} low-bitrate item(s), ${metrics.missing_art?.length || 0} missing artwork item(s).`);
+    });
+
+    buildCaches();
+    renderMusicLists();
+    renderTracks();
+    loadSavedSearches();
 </script>
 </body>
 </html>
