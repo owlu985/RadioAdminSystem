@@ -83,7 +83,7 @@ GET  /api/reports/artist-frequency?show_run_id=&lt;id&gt;&amp;start=...&amp;end=
     <p>Probes classify live/automation/dead-air and log dB ratios.</p>
 
     <h4 class="mt-4">Music Library</h4>
-    <pre><code>GET    /api/music/search?q=&lt;query&gt;&amp;page=1&amp;per_page=50&amp;folder=&lt;rel&gt;  (use q=% to list all)
+    <pre><code>GET    /api/music/search?q=&lt;query&gt;&amp;page=1&amp;per_page=50&amp;folder=&lt;rel&gt;  (terms match anywhere; * and ? are wildcards; use q=% to list all)
 GET    /api/music/detail?path=&lt;abs_path&gt;
 GET    /api/music/cover-image?path=&lt;abs_path&gt;
 POST   /api/music/cover-art                   (harvest/embed cover art)

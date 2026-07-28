@@ -28,7 +28,7 @@ from app.models import db, MusicAnalysis, MusicCue
 
 
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
-METADATA_READER_VERSION = 2
+METADATA_READER_VERSION = 3
 _MUSIC_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
 _LIBRARY_EDITOR_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None, "music_generated_at": None}
 
@@ -156,7 +156,10 @@ def build_music_index(existing: Optional[Dict] = None) -> Dict:
             "album_artist": tags.get("album_artist"),
             "album": tags.get("album"),
             "composer": tags.get("composer"),
+            "isrc": tags.get("isrc"),
             "genre": tags.get("genre"),
+            "mood": tags.get("mood"),
+            "explicit": tags.get("explicit"),
             "year": tags.get("year"),
             "folder": folder,
             "mtime": stat.st_mtime,
@@ -294,6 +297,11 @@ def build_library_editor_index(index: Dict | None = None) -> Dict:
             "album": album,
             "year": year,
             "genre": genre,
+            "composer": entry.get("composer"),
+            "isrc": entry.get("isrc"),
+            "mood": entry.get("mood"),
+            "explicit": entry.get("explicit"),
+            "folder": entry.get("folder"),
             "track_num": entry.get("track_num"),
             "disc_num": entry.get("disc_num"),
             "cues": cues,
@@ -489,6 +497,24 @@ def _search_tokens(value: Optional[str]) -> List[str]:
         if tok and tok not in tokens:
             tokens.append(tok)
     return tokens
+
+
+def _matches_search_query(search_blob: str, query: Optional[str]) -> bool:
+    """Match normal terms as substrings and support shell-style * and ? wildcards."""
+    query_text = _clean_search_text(query or "").lower().strip()
+    if not query_text or query_text in {"%", "*"}:
+        return True
+    blob = (search_blob or "").lower()
+    if "*" not in query_text and "?" not in query_text:
+        tokens = _search_tokens(query_text)
+        return all(token in blob for token in tokens) if tokens else query_text in blob
+
+    terms = query_text.split()
+    for term in terms:
+        pattern = re.escape(term).replace(r"\*", ".*").replace(r"\?", ".")
+        if not re.search(pattern, blob):
+            return False
+    return True
 
 
 def _humanize_compact_text(value: str) -> str:
@@ -1190,20 +1216,13 @@ def search_music(
     index = get_music_index()
     entries = list(index.get("files", {}).values())
     query_lower = (query or "").lower().strip()
-    query_tokens = _search_tokens(query_lower)
 
     if folder:
         folder = folder.strip().replace("\\", "/").strip("/")
         entries = [e for e in entries if (e.get("folder") or "").startswith(folder)]
 
     if query_lower and query_lower not in {"%", "*"}:
-        if query_tokens:
-            entries = [
-                e for e in entries
-                if all(tok in (e.get("search") or "") for tok in query_tokens)
-            ]
-        else:
-            entries = [e for e in entries if query_lower in (e.get("search") or "")]
+        entries = [e for e in entries if _matches_search_query(e.get("search") or "", query_lower)]
 
     def _norm(val: Optional[str]) -> str:
         return (val or "").strip().lower()

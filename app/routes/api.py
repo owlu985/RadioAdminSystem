@@ -954,6 +954,14 @@ def music_search():
 def music_saved_searches():
     user_email = session.get("user_email") or "anonymous"
     if request.method == "GET":
+        def deserialize_filters(value):
+            if isinstance(value, dict):
+                return value
+            try:
+                return json.loads(value) if value else {}
+            except (TypeError, ValueError):
+                return {}
+
         searches = (
             db.session.query(SavedSearch)
             .filter(
@@ -968,11 +976,25 @@ def music_saved_searches():
                 "id": s.id,
                 "name": s.name,
                 "query": s.query,
-                "filters": s.filters,
+                "filters": deserialize_filters(s.filters),
                 "created_at": s.created_at.isoformat(),
             }
             for s in searches
         ])
+
+    if request.method == "POST":
+        payload = request.get_json(force=True, silent=True) or {}
+        name = (payload.get("name") or "").strip()
+        query = (payload.get("query") or "").strip()
+        if not name:
+            return jsonify({"status": "error", "message": "name required"}), 400
+        saved = SavedSearch(
+            name=name[:128], query=query[:255],
+            filters=json.dumps(payload.get("filters") or {}), created_by=user_email,
+        )
+        db.session.add(saved)
+        db.session.commit()
+        return jsonify({"status": "ok", "id": saved.id}), 201
 
     if request.method == "DELETE":
         sid = request.args.get("id", type=int)

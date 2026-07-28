@@ -1728,14 +1728,15 @@ def music_search_page():
             .limit(25)
             .all()
         )
-    return render_template("music_search.html", saved_searches=saved)
+    library_index = get_library_editor_index()
+    return render_template("music_search.html", saved_searches=saved, library_index=library_index)
 
 
 @main_bp.route("/music/library/editor")
 @permission_required({"music:view"})
 def library_editor_page():
-    library_index = get_library_editor_index()
-    return render_template("library_editor.html", library_index=library_index)
+    """Redirect legacy bookmarks to the unified music library."""
+    return redirect(url_for("main.music_search_page", **request.args))
 
 
 def _safe_music_path(path: str) -> str:

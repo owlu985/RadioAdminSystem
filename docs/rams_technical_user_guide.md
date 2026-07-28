@@ -215,7 +215,7 @@ On first boot RAMS will:
 - DJs/users/profiles: `/djs`, `/djs/add`, `/users`, `/profile`, `/djs/discipline`, `/absences`
 - Logs: `/logs/submit`, `/logs/manage`, `/logs/view`, export routes
 - News: `/news/upload`, `/news/dashboard`, `/news/settings`
-- Music/admin pages: `/music/search`, `/music/detail`, `/music/edit`, `/music/cue`, `/music/library/editor`
+- Music/admin pages: `/music/search`, `/music/detail`, `/music/edit`, `/music/cue` (legacy `/music/library/editor` redirects to `/music/search`)
 - Settings/admin: `/settings`, `/settings/logs`, `/settings/export`, `/settings/import`
 - Plugins pages: `/plugins`, plus plugin-specific routes under `/plugins/...`
 
@@ -255,7 +255,7 @@ Examples:
 4. Optionally validate via `GET /api/schedule`.
 
 ### Tutorial C — Music metadata cleanup at scale
-1. Search via `/music/search` or `GET /api/music/search`.
+1. Search and browse in the unified `/music/search` workspace or use `GET /api/music/search`. Plain terms match anywhere in metadata (for example, `Home` finds `Sweet Home Alabama`); `*` and `?` provide explicit wildcard matching.
 2. Inspect detail/cover state (`/music/detail`, `/api/music/detail`, `/api/music/cover-image`).
 3. Use bulk endpoint `POST /api/music/bulk-update` for normalized metadata updates.
 4. Run CUE adjustments via `/music/cue` or `GET|POST /api/music/cue`.
@@ -296,10 +296,10 @@ Examples:
 4. Use `/news/settings` to adjust rotation/config (privileged users).
 
 ## 8.5 Music workflow
-1. Search at `/music/search`.
-2. Open detail and verify tags/artwork.
-3. Edit at `/music/edit`; tune CUE points at `/music/cue`.
-4. Save and test audio preview if needed.
+1. Open the unified Music Library at `/music/search` and search or browse by artist, album, or genre.
+2. Preview a track and edit its metadata inline, or select several tracks for a bulk update.
+3. Open advanced detail when needed and tune CUE points at `/music/cue`.
+4. Use the quality scan and queues to find missing artwork, cues, duplicates, and low-quality files.
 
 ## 8.6 Permission-safe operating tips
 - Give least privilege needed (start with `viewer`/`ops`).
@@ -366,4 +366,3 @@ Examples:
 
 ### Week 4 (hardening)
 - Document local SOPs, backup/restore drill, access review, incident simulations.
-
