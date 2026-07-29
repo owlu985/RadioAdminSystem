@@ -72,7 +72,7 @@ from app.services.library.music_search import (
     enrich_metadata_external,
     invalidate_library_editor_index_cache,
 )
-from app.services.library.media_library import list_media, load_media_meta, save_media_meta
+from app.services.library.media_library import decode_media_token, list_media, load_media_meta, save_media_meta
 from app.services.archivist_db import (
     lookup_album,
     analyze_album_rip,
@@ -312,7 +312,7 @@ def _decode_media_token(token: str) -> Optional[str]:
     if not token:
         return None
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = decode_media_token(token)
     except Exception:
         return None
     full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
@@ -1244,7 +1244,7 @@ def psa_cue():
     if not token:
         return jsonify({"status": "error", "message": "token required"}), 400
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = decode_media_token(token)
     except Exception:
         return jsonify({"status": "error", "message": "invalid token"}), 400
     full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
