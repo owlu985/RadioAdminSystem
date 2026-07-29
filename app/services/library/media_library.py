@@ -6,6 +6,7 @@ import time
 from typing import Dict, List, Optional, Tuple
 
 from flask import current_app, url_for
+import mutagen  # type: ignore
 
 from app.models import ImagingAsset, PsaAsset, db
 from app.services.library.music_search import load_cue  # type: ignore[attr-defined]
@@ -264,13 +265,67 @@ def list_media(
 ) -> Dict:
     index = get_media_index()
     items: List[Dict] = []
-    for entry in index.get("files", {}).values():
-        path = entry["path"]
-        duration = None
-        meta = load_media_meta(path)
-        try:
-            import mutagen  # type: ignore
+    entries = index.get("files", {}).values()
+    if kind:
+        # Filtering before metadata/audio inspection is essential when the
+        # shared index also contains a large music library.
+        entries = (entry for entry in entries if entry.get("kind") == kind)
 
+    # Build only the inexpensive, filterable fields first. Duration probing and
+    # cue loading can involve file I/O and database work and belong after
+    # pagination, not once per file in the entire shared media index.
+    for entry in entries:
+        path = entry["path"]
+        meta = load_media_meta(path)
+        token = encode_media_token(path)
+        asset_meta: Dict[str, Optional[str]] = {}
+        if entry.get("kind") in ASSET_METADATA_KINDS:
+            asset_meta = get_asset_metadata(path, entry["kind"])
+            if not asset_meta:
+                asset_meta = {
+                    "title": meta.get("title"),
+                    "category": meta.get("category"),
+                    "expires_on": meta.get("expires_on") or meta.get("expiry"),
+                    "usage_rules": meta.get("usage_rules") or meta.get("usage"),
+                }
+        effective_category = _json_safe_text(asset_meta.get("category") or entry.get("category"))
+        title = _json_safe_text(asset_meta.get("title"))
+        items.append({
+            "name": _json_safe_text(entry["name"]),
+            "title": title,
+            "url": url_for("main.media_file", token=token),
+            "token": token,
+            "category": effective_category,
+            "library_category": _json_safe_text(entry.get("category")),
+            "kind": entry["kind"],
+            "expires_on": _json_safe_text(asset_meta.get("expires_on")),
+            "usage_rules": _json_safe_text(asset_meta.get("usage_rules")),
+            "_path": path,
+            "_meta": meta,
+        })
+
+    all_categories = sorted({f.get("category") for f in items if f.get("category")})
+    if category:
+        items = [f for f in items if f.get("category") == category]
+    if query:
+        q = query.lower()
+        items = [
+            f for f in items
+            if q in (f.get("title") or "").lower() or q in f.get("name", "").lower()
+        ]
+
+    total = len(items)
+    page = max(1, page)
+    per_page = max(1, min(per_page, 100))
+    start = (page - 1) * per_page
+    end = start + per_page
+    page_files = items[start:end]
+
+    for item in page_files:
+        path = item.pop("_path")
+        meta = item.pop("_meta")
+        duration = None
+        try:
             audio = mutagen.File(path)
             if audio and getattr(audio, "info", None) and getattr(audio.info, "length", None):
                 duration = round(audio.info.length, 2)
@@ -292,57 +347,15 @@ def list_media(
                 "start_next": cue_obj.start_next,
             })
         cues.update({
-            k: meta.get(k)
-            for k in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
-            if meta.get(k) is not None
+            key: meta.get(key)
+            for key in ["cue_in", "cue_out", "intro", "outro", "loop_in", "loop_out", "hook_in", "hook_out", "start_next"]
+            if meta.get(key) is not None
         })
-        cues = {k: v for k, v in cues.items() if v is not None}
-        token = encode_media_token(path)
-        asset_meta: Dict[str, Optional[str]] = {}
-        if entry.get("kind") in ASSET_METADATA_KINDS:
-            asset_meta = get_asset_metadata(path, entry["kind"])
-            if not asset_meta:
-                asset_meta = {
-                    "title": meta.get("title"),
-                    "category": meta.get("category"),
-                    "expires_on": meta.get("expires_on") or meta.get("expiry"),
-                    "usage_rules": meta.get("usage_rules") or meta.get("usage"),
-                }
-        effective_category = _json_safe_text(asset_meta.get("category") or entry.get("category"))
-        title = _json_safe_text(asset_meta.get("title"))
-        items.append({
-            "name": _json_safe_text(entry["name"]),
-            "title": title,
-            "url": url_for("main.media_file", token=token),
-            "token": token,
+        item.update({
             "duration": duration,
-            "category": effective_category,
-            "library_category": _json_safe_text(entry.get("category")),
-            "kind": entry["kind"],
             "loop": bool(meta.get("loop")),
-            "cues": cues,
-            "expires_on": _json_safe_text(asset_meta.get("expires_on")),
-            "usage_rules": _json_safe_text(asset_meta.get("usage_rules")),
+            "cues": {key: value for key, value in cues.items() if value is not None},
         })
-
-    if kind:
-        items = [f for f in items if f.get("kind") == kind]
-    all_categories = sorted({f.get("category") for f in items if f.get("category")})
-    if category:
-        items = [f for f in items if f.get("category") == category]
-    if query:
-        q = query.lower()
-        items = [
-            f for f in items
-            if q in (f.get("title") or "").lower() or q in f.get("name", "").lower()
-        ]
-
-    total = len(items)
-    page = max(1, page)
-    per_page = max(1, min(per_page, 100))
-    start = (page - 1) * per_page
-    end = start + per_page
-    page_files = items[start:end]
 
     return {
         "items": page_files,
