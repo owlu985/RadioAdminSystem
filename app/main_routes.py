@@ -86,6 +86,7 @@ from app.services.library.dj_library import (
     match_text_playlist,
     match_youtube_playlist,
 )
+from app.services.library.media_library import decode_media_token
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path
 from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
@@ -857,7 +858,7 @@ def recordings_download():
 @main_bp.route("/media/file/<path:token>")
 def media_file(token: str):
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = decode_media_token(token)
     except Exception:
         abort(404)
     full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))

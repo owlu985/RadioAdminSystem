@@ -1,4 +1,5 @@
 from datetime import date, datetime
+import base64
 import json
 import os
 import time
@@ -13,6 +14,47 @@ from app.services.library.music_search import load_cue  # type: ignore[attr-defi
 AUDIO_EXTS = (".mp3", ".flac", ".m4a", ".wav", ".ogg")
 _MEDIA_INDEX_CACHE: Dict[str, Optional[object]] = {"data": None, "loaded_at": None, "root": None}
 ASSET_METADATA_KINDS = {"psa", "imaging"}
+_FILESYSTEM_TOKEN_MARKER = b"\x00"
+_SURROGATE_TOKEN_MARKER = b"\x01"
+
+
+def encode_media_token(path: str) -> str:
+    """Encode a filesystem path without losing undecodable filename bytes.
+
+    On POSIX, Python represents filename bytes that are not valid UTF-8 with
+    surrogate escapes.  ``os.fsencode`` reverses that representation, unlike a
+    strict UTF-8 encode (which raises) or ``errors=ignore/replace`` (which makes
+    the token point at a different file).
+    """
+
+    try:
+        payload = _FILESYSTEM_TOKEN_MARKER + os.fsencode(path)
+    except UnicodeEncodeError:
+        # A manually edited/stale index can contain surrogates that did not
+        # originate from the OS. Keep the library endpoint usable and make the
+        # token reversible even though such a path cannot normally name a file.
+        payload = _SURROGATE_TOKEN_MARKER + path.encode("utf-8", "surrogatepass")
+    return base64.urlsafe_b64encode(payload).decode("ascii")
+
+
+def decode_media_token(token: str) -> str:
+    """Decode a token produced by :func:`encode_media_token` losslessly."""
+
+    payload = base64.urlsafe_b64decode(token.encode("ascii"))
+    if payload.startswith(_FILESYSTEM_TOKEN_MARKER):
+        return os.fsdecode(payload[1:])
+    if payload.startswith(_SURROGATE_TOKEN_MARKER):
+        return payload[1:].decode("utf-8", "surrogatepass")
+    # Continue accepting tokens generated before markers were introduced.
+    return payload.decode("utf-8")
+
+
+def _json_safe_text(value):
+    """Replace invalid surrogate code points while preserving visible spacing."""
+
+    if not isinstance(value, str):
+        return value
+    return value.encode("utf-8", "replace").decode("utf-8")
 
 
 def _media_index_path() -> str:
@@ -255,7 +297,7 @@ def list_media(
             if meta.get(k) is not None
         })
         cues = {k: v for k, v in cues.items() if v is not None}
-        token = base64.urlsafe_b64encode(path.encode("utf-8")).decode("utf-8")
+        token = encode_media_token(path)
         asset_meta: Dict[str, Optional[str]] = {}
         if entry.get("kind") in ASSET_METADATA_KINDS:
             asset_meta = get_asset_metadata(path, entry["kind"])
@@ -266,22 +308,21 @@ def list_media(
                     "expires_on": meta.get("expires_on") or meta.get("expiry"),
                     "usage_rules": meta.get("usage_rules") or meta.get("usage"),
                 }
-        effective_category = asset_meta.get("category") or entry.get("category")
-        title = asset_meta.get("title")
+        effective_category = _json_safe_text(asset_meta.get("category") or entry.get("category"))
+        title = _json_safe_text(asset_meta.get("title"))
         items.append({
-            "name": entry["name"],
+            "name": _json_safe_text(entry["name"]),
             "title": title,
             "url": url_for("main.media_file", token=token),
             "token": token,
             "duration": duration,
             "category": effective_category,
-            "library_category": entry.get("category"),
+            "library_category": _json_safe_text(entry.get("category")),
             "kind": entry["kind"],
             "loop": bool(meta.get("loop")),
             "cues": cues,
-            "expires_on": asset_meta.get("expires_on"),
-            "usage_rules": asset_meta.get("usage_rules"),
-            "token": token,
+            "expires_on": _json_safe_text(asset_meta.get("expires_on")),
+            "usage_rules": _json_safe_text(asset_meta.get("usage_rules")),
         })
 
     if kind:
