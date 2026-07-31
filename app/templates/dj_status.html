@@ -270,8 +270,9 @@
     let activeMarathon = false;
 
     function updateClock() {
-        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: statusTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
-        document.getElementById('clock').textContent = formatter.format(new Date());
+        const formatter = new Intl.DateTimeFormat('en-US', { timeZone: statusTimezone, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+        const timeParts = formatter.formatToParts(new Date()).filter(part => ['hour', 'minute', 'second'].includes(part.type));
+        document.getElementById('clock').textContent = timeParts.map(part => part.value).join(':');
     }
     setInterval(updateClock, 1000); updateClock();
 
