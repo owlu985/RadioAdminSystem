@@ -1,3 +1,4 @@
+import json
 import os
 import shutil
 from pathlib import Path
@@ -65,7 +66,7 @@ class RadioDJClient:
         params = {"auth": self.api_password, "command": command}
         if arg is not None:
             params["arg"] = arg
-        resp = requests.get(self._endpoint("opt"), params=params, timeout=10)
+        resp = requests.get(self._endpoint("RDJCommand"), params=params, timeout=10)
         resp.raise_for_status()
         return resp.text
 
@@ -143,22 +144,46 @@ class RadioDJClient:
 
     def now_playing(self) -> Optional[dict]:
         """
-        Fetch the current on-air metadata from RadioDJ (if enabled).
-        Expected payload shape: XML fields from the /np endpoint (lower-cased keys).
+        Fetch the current on-air metadata from RadioDJ REST Server v1.4.
+
+        RDJnpjson also contains the current playlist, so only its current-track
+        object is returned here.  The XML endpoint is retained as a fallback for
+        installations which have disabled the JSON response.
         """
         if not self.enabled:
             return None
         try:
-            resp = requests.get(self._endpoint("np"), params={"auth": self.api_password}, timeout=6)
+            resp = requests.get(self._endpoint("RDJnpjson"), params={"auth": self.api_password}, timeout=6)
             resp.raise_for_status()
-            payload = self._xml_to_dict(resp.text)
+            payload = resp.json()
+            if not isinstance(payload, dict):
+                return None
+            current_track = next(
+                (value for key, value in payload.items() if key.lower() in {"currenttrack", "nowplaying"}),
+                payload,
+            )
+            payload = current_track if isinstance(current_track, dict) else payload
+        except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
+            logger.warning("RadioDJ JSON now playing fetch failed, trying XML: %s", exc)
+            try:
+                resp = requests.get(self._endpoint("RDJnp"), params={"auth": self.api_password}, timeout=6)
+                resp.raise_for_status()
+                payload = self._xml_to_dict(resp.text)
+            except Exception as fallback_exc:  # noqa: BLE001
+                logger.error("RadioDJ now playing fetch failed: %s", fallback_exc)
+                return None
+
+        try:
             if not payload:
                 return None
-            payload["artist"] = _strip_p_tag(payload.get("artist"))
-            payload["title"] = _strip_p_tag(payload.get("title"))
-            payload["album"] = _strip_p_tag(payload.get("album"))
-            payload["duration"] = _coerce_float(payload.get("duration"))
-            payload["elapsed"] = _coerce_float(payload.get("elapsed"))
+            for field in ("artist", "title", "album"):
+                key = next((key for key in payload if key.lower() == field), field)
+                if key in payload:
+                    payload[key] = _strip_p_tag(payload.get(key))
+            for field in ("duration", "elapsed"):
+                key = next((key for key in payload if key.lower() == field), field)
+                if key in payload:
+                    payload[key] = _coerce_float(payload.get(key))
             return payload
         except Exception as exc:  # noqa: BLE001
             logger.error("RadioDJ now playing fetch failed: %s", exc)
@@ -168,7 +193,7 @@ class RadioDJClient:
         if not self.enabled:
             return {}
         try:
-            resp = requests.get(self._endpoint("Status"), params={"auth": self.api_password}, timeout=6)
+            resp = requests.get(self._endpoint("RDJState"), params={"auth": self.api_password}, timeout=6)
             resp.raise_for_status()
             return self._xml_to_dict(resp.text)
         except Exception as exc:  # noqa: BLE001
@@ -179,7 +204,7 @@ class RadioDJClient:
         if not self.enabled:
             return []
         try:
-            resp = requests.get(self._endpoint("p"), params={"auth": self.api_password}, timeout=10)
+            resp = requests.get(self._endpoint("RDJp"), params={"auth": self.api_password}, timeout=10)
             resp.raise_for_status()
             root = ElementTree.fromstring(resp.text)
         except Exception as exc:  # noqa: BLE001
@@ -236,7 +261,7 @@ class RadioDJClient:
             return None
         try:
             resp = requests.get(
-                self._endpoint("pitem"),
+                self._endpoint("RDJp"),
                 params={"auth": self.api_password, "arg": index},
                 timeout=10,
             )

@@ -17,11 +17,24 @@ Each endpoint is accessed at:
 http(s)://[IP]:[PORT]/<Endpoint>?auth=<password>&command=<command_item>&arg=<argument>
 ```
 
-### SetItem (control)
+### RDJCommand (control)
+`/RDJCommand?auth=...&command=...&arg=...` accepts the following commands. The
+`arg` parameter is only required by commands that need a track, playlist, cart,
+or explicit toggle state.
+
 Examples: `PlayPlaylistTrack`, `RemovePlaylistTrack`, `PlayFromIntro`, `RestartPlayer`, `PausePlayer`, `StopPlayer`, `Loop`, `Record`, `EnableInput`, `LoadTrackToTop`, `LoadTrackToBottom`, `LoadPlaylist`, `PlayCartByNumber`, `EnableAutoDJ`, `EnableAssisted`, `ClearPlaylist`.
 
-### Status
-`/Status?auth=...` returns: `TimeTicks`, `AutoDJ`, `Assisted`, `Input`, `Paused`, `Record`, `Loop`, `Events Disabled`, `QueueCount`, `PlayingTrackRemainingSeconds`, `ListenersCount`, `LoggedUser`, `NowPlaying`.
+### RDJState (status)
+`/RDJState?auth=...` returns `AutoDJ`, `Assisted`, `Input`, `Paused`, `Record`, `Loop`, and `QueueCount`.
+
+### Now playing
+`/RDJnp?auth=...` returns now-playing information as XML. `/RDJnpjson?auth=...`
+returns the now-playing information and current playlist as JSON. RAMS uses the
+JSON endpoint and falls back to XML if a server cannot provide valid JSON.
+
+### Current playlist
+`/RDJp?auth=...` returns the current playlist as XML. Add a zero-based playlist
+position as `arg` to return a single item.
 
 ### Playlists
 Commands: `Main`, `List`, `Item`, `Update`, `Insert`, `Delete`.
@@ -39,7 +52,6 @@ Commands: `Categories`, `Subcategories`, `Genres`, `UpdateCategory`, `InsertCate
 Commands: `Search`, `Item`, `Update`, `Insert`, `Delete`.
 
 ## RAMS integration notes
-- **Now-playing fallback**: RAMS can call the RadioDJ Status endpoint to populate automation/NowPlaying data when no scheduled show is active.
+- **Now-playing fallback**: RAMS calls `RDJnpjson` to populate automation/NowPlaying data when no scheduled show is active.
 - **PSA/track management**: RadioDJ playlist/rotation/category/track endpoints support RAMS PSA and library workflows. Keep IDs and payload formats consistent with RadioDJ’s returned structures.
 - **Security**: Restrict the plugin port to trusted networks; use firewall rules or reverse proxy authentication when possible.
-
