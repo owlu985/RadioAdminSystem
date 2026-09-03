@@ -146,30 +146,31 @@ class RadioDJClient:
         """
         Fetch the current on-air metadata from RadioDJ REST Server v1.4.
 
-        RDJnpjson also contains the current playlist, so only its current-track
-        object is returned here.  The XML endpoint is retained as a fallback for
-        installations which have disabled the JSON response.
+        Prefer the focused XML now-playing endpoint.  If it is unavailable or
+        empty, fall back to RDJnpjson and discard its accompanying playlist.
         """
         if not self.enabled:
             return None
         try:
-            resp = requests.get(self._endpoint("RDJnpjson"), params={"auth": self.api_password}, timeout=6)
+            resp = requests.get(self._endpoint("RDJnp"), params={"auth": self.api_password}, timeout=6)
             resp.raise_for_status()
-            payload = resp.json()
-            if not isinstance(payload, dict):
-                return None
-            current_track = next(
-                (value for key, value in payload.items() if key.lower() in {"currenttrack", "nowplaying"}),
-                payload,
-            )
-            payload = current_track if isinstance(current_track, dict) else payload
-        except (requests.RequestException, json.JSONDecodeError, ValueError) as exc:
-            logger.warning("RadioDJ JSON now playing fetch failed, trying XML: %s", exc)
+            payload = self._xml_to_dict(resp.text)
+            if not payload:
+                raise ValueError("empty or invalid XML now-playing response")
+        except (requests.RequestException, ValueError) as exc:
+            logger.warning("RadioDJ XML now playing fetch failed, trying JSON: %s", exc)
             try:
-                resp = requests.get(self._endpoint("RDJnp"), params={"auth": self.api_password}, timeout=6)
+                resp = requests.get(self._endpoint("RDJnpjson"), params={"auth": self.api_password}, timeout=6)
                 resp.raise_for_status()
-                payload = self._xml_to_dict(resp.text)
-            except Exception as fallback_exc:  # noqa: BLE001
+                payload = resp.json()
+                if not isinstance(payload, dict):
+                    return None
+                current_track = next(
+                    (value for key, value in payload.items() if key.lower() in {"currenttrack", "nowplaying"}),
+                    payload,
+                )
+                payload = current_track if isinstance(current_track, dict) else payload
+            except (requests.RequestException, json.JSONDecodeError, ValueError) as fallback_exc:
                 logger.error("RadioDJ now playing fetch failed: %s", fallback_exc)
                 return None
 

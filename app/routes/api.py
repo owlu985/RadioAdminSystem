@@ -452,6 +452,15 @@ def _track_fingerprint(track: dict) -> str:
     return "|".join([artist, title, album, started_at])
 
 
+def _same_song(track: dict, entry: LogEntry) -> bool:
+    """Return whether a RadioDJ payload represents the last logged song."""
+    track_artist = _sanitize_text(track.get("artist") or track.get("Artist")).strip().lower()
+    track_title = _sanitize_text(track.get("title") or track.get("Title")).strip().lower()
+    entry_artist = _sanitize_text(entry.artist).strip().lower()
+    entry_title = _sanitize_text(entry.title).strip().lower()
+    return bool(track_artist and track_title and track_artist == entry_artist and track_title == entry_title)
+
+
 def _apply_nowplaying_side_effects(track: dict, *, push_icecast: bool, write_log: bool) -> None:
     track_id = _track_fingerprint(track)
     if not track_id:
@@ -466,6 +475,17 @@ def _apply_nowplaying_side_effects(track: dict, *, push_icecast: bool, write_log
     if write_log:
         last_logged = _RADIODJ_NOWPLAYING_CACHE.get("last_logged_track_id")
         if last_logged == track_id:
+            return
+        # The cache is process-local, while the scheduler and web app can run in
+        # separate processes.  Check durable history as well so repeated widget
+        # polls (or a process restart) do not insert the same current song again.
+        latest = (
+            LogEntry.query.filter_by(entry_type="music")
+            .order_by(LogEntry.timestamp.desc())
+            .first()
+        )
+        if latest and _same_song(track, latest):
+            _RADIODJ_NOWPLAYING_CACHE["last_logged_track_id"] = track_id
             return
         show = get_current_show()
         show_run = None
@@ -541,9 +561,11 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: boo
 
         track = _extract_radiodj_track(payload)
         if not track:
-            _RADIODJ_NOWPLAYING_CACHE["payload"] = None
+            # RadioDJ reports commercials, PSAs, and imaging through the same
+            # now-playing feed.  Those items must not replace the last music
+            # track or alter recent-track history.
             _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
-            return None
+            return cached_payload  # type: ignore[return-value]
 
         _RADIODJ_NOWPLAYING_CACHE["payload"] = track
         _RADIODJ_NOWPLAYING_CACHE["error_until"] = None
@@ -727,7 +749,9 @@ def now_widget():
     base = now_playing().get_json()  # type: ignore
     if base and base.get("status") != "off_air":
         return jsonify(base)
-    nowplaying_payload = _get_cached_radiodj_nowplaying()
+    # The widget's working RadioDJ feed is authoritative for recent-track
+    # transitions.  Logging is idempotent, so polling the same song is ignored.
+    nowplaying_payload = _get_cached_radiodj_nowplaying(write_log=True)
     if nowplaying_payload:
         track_payload = dict(nowplaying_payload)
         track_payload["cover_url"] = _cover_url_for_track(
