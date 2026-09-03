@@ -30,7 +30,7 @@ Examples: `PlayPlaylistTrack`, `RemovePlaylistTrack`, `PlayFromIntro`, `RestartP
 ### Now playing
 `/RDJnp?auth=...` returns now-playing information as XML. `/RDJnpjson?auth=...`
 returns the now-playing information and current playlist as JSON. RAMS uses the
-JSON endpoint and falls back to XML if a server cannot provide valid JSON.
+focused XML endpoint first and falls back to JSON if XML is unavailable or invalid.
 
 ### Current playlist
 `/RDJp?auth=...` returns the current playlist as XML. Add a zero-based playlist

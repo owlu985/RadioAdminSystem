@@ -46,30 +46,33 @@ def test_v14_command_status_and_playlist_endpoints(tmp_path):
     ]
 
 
-def test_now_playing_uses_json_current_track(tmp_path):
+def test_now_playing_uses_xml_endpoint_first(tmp_path):
     app, context = _client(tmp_path)
-    response = _response(json_payload={
+    response = _response(
+        text="<NowPlaying><Artist>Artist (P)</Artist><Title>Song</Title><Duration>123.5</Duration></NowPlaying>"
+    )
+    with context, patch("app.services.radiodj_client.requests.get", return_value=response) as get:
+        assert RadioDJClient().now_playing() == {
+            "artist": "Artist", "title": "Song", "duration": 123.5
+        }
+
+    get.assert_called_once_with(
+        "http://radio.test:8080/RDJnp", params={"auth": "secret"}, timeout=6
+    )
+
+
+def test_now_playing_falls_back_to_json_current_track(tmp_path):
+    app, context = _client(tmp_path)
+    invalid_xml = _response(text="not xml")
+    json_response = _response(json_payload={
         "CurrentTrack": {"Artist": "Artist (P)", "Title": "Song", "Duration": "123.5"},
         "Playlist": [{"Title": "Next"}],
     })
-    with context, patch("app.services.radiodj_client.requests.get", return_value=response) as get:
+    with context, patch("app.services.radiodj_client.requests.get", side_effect=[invalid_xml, json_response]) as get:
         assert RadioDJClient().now_playing() == {
             "Artist": "Artist", "Title": "Song", "Duration": 123.5
         }
 
-    get.assert_called_once_with(
-        "http://radio.test:8080/RDJnpjson", params={"auth": "secret"}, timeout=6
-    )
-
-
-def test_now_playing_falls_back_to_v14_xml_endpoint(tmp_path):
-    app, context = _client(tmp_path)
-    invalid_json = _response(text="not json")
-    invalid_json.json.side_effect = ValueError("invalid json")
-    xml = _response(text="<NowPlaying><Artist>Artist</Artist><Title>Song</Title></NowPlaying>")
-    with context, patch("app.services.radiodj_client.requests.get", side_effect=[invalid_json, xml]) as get:
-        assert RadioDJClient().now_playing() == {"artist": "Artist", "title": "Song"}
-
     assert get.call_args_list[1] == call(
-        "http://radio.test:8080/RDJnp", params={"auth": "secret"}, timeout=6
+        "http://radio.test:8080/RDJnpjson", params={"auth": "secret"}, timeout=6
     )
