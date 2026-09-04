@@ -57,8 +57,28 @@ def test_widget_uses_now_playing_feed_to_update_history(monkeypatch):
     with app.test_request_context():
         response = api.now_widget()
 
-    assert observed == {"write_log": True}
+    assert observed == {"push_icecast": True, "write_log": True}
     assert response.get_json()["track"] == {**track, "cover_url": None}
+
+
+def test_widget_keeps_active_show_priority_over_radiodj(monkeypatch):
+    app = Flask(__name__)
+
+    monkeypatch.setattr(
+        api,
+        "now_playing",
+        lambda: jsonify({"status": "on_air", "show": {"name": "Live Show"}}),
+    )
+
+    def unexpected_radiodj_fetch(**_kwargs):
+        raise AssertionError("RadioDJ must not replace an active show's metadata")
+
+    monkeypatch.setattr(api, "_get_cached_radiodj_nowplaying", unexpected_radiodj_fetch)
+
+    with app.test_request_context():
+        response = api.now_widget()
+
+    assert response.get_json() == {"status": "on_air", "show": {"name": "Live Show"}}
 
 
 def test_failed_icecast_update_is_retried_for_same_track(monkeypatch):
