@@ -1597,7 +1597,9 @@ def weather_tempest():
         return None
 
     next_hours = []
-    targets = [1, 2, 4, 8]
+    # The studio display is read from across the room.  Three-hour spacing keeps
+    # the forecast useful without producing a row of tiny, hourly data points.
+    targets = [3, 6, 9]
     now_ts = time.time()
     for target in targets:
         target_ts = now_ts + target * 3600
