@@ -59,3 +59,36 @@ def test_widget_uses_now_playing_feed_to_update_history(monkeypatch):
 
     assert observed == {"write_log": True}
     assert response.get_json()["track"] == {**track, "cover_url": None}
+
+
+def test_failed_icecast_update_is_retried_for_same_track(monkeypatch):
+    app = Flask(__name__)
+    track = {"artist": "Artist", "title": "Song"}
+    attempts = []
+    api._RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"] = None
+
+    def fake_push(payload):
+        attempts.append(payload)
+        return len(attempts) > 1
+
+    monkeypatch.setattr(api, "_push_icecast_metadata", fake_push)
+
+    with app.app_context():
+        api._apply_nowplaying_side_effects(track, push_icecast=True, write_log=False)
+        assert api._RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"] is None
+
+        api._apply_nowplaying_side_effects(track, push_icecast=True, write_log=False)
+        pushed_id = api._RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"]
+
+        api._apply_nowplaying_side_effects(track, push_icecast=True, write_log=False)
+
+    assert pushed_id == api._track_fingerprint(track)
+    assert attempts == [track, track]
+
+
+def test_icecast_update_reports_skipped_configuration():
+    app = Flask(__name__)
+    app.config.update(ICECAST_STATUS_URL=None, ICECAST_LISTCLIENTS_URL=None, ICECAST_MOUNT=None)
+
+    with app.app_context():
+        assert api._push_icecast_metadata({"artist": "Artist", "title": "Song"}) is False

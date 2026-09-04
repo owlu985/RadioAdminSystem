@@ -378,16 +378,22 @@ def _icecast_update_url() -> Optional[str]:
     return parsed._replace(path="/admin/metadata", query="", fragment="").geturl()
 
 
-def _push_icecast_metadata(track: dict) -> None:
+def _push_icecast_metadata(track: dict) -> bool:
+    """Push a track to Icecast and report whether it was accepted.
+
+    The return value is important to the caller: a failed or skipped request
+    must not be treated as delivered, otherwise the per-track de-duplication
+    cache suppresses every retry until RadioDJ moves to another track.
+    """
     update_url = _icecast_update_url()
     mount = current_app.config.get("ICECAST_MOUNT")
     if not update_url or not mount:
-        return
+        return False
     artist = _strip_p_tag(track.get("artist") or track.get("Artist"))
     title = _strip_p_tag(track.get("title") or track.get("Title"))
     song_override = _strip_p_tag(track.get("song") or track.get("Song"))
     if not title and not artist:
-        return
+        return False
     song = song_override or " - ".join([part for part in [artist, title] if part])
     params = {
         "mount": mount,
@@ -403,10 +409,12 @@ def _push_icecast_metadata(track: dict) -> None:
         safe_song = _sanitize_log_text(song)
         if resp.ok:
             logger.info("Icecast metadata update ok: %s", safe_song)
+            return True
         else:
             logger.warning("Icecast metadata update failed: %s (status %s)", safe_song, resp.status_code)
     except Exception as exc:  # noqa: BLE001
         logger.warning("Icecast metadata update failed: %s", _sanitize_log_text(exc))
+    return False
 
 
 def _strip_p_tag(value: Optional[str]) -> Optional[str]:
@@ -469,8 +477,8 @@ def _apply_nowplaying_side_effects(track: dict, *, push_icecast: bool, write_log
     if push_icecast:
         last_pushed = _RADIODJ_NOWPLAYING_CACHE.get("last_pushed_track_id")
         if last_pushed != track_id:
-            _push_icecast_metadata(track)
-            _RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"] = track_id
+            if _push_icecast_metadata(track):
+                _RADIODJ_NOWPLAYING_CACHE["last_pushed_track_id"] = track_id
 
     if write_log:
         last_logged = _RADIODJ_NOWPLAYING_CACHE.get("last_logged_track_id")
