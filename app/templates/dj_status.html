@@ -109,17 +109,20 @@
         .alert-banner {
             display: none;
             border-radius: 1rem;
-            padding: 0.25em 0.6em;
+            padding: clamp(12px, 1vw, 28px);
             text-align: center;
             font-weight: 1000;
-            font-size: clamp(48px, 3.2vw, 120px);
             letter-spacing: 0.08em;
-            background: rgba(255, 0, 0, 0.84);
+            background: rgba(145, 16, 23, 0.94);
+            border: 3px solid rgba(255, 209, 102, 0.9);
             color: #fff;
-            animation: flash 0.85s linear infinite;
+            animation: alert-pulse 2.4s ease-in-out infinite;
         }
         .alert-banner.show { display: block; }
-        @keyframes flash { 0%, 52%, 100% { opacity: 1; } 74% { opacity: 0.18; } }
+        .alert-code { font-size: clamp(58px, 4.5vw, 150px); line-height: 0.95; }
+        .alert-action { margin-top: 0.15em; font-size: clamp(32px, 2.2vw, 76px); line-height: 1; }
+        @keyframes alert-pulse { 0%, 100% { box-shadow: 0 0 20px rgba(255,59,59,.28); } 50% { box-shadow: 0 0 46px rgba(255,59,59,.72); } }
+        body.operational-alert .main-grid, body.operational-alert .bottom-grid { opacity: 0.22; filter: grayscale(.65); }
         .main-grid {
             display: grid;
             grid-template-columns: minmax(0, 1.35fr) minmax(480px, 0.65fr);
@@ -157,7 +160,7 @@
         .mini-tile { background: var(--panel-soft); border-radius: 0.9rem; padding: clamp(7px, 0.55vw, 18px); text-align: center; min-width: 0; }
         .mini-label { color: rgba(255,255,255,0.84); font-size: var(--text-min); line-height: 1.15; overflow-wrap: anywhere; }
         .mini-value { font-size: var(--text-body); line-height: 1.1; font-weight: 900; }
-        .bottom-grid { display: grid; grid-template-columns: 1.15fr 0.85fr; gap: var(--space); }
+        .bottom-grid { display: grid; grid-template-columns: 1fr; grid-template-rows: minmax(0, 1fr) auto; gap: clamp(6px, 0.45vw, 14px); min-height: 0; }
         .now-playing { display: none; }
         .track-current { display: grid; grid-template-columns: clamp(100px, 6vw, 220px) 1fr; gap: var(--space); align-items: center; }
         .cover { width: clamp(100px, 6vw, 220px); height: clamp(100px, 6vw, 220px); border-radius: 0.8rem; background: var(--panel-soft); object-fit: cover; }
@@ -167,6 +170,14 @@
         .recent-list li { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 0.7rem; border-top: 1px solid rgba(255,255,255,0.14); padding-top: 0.25em; color: rgba(255,255,255,0.86); }
         .recent-list li span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .utility-line { color: rgba(255,255,255,0.84); font-size: var(--text-min); line-height: 1.2; margin-top: 0.4em; overflow-wrap: anywhere; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+        .system-strip { padding-block: clamp(8px, 0.55vw, 16px); display: flex; align-items: center; gap: 1em; }
+        .system-strip .panel-title { margin: 0; flex: 0 0 auto; font-size: var(--text-min); }
+        .system-strip .show-meta { font-size: var(--text-min); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .system-strip .utility-line { margin: 0 0 0 auto; white-space: nowrap; font-size: clamp(16px, .9vw, 28px); }
+        .next-show { margin-top: .5em; display: grid; grid-template-columns: auto 1fr; gap: .15em .55em; align-items: baseline; }
+        .next-label { grid-row: 1 / span 2; color: var(--auto); font-size: var(--text-heading); font-weight: 900; text-transform: uppercase; }
+        .next-name { font-size: var(--text-important); font-weight: 800; line-height: 1.1; }
+        .next-meta { font-size: var(--text-secondary); color: rgba(255,255,255,.84); line-height: 1.15; }
         .screensaver {
             position: fixed; inset: 0; display: none; background: #02040b; z-index: 50; overflow: hidden;
         }
@@ -226,7 +237,7 @@
                 <div class="show-name" id="currentShow">Loading...</div>
                 <div class="show-meta" id="currentWindow"></div>
                 <div class="countdown-card" id="stationIdReminder">Station ID in: --:--</div>
-                <div class="utility-line" id="nextShowLine">Next: Loading...</div>
+                <div class="next-show"><div class="next-label">Next</div><div class="next-name" id="nextShowName">Loading...</div><div class="next-meta" id="nextShowMeta"></div></div>
             </section>
             <section class="panel">
                 <div class="panel-title">Weather at a Glance</div>
@@ -237,7 +248,7 @@
                         <div class="weather-detail" id="weatherQuick">Updating local conditions</div>
                     </div>
                 </div>
-                <div class="mini-forecast" id="hourlyWeather"></div>
+                <div class="mini-forecast" id="forecastPeriods"></div>
                 <div class="utility-line" id="weatherUpdated">Weather updates every 5 minutes</div>
             </section>
         </div>
@@ -251,7 +262,7 @@
                 </div>
                 <ul class="recent-list" id="recentTracks"></ul>
             </section>
-            <section class="panel">
+            <section class="panel system-strip">
                 <div class="panel-title">System Summary</div>
                 <div class="show-meta" id="systemSummary">Gathering status...</div>
                 <div class="utility-line" id="lastUpdated">Last updated: --</div>
@@ -289,9 +300,12 @@
     function updateBanner() {
         const banner = document.getElementById('criticalBanner');
         const probeClass = latestStreamData?.probe?.classification;
-        if (latestStreamData && !latestStreamData.stream_up) { banner.textContent = 'CHECK STREAM'; banner.classList.add('show'); return; }
-        if (probeClass === 'dead_air') { banner.textContent = 'DEAD AIR'; banner.classList.add('show'); return; }
-        banner.classList.remove('show'); banner.textContent = '';
+        let code = null;
+        if (probeClass === 'dead_air') code = 'CODE 02';
+        else if (latestStreamData && !latestStreamData.stream_up) code = 'CODE 01';
+        banner.innerHTML = code ? `<div class="alert-code">${code}</div><div class="alert-action">NOTIFY MANAGER</div>` : '';
+        banner.classList.toggle('show', Boolean(code));
+        document.body.classList.toggle('operational-alert', Boolean(code));
     }
     function updateSystemSummary() {
         const streamText = latestStreamData?.stream_up ? 'Stream online' : 'Stream needs attention';
@@ -308,7 +322,7 @@
             const cls = latestStreamData.probe?.classification;
             if (cls === 'live_show') setPill('probePill','probeIcon','probeClass','🎙','Live','ok');
             else if (cls === 'automation' || cls === 'off_air') setPill('probePill','probeIcon','probeClass','▶','Auto','auto');
-            else if (cls === 'dead_air') setPill('probePill','probeIcon','probeClass','⚠','Dead Air','danger');
+            else if (cls === 'dead_air') setPill('probePill','probeIcon','probeClass','!','Code 02','danger');
             else setPill('probePill','probeIcon','probeClass','…','Pending','warn');
         } catch (e) {
             latestStreamData = {stream_up: false};
@@ -327,12 +341,19 @@
             document.getElementById('currentTemp').textContent = data.current?.temp !== undefined && data.current?.temp !== null ? `${Math.round(data.current.temp)}°` : '--';
             document.getElementById('currentCond').textContent = data.current?.condition || 'Current conditions';
             const next = data.next_hours?.[0];
-            document.getElementById('weatherQuick').textContent = next ? `Next hour: ${next.condition || '—'}, ${Math.round(next.temp ?? 0)}°` : 'Hourly forecast unavailable';
-            const slots = (data.next_hours || []).slice(0, 3);
-            document.getElementById('hourlyWeather').innerHTML = slots.map(h => `<div class="mini-tile"><div class="mini-label">${h.time || ''}</div><div class="mini-value">${h.temp !== undefined && h.temp !== null ? Math.round(h.temp) + '°' : '--'}</div><div class="mini-label">${h.condition || ''}</div></div>`).join('') || '<div class="mini-tile"><div class="mini-label">No forecast</div></div>';
+            const days = (data.next_days || []).slice(0, 3);
+            const today = days[0];
+            const temperature = value => value != null ? `${Math.round(value)}°` : '—';
+            document.getElementById('weatherQuick').textContent = today ? `${today.condition || 'Forecast'} · High ${temperature(today.high)} / Low ${temperature(today.low)}` : 'Forecast periods unavailable';
+            const periods = days.length ? days : (data.next_hours || []).slice(0, 3);
+            document.getElementById('forecastPeriods').innerHTML = periods.map(p => {
+                const label = p.day || p.time || '';
+                const value = p.high != null ? `${temperature(p.high)} / ${temperature(p.low)}` : temperature(p.temp);
+                return `<div class="mini-tile"><div class="mini-label">${label}</div><div class="mini-value">${value}</div><div class="mini-label">${p.condition || ''}</div></div>`;
+            }).join('') || '<div class="mini-tile"><div class="mini-label">No forecast</div></div>';
             document.getElementById('weatherUpdated').textContent = `Weather updated: ${new Date().toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}`;
         } catch (e) {
-            document.getElementById('currentTemp').textContent = '--'; document.getElementById('currentCond').textContent = 'Weather unavailable'; document.getElementById('weatherQuick').textContent = 'Check Tempest configuration'; document.getElementById('hourlyWeather').innerHTML = '';
+            document.getElementById('currentTemp').textContent = '--'; document.getElementById('currentCond').textContent = 'Weather unavailable'; document.getElementById('weatherQuick').textContent = 'Notify manager if this persists'; document.getElementById('forecastPeriods').innerHTML = '';
         }
     }
     refreshWeather(); setInterval(refreshWeather, 300000);
@@ -344,7 +365,7 @@
         const remainingMs = msUntilNextHour();
         if (showSoon && remainingMs <= 180000) {
             const totalSeconds = Math.max(0, Math.ceil(remainingMs / 1000));
-            card.textContent = `Station ID in: ${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}`;
+            card.innerHTML = `STATION ID <strong>IN ${Math.floor(totalSeconds / 60)}:${String(totalSeconds % 60).padStart(2, '0')}</strong>`;
             card.style.display = 'block';
         } else { card.style.display = 'none'; }
     }
@@ -368,7 +389,7 @@
         try {
             const res = await fetch(window.ramsUrl('/api/now/widget'));
             const data = await res.json(); latestNowData = data;
-            const currentElem = document.getElementById('currentShow'); const currentWindow = document.getElementById('currentWindow'); const nextLine = document.getElementById('nextShowLine');
+            const currentElem = document.getElementById('currentShow'); const currentWindow = document.getElementById('currentWindow');
             const isLive = data.status === 'on_air' && data.show;
             document.getElementById('nowPlayingPanel').style.display = isLive ? 'none' : 'block';
             if (isLive) {
@@ -378,8 +399,13 @@
                 currentElem.textContent = data.status === 'automation' ? 'Automation' : 'Off Air'; currentWindow.textContent = data.message || '';
                 renderCurrentTrack(data.track); refreshRecentTracks(data.track);
             }
-            if (data.next_show) nextLine.textContent = `Next: ${data.next_show.name} • ${data.next_show.host} • ${data.next_show.window.start_time} - ${data.next_show.window.end_time}`;
-            else nextLine.textContent = 'Next: No scheduled show found';
+            if (data.next_show) {
+                document.getElementById('nextShowName').textContent = data.next_show.name;
+                document.getElementById('nextShowMeta').textContent = `${data.next_show.host} · ${data.next_show.window.start_time}–${data.next_show.window.end_time}`;
+            } else {
+                document.getElementById('nextShowName').textContent = 'No scheduled show';
+                document.getElementById('nextShowMeta').textContent = '';
+            }
         } catch (e) { document.getElementById('currentShow').textContent = 'Status Error'; latestNowData = null; }
         refreshStationIdReminder(); updateSystemSummary();
     }
