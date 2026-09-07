@@ -1,6 +1,6 @@
 # Web and Background-Service Deployment
 
-RAMS ships with startup guards that disable potentially unsafe or expensive initialization work when running under WSGI. The `wsgi.py` entrypoint enables safe mode by default, and you can opt into specific startup tasks using environment flags. Scheduler startup defaults to on for the direct/development entrypoint so core show recordings are not silently disabled; WSGI safe mode forces it off, and production WSGI deployments run recurring work in one supervised background process.
+RAMS ships with startup guards that disable potentially unsafe or expensive initialization work when running under WSGI. The `wsgi.py` entrypoint enables safe mode by default, and you can opt into specific startup tasks using environment flags. Scheduler ownership is off by default so importing the app cannot create recorder/probe threads in every web worker. The single-process `run.py` entrypoint opts in before creating the app; production WSGI deployments run recurring work in one supervised background process.
 
 ## Startup safety flags
 
@@ -12,7 +12,7 @@ All flags are evaluated on app startup and can be set to `1`, `true`, `yes`, or 
 | `RAMS_RUN_SCHEMA_SETUP_ON_STARTUP` | `1` | Run `ensure_schema()` during app startup. |
 | `RAMS_RUN_MIGRATIONS_ON_STARTUP` | `1` | Run Flask-Migrate init/migrate/upgrade during app startup. |
 | `RAMS_RUN_CLEANUP_ON_STARTUP` | `1` | Delete past shows during startup. |
-| `RAMS_RUN_SCHEDULER_ON_STARTUP` | `1` | Direct/development in-process scheduler switch. WSGI safe mode overrides it to off; keep it off explicitly for web workers. |
+| `RAMS_RUN_SCHEDULER_ON_STARTUP` | `0` | Scheduler ownership switch. `run.py` defaults it to `1`; WSGI safe mode overrides it to off. Keep it off for web workers. |
 | `RAMS_RUN_UTILS_ON_STARTUP` | `1` | Initialize utility helpers during startup. |
 | `RAMS_RUN_OAUTH_INIT_ON_STARTUP` | `1` | Initialize OAuth providers during startup. |
 | `RAMS_RUN_PLUGIN_LOAD_ON_STARTUP` | `1` | Load plugins during startup. |
@@ -43,6 +43,11 @@ Start exactly one instance alongside the web application:
 ```bash
 python background_service.py
 ```
+
+This is the required companion process for WSGI deployments. Without it,
+scheduled recordings, stream probes, and RadioDJ/Icecast metadata polling do
+not run. The process-level file lock prevents a second background-service
+instance from becoming another scheduler owner.
 
 The service owns recording, stream monitoring, RadioDJ/Icecast updates, NAS imports, backups, library indexing, news rotation, and cache cleanup. It reconciles schedule changes made by web workers once per minute and handles `SIGTERM`/`SIGINT` with an orderly APScheduler shutdown.
 
