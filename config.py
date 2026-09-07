@@ -176,9 +176,11 @@ class Config:
     RUN_SCHEMA_SETUP_ON_STARTUP = _env_flag("RAMS_RUN_SCHEMA_SETUP_ON_STARTUP", "1")
     RUN_MIGRATIONS_ON_STARTUP = _env_flag("RAMS_RUN_MIGRATIONS_ON_STARTUP", "1")
     RUN_CLEANUP_ON_STARTUP = _env_flag("RAMS_RUN_CLEANUP_ON_STARTUP", "1")
-    # Recurring jobs belong to background_service.py.  Keeping this off by
-    # default prevents every WSGI worker from recording, probing, and indexing.
-    RUN_SCHEDULER_ON_STARTUP = _env_flag("RAMS_RUN_SCHEDULER_ON_STARTUP", "0")
+    # The development/direct-run entrypoint must retain the historic behaviour
+    # of owning scheduled recordings.  wsgi.py enables WSGI_SAFE_MODE, which
+    # still forces this off for multi-worker deployments; those deployments use
+    # background_service.py as the single scheduler owner.
+    RUN_SCHEDULER_ON_STARTUP = _env_flag("RAMS_RUN_SCHEDULER_ON_STARTUP", "1")
     SCHEDULE_REFRESH_INTERVAL_SECONDS = 60
     TRANSCODE_MAX_CONCURRENCY = 2
     TRANSCODE_TIMEOUT_SECONDS = 900

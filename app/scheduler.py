@@ -359,6 +359,10 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             if show_name and os.path.exists(output_file):
                 _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
 
+            if not (flask_app and flask_app.config.get("SELF_HEAL_ENABLED", True)):
+                logger.warning("Recorder self-heal is disabled; not restarting the stream source.")
+                break
+
             restart_result = restart_instreamer(reason="recording_stream_failure")
             record_failure(
                 "barix_auto_heal",

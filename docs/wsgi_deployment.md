@@ -1,10 +1,10 @@
 # Web and Background-Service Deployment
 
-RAMS ships with startup guards that disable potentially unsafe or expensive initialization work when running under WSGI. The `wsgi.py` entrypoint enables safe mode by default, and you can opt into specific startup tasks using environment flags.
+RAMS ships with startup guards that disable potentially unsafe or expensive initialization work when running under WSGI. The `wsgi.py` entrypoint enables safe mode by default, and you can opt into specific startup tasks using environment flags. Scheduler startup defaults to on for the direct/development entrypoint so core show recordings are not silently disabled; WSGI safe mode forces it off, and production WSGI deployments run recurring work in one supervised background process.
 
 ## Startup safety flags
 
-All flags are evaluated on app startup and can be set to `1`, `true`, `yes`, or `on` to enable. Scheduler startup now defaults to off: recurring work must run in one supervised background process, not in web workers.
+All flags are evaluated on app startup and can be set to `1`, `true`, `yes`, or `on` to enable. The direct entrypoint owns recurring work by default; WSGI deployments must run one supervised background process instead of enabling it in web workers.
 
 | Flag | Default | Purpose |
 | --- | --- | --- |
@@ -12,7 +12,7 @@ All flags are evaluated on app startup and can be set to `1`, `true`, `yes`, or 
 | `RAMS_RUN_SCHEMA_SETUP_ON_STARTUP` | `1` | Run `ensure_schema()` during app startup. |
 | `RAMS_RUN_MIGRATIONS_ON_STARTUP` | `1` | Run Flask-Migrate init/migrate/upgrade during app startup. |
 | `RAMS_RUN_CLEANUP_ON_STARTUP` | `1` | Delete past shows during startup. |
-| `RAMS_RUN_SCHEDULER_ON_STARTUP` | `0` | Legacy/development-only in-process scheduler switch. Keep off for web workers. |
+| `RAMS_RUN_SCHEDULER_ON_STARTUP` | `1` | Direct/development in-process scheduler switch. WSGI safe mode overrides it to off; keep it off explicitly for web workers. |
 | `RAMS_RUN_UTILS_ON_STARTUP` | `1` | Initialize utility helpers during startup. |
 | `RAMS_RUN_OAUTH_INIT_ON_STARTUP` | `1` | Initialize OAuth providers during startup. |
 | `RAMS_RUN_PLUGIN_LOAD_ON_STARTUP` | `1` | Load plugins during startup. |

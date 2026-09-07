@@ -208,7 +208,11 @@ def probe_and_record():
         result = _attempt_probe()
         stream_up = result is not None
 
-    if result is None and current_app.config.get("BARIX_AUTO_RESTART_ENABLED", False):
+    if (
+        result is None
+        and current_app.config.get("SELF_HEAL_ENABLED", True)
+        and current_app.config.get("BARIX_AUTO_RESTART_ENABLED", False)
+    ):
         restart_threshold = int(current_app.config.get("STREAM_DOWN_RESTART_THRESHOLD", 3))
         from app.models import JobHealth
 
