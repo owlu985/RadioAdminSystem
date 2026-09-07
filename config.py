@@ -176,10 +176,13 @@ class Config:
     RUN_SCHEMA_SETUP_ON_STARTUP = _env_flag("RAMS_RUN_SCHEMA_SETUP_ON_STARTUP", "1")
     RUN_MIGRATIONS_ON_STARTUP = _env_flag("RAMS_RUN_MIGRATIONS_ON_STARTUP", "1")
     RUN_CLEANUP_ON_STARTUP = _env_flag("RAMS_RUN_CLEANUP_ON_STARTUP", "1")
-    # Recurring jobs belong to background_service.py.  Keeping this off by
-    # default prevents every WSGI worker from recording, probing, and indexing.
+    # Scheduler ownership is opt-in at the configuration level so importing the
+    # app from an arbitrary WSGI worker can never create recorder/probe threads.
+    # run.py opts in for the single-process direct server; production uses the
+    # explicitly started background_service.py process.
     RUN_SCHEDULER_ON_STARTUP = _env_flag("RAMS_RUN_SCHEDULER_ON_STARTUP", "0")
     SCHEDULE_REFRESH_INTERVAL_SECONDS = 60
+    SHOW_TRANSITION_POLL_SECONDS = 15
     TRANSCODE_MAX_CONCURRENCY = 2
     TRANSCODE_TIMEOUT_SECONDS = 900
     TRANSCODE_CACHE_MAX_BYTES = 10 * 1024 * 1024 * 1024

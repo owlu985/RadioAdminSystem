@@ -214,7 +214,7 @@ def is_show_preempted_by_absence(show: Show, start_dt: datetime, end_dt: datetim
 
 def get_current_absent_show(now: datetime | None = None) -> tuple[Show, DJAbsence] | tuple[None, None]:
     if now is None:
-        now = datetime.utcnow()
+        now = datetime.now(get_config_timezone()).replace(tzinfo=None)
     for show in Show.query.all():
         for show_date in (now.date(), now.date() - timedelta(days=1)):
             window = scheduled_window_for_date(show, show_date)
@@ -231,7 +231,7 @@ def get_current_absent_show(now: datetime | None = None) -> tuple[Show, DJAbsenc
 def get_current_show(now: datetime | None = None):
     """Return the show scheduled right now, excluding approved absences without substitutes."""
     if now is None:
-        now = datetime.now()
+        now = datetime.now(get_config_timezone()).replace(tzinfo=None)
 
     current_time = now.time()
     day_key = _normalize_day(now.strftime('%a'))
