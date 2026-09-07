@@ -94,6 +94,35 @@ def test_now_playing_metadata_job_runs_immediately(monkeypatch):
     assert options["next_run_time"].tzinfo is not None
 
 
+def test_show_transition_monitor_checks_every_show_even_after_one_fails(monkeypatch):
+    app = Flask(__name__)
+    scheduler_module.flask_app = app
+    shows = [SimpleNamespace(id=1), SimpleNamespace(id=2), SimpleNamespace(id=3)]
+    monkeypatch.setattr(
+        scheduler_module,
+        "Show",
+        SimpleNamespace(query=SimpleNamespace(all=lambda: shows)),
+    )
+    monkeypatch.setattr(scheduler_module, "table_exists", lambda name: True)
+    checked = []
+    metadata_updates = []
+
+    def detect(show, now):
+        checked.append(show.id)
+        if show.id == 1:
+            raise ValueError("invalid first show")
+        return show.id == 2
+
+    monkeypatch.setattr(scheduler_module, "schedule_active_show_catchup", detect)
+    monkeypatch.setattr(scheduler_module, "run_radiodj_now_playing_job", lambda: metadata_updates.append(True))
+    monkeypatch.setattr(scheduler_module, "logger", SimpleNamespace(error=lambda *args: None))
+
+    scheduler_module.run_show_transition_job()
+
+    assert checked == [1, 2, 3]
+    assert metadata_updates == [True]
+
+
 def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
     app = Flask(__name__)
     app.config["SCHEDULE_TIMEZONE"] = "America/New_York"
@@ -106,6 +135,7 @@ def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
         "schedule_news_rotation", "schedule_icecast_analytics", "schedule_settings_backup",
         "schedule_radiodj_now_playing", "schedule_library_index_job",
         "schedule_transcode_cache_cleanup", "schedule_schedule_refresh",
+        "schedule_show_transition_monitor",
     ):
         monkeypatch.setattr(scheduler_module, name, lambda: None)
     scheduler_module.scheduler = scheduler_module.BackgroundScheduler()

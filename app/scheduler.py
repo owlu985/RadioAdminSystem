@@ -101,6 +101,7 @@ def init_scheduler(app):
             schedule_icecast_analytics()
             schedule_settings_backup()
             schedule_radiodj_now_playing()
+            schedule_show_transition_monitor()
             schedule_library_index_job()
             schedule_transcode_cache_cleanup()
             schedule_schedule_refresh()
@@ -146,7 +147,7 @@ def pause_shows_until(date):
         scheduler.add_job(
             update_user_config, 'date',
             run_date=date,
-            args=[{"PAUSE_SHOWS_RECORDING": False, "PAUSE_END_DATE": None}],
+            args=[{"PAUSE_SHOWS_RECORDING": False, "PAUSE_SHOW_END_DATE": None, "PAUSE_END_DATE": None}],
             id="pause_resume_job",
             replace_existing=True,
             **_job_options(),
@@ -344,6 +345,7 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 key = _active_recording_key(show_name, output_file)
                 ACTIVE_RECORDINGS[key] = {
                     'process': process,
+                    'show_id': show_id,
                     'show_name': show_name,
                     'output_file': output_file,
                     'hosts': hosts or [],
@@ -522,6 +524,13 @@ def schedule_active_show_catchup(show, now=None):
     start_dt, end_dt = windows[0]
     window_key = (show.id, start_dt.isoformat())
     if window_key in CATCHED_UP_SHOW_WINDOWS:
+        return False
+    if any(
+        state.get("show_id") == show.id
+        and state.get("process") is not None
+        and state["process"].poll() is None
+        for state in ACTIVE_RECORDINGS.values()
+    ):
         return False
     if is_show_preempted_by_absence(show, start_dt, end_dt):
         return False
@@ -736,6 +745,48 @@ def schedule_radiodj_now_playing():
         logger.error(f"Error scheduling RadioDJ now-playing job: {e}")
 
 
+def schedule_show_transition_monitor():
+    """Detect every show transition independently of its cron trigger."""
+    if flask_app is None:
+        return
+    seconds = max(5, int(flask_app.config.get("SHOW_TRANSITION_POLL_SECONDS", 15)))
+    try:
+        scheduler.add_job(
+            run_show_transition_job,
+            "interval",
+            seconds=seconds,
+            next_run_time=datetime.now(get_config_timezone()),
+            id="show_transition_monitor_job",
+            replace_existing=True,
+            **_job_options(),
+        )
+        logger.info("Show transition monitor scheduled every %s seconds.", seconds)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("Error scheduling show transition monitor: %s", exc)
+
+
+def run_show_transition_job():
+    """Start missing recordings whenever RAMS detects an active show."""
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        if not table_exists("show"):
+            return
+        now = _schedule_now()
+        started_recording = False
+        for show in Show.query.all():
+            try:
+                started_recording = schedule_active_show_catchup(show, now) or started_recording
+            except Exception as exc:  # noqa: BLE001
+                # One invalid show must never prevent the rest from recording.
+                logger.error("Show transition detection failed for show %s: %s", show.id, exc)
+        if started_recording:
+            # Keep the listener-facing title synchronized with the same show
+            # transition that started the recorder, rather than relying only
+            # on the independent eight-second RadioDJ poll.
+            run_radiodj_now_playing_job()
+
+
 def schedule_library_index_job(run_now: bool = False):
     if flask_app is None:
         return
@@ -811,12 +862,18 @@ def _schedule_pause_resume_from_config():
     try:
         with open(path, "r", encoding="utf-8") as handle:
             config = json.load(handle)
-        raw_end = config.get("PAUSE_END_DATE")
+        # PAUSE_END_DATE was briefly written by the settings route; accept it
+        # for existing installations while keeping PAUSE_SHOW_END_DATE canonical.
+        raw_end = config.get("PAUSE_SHOW_END_DATE") or config.get("PAUSE_END_DATE")
         if not config.get("PAUSE_SHOWS_RECORDING") or not raw_end:
             return
         run_date = datetime.fromisoformat(raw_end) if isinstance(raw_end, str) else raw_end
         if run_date <= datetime.now():
-            update_user_config({"PAUSE_SHOWS_RECORDING": False, "PAUSE_END_DATE": None})
+            update_user_config({
+                "PAUSE_SHOWS_RECORDING": False,
+                "PAUSE_SHOW_END_DATE": None,
+                "PAUSE_END_DATE": None,
+            })
             return
         pause_shows_until(run_date)
     except (OSError, ValueError, TypeError, json.JSONDecodeError) as exc:

@@ -55,6 +55,10 @@ already in progress and immediately records the remaining portion. It also
 pushes the current show/RadioDJ metadata immediately rather than waiting for
 the first polling interval. All show triggers use `SCHEDULE_TIMEZONE`, not the
 operating system or WSGI host timezone.
+In addition to the exact cron start, the background service checks every 15
+seconds for every active show and starts any missing recording. This detector
+is deliberately owned by the single background process and is not created by
+WSGI workers.
 
 Example systemd unit (adjust user, group, and paths):
 
