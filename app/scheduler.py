@@ -15,7 +15,14 @@ from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
 from app.services.library.library_index import start_library_index_job
-from .utils import update_user_config, show_display_title, show_primary_host, scheduled_window_for_date, is_show_preempted_by_absence
+from .utils import (
+    get_config_timezone,
+    update_user_config,
+    show_display_title,
+    show_primary_host,
+    scheduled_window_for_date,
+    is_show_preempted_by_absence,
+)
 from datetime import date as date_cls
 import ffmpeg
 import mutagen
@@ -26,11 +33,13 @@ import subprocess
 
 scheduler = BackgroundScheduler()
 ACTIVE_RECORDINGS = {}
+CATCHED_UP_SHOW_WINDOWS = set()
 logger = None
 flask_app = None
 SHOW_JOB_PREFIX = "show:"
 TEMP_SHOW_JOB_PREFIX = "temporary-show-delete:"
 MARATHON_JOB_PREFIX = "marathon:"
+CATCHUP_JOB_PREFIX = "show-catchup:"
 
 
 def _job_options() -> dict:
@@ -47,11 +56,16 @@ def _scheduler_executor_shutdown() -> bool:
         return False
 
 
-def _reset_scheduler(reason: str):
+def _reset_scheduler(reason: str, timezone=None):
     """Recreate scheduler instance when its executor can no longer accept jobs."""
     global scheduler
     logger.warning("Resetting scheduler instance: %s", reason)
-    scheduler = BackgroundScheduler()
+    scheduler = BackgroundScheduler(timezone=timezone)
+
+
+def _schedule_now() -> datetime:
+    """Return a naive wall-clock time in the configured schedule timezone."""
+    return datetime.now(get_config_timezone()).replace(tzinfo=None)
 
 
 def _ensure_scheduler_ready():
@@ -71,6 +85,12 @@ def init_scheduler(app):
     _ensure_scheduler_ready()
 
     if not scheduler.running:
+        # The database stores show times as station-local wall-clock values.  A
+        # scheduler left on the host timezone (commonly UTC under WSGI) fires
+        # every show at the wrong hour.
+        with app.app_context():
+            schedule_timezone = get_config_timezone()
+        _reset_scheduler("applying configured schedule timezone", schedule_timezone)
         scheduler.start()
         with app.app_context():
             logger.info("Scheduler initialized and started.")
@@ -97,8 +117,15 @@ def refresh_schedule():
             for job in scheduler.get_jobs():
                 if job.id.startswith((SHOW_JOB_PREFIX, TEMP_SHOW_JOB_PREFIX, MARATHON_JOB_PREFIX)):
                     scheduler.remove_job(job.id)
+            now = _schedule_now()
+            # Keep recovery de-duplication bounded to recent show windows.
+            CATCHED_UP_SHOW_WINDOWS.intersection_update({
+                key for key in CATCHED_UP_SHOW_WINDOWS
+                if datetime.fromisoformat(key[1]) >= now - timedelta(days=1)
+            })
             for show in Show.query.all():
                 schedule_recording(show)
+                schedule_active_show_catchup(show, now)
             logger.info("Schedule refreshed with latest shows.")
             schedule_stream_probe()
             now = datetime.utcnow()
@@ -240,7 +267,8 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at, note=None):
 
 
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
-                  label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None):
+                  label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None,
+                  show_occurrence_date=None):
     """Records the stream using FFmpeg."""
 
     ctx = flask_app.app_context() if flask_app else None
@@ -264,22 +292,23 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             return
 
     if show_start_date or show_end_date:
-        today = datetime.now().date()
-        if show_start_date and today < show_start_date:
+        occurrence_date = show_occurrence_date or _schedule_now().date()
+        if show_start_date and occurrence_date < show_start_date:
             logger.info("Skipping recording before show start date %s.", show_start_date)
             return
-        if show_end_date and today > show_end_date:
+        if show_end_date and occurrence_date > show_end_date:
             logger.info("Skipping recording after show end date %s.", show_end_date)
             return
 
     if show_id:
         show = Show.query.get(show_id)
-        window = scheduled_window_for_date(show, datetime.now().date()) if show else None
+        occurrence_date = show_occurrence_date or _schedule_now().date()
+        window = scheduled_window_for_date(show, occurrence_date) if show else None
         if show and window and is_show_preempted_by_absence(show, window[0], window[1]):
             logger.info("Skipping recording for approved uncovered absence %s at %s.", show_name or show.id, window[0])
             return
 
-    recorded_at = datetime.now()
+    recorded_at = _schedule_now()
     base_output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA"
     start_time = recorded_at.strftime('%H-%M-%S')
     try:
@@ -411,29 +440,7 @@ def schedule_recording(show):
         end_time += timedelta(days=1)
 
     duration = (end_time - start_time).total_seconds()
-    stream_url = current_app.config['STREAM_URL']
-
-    display_name = show_display_title(show)
-    safe_name = display_name.replace(" ", "_")
-    hosts = []
-    if show.djs:
-        hosts = [f"{dj.first_name} {dj.last_name}".strip() for dj in show.djs]
-    elif show.host_first_name or show.host_last_name:
-        hosts = [f"{show.host_first_name} {show.host_last_name}".strip()]
-
-    output_root = recordings_period_root(create=True)
-
-    primary_host = show_primary_host(show)
-    if primary_host:
-        primary_host_label = f"{primary_host[0]} {primary_host[1]}".strip()
-    else:
-        primary_host_label = f"{show.host_first_name or ''} {show.host_last_name or ''}".strip() or display_name
-    show_folder = os.path.join(output_root, primary_host_label)
-    if not os.path.exists(show_folder):
-        os.mkdir(show_folder)
-
-    output_file = os.path.join(show_folder, safe_name)
-    user_config_path = os.path.join(current_app.instance_path, 'user_config.json')
+    recording_args = _show_recording_args(show, duration)
     schedule_end = datetime.combine(show.end_date, show.end_time)
     if show.end_time <= show.start_time:
         schedule_end += timedelta(days=1)
@@ -442,20 +449,7 @@ def schedule_recording(show):
         scheduler.add_job(
             record_stream, 'cron',
             day_of_week=show.days_of_week, hour=show.start_time.hour, minute=show.start_time.minute,
-            args=[
-                stream_url,
-                duration,
-                output_file,
-                user_config_path,
-                None,
-                None,
-                None,
-                display_name,
-                hosts,
-                show.start_date,
-                show.end_date,
-                show.id,
-            ],
+            args=recording_args,
             start_date=start_time,
             end_date=schedule_end,
             id=f"{SHOW_JOB_PREFIX}{show.id}",
@@ -476,6 +470,82 @@ def schedule_recording(show):
             logger.info(f"Deletion scheduled for temporary show {show.id} after last airing.")
     except Exception as e:
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
+
+
+def _show_recording_args(show, duration, occurrence_date=None):
+    stream_url = current_app.config['STREAM_URL']
+    display_name = show_display_title(show)
+    safe_name = display_name.replace(" ", "_")
+    if show.djs:
+        hosts = [f"{dj.first_name} {dj.last_name}".strip() for dj in show.djs]
+    elif show.host_first_name or show.host_last_name:
+        hosts = [f"{show.host_first_name} {show.host_last_name}".strip()]
+    else:
+        hosts = []
+
+    primary_host = show_primary_host(show)
+    primary_host_label = (
+        f"{primary_host[0]} {primary_host[1]}".strip()
+        if primary_host
+        else f"{show.host_first_name or ''} {show.host_last_name or ''}".strip() or display_name
+    )
+    show_folder = os.path.join(recordings_period_root(create=True), primary_host_label)
+    os.makedirs(show_folder, exist_ok=True)
+    return [
+        stream_url,
+        duration,
+        os.path.join(show_folder, safe_name),
+        os.path.join(current_app.instance_path, 'user_config.json'),
+        None,
+        None,
+        None,
+        display_name,
+        hosts,
+        show.start_date,
+        show.end_date,
+        show.id,
+        occurrence_date,
+    ]
+
+
+def schedule_active_show_catchup(show, now=None):
+    """Start the unrecorded remainder of a show after service startup/recovery."""
+    now = now or _schedule_now()
+    windows = []
+    for show_date in (now.date(), now.date() - timedelta(days=1)):
+        window = scheduled_window_for_date(show, show_date)
+        if window and window[0] <= now < window[1]:
+            windows.append(window)
+    if not windows:
+        return False
+
+    start_dt, end_dt = windows[0]
+    window_key = (show.id, start_dt.isoformat())
+    if window_key in CATCHED_UP_SHOW_WINDOWS:
+        return False
+    if is_show_preempted_by_absence(show, start_dt, end_dt):
+        return False
+
+    scheduler.add_job(
+        record_stream,
+        "date",
+        run_date=now,
+        args=_show_recording_args(
+            show,
+            max(1, int((end_dt - now).total_seconds())),
+            start_dt.date(),
+        ),
+        id=f"{CATCHUP_JOB_PREFIX}{show.id}:{start_dt.isoformat()}",
+        replace_existing=True,
+        **_job_options(),
+    )
+    CATCHED_UP_SHOW_WINDOWS.add(window_key)
+    logger.warning(
+        "Show %s is already in progress; recording the remaining %s seconds after scheduler recovery.",
+        show.id,
+        int((end_dt - now).total_seconds()),
+    )
+    return True
 
 
 def _schedule_marathon_jobs(event: MarathonEvent):
@@ -656,6 +726,7 @@ def schedule_radiodj_now_playing():
             run_radiodj_now_playing_job,
             "interval",
             seconds=8,
+            next_run_time=datetime.now(get_config_timezone()),
             id="radiodj_now_playing_job",
             replace_existing=True,
             **_job_options(),

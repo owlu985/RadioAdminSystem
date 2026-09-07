@@ -50,6 +50,11 @@ not run. The process-level file lock prevents a second background-service
 instance from becoming another scheduler owner.
 
 The service owns recording, stream monitoring, RadioDJ/Icecast updates, NAS imports, backups, library indexing, news rotation, and cache cleanup. It reconciles schedule changes made by web workers once per minute and handles `SIGTERM`/`SIGINT` with an orderly APScheduler shutdown.
+On startup (and on later schedule reconciliation), it detects a show that is
+already in progress and immediately records the remaining portion. It also
+pushes the current show/RadioDJ metadata immediately rather than waiting for
+the first polling interval. All show triggers use `SCHEDULE_TIMEZONE`, not the
+operating system or WSGI host timezone.
 
 Example systemd unit (adjust user, group, and paths):
 
