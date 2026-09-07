@@ -28,7 +28,7 @@ def _health_reason(name="barix_auto_heal"):
     return JobHealth.query.filter_by(name=name).first().last_failure_reason
 
 
-def test_probe_below_restart_threshold_reports_waiting_not_lockout(monkeypatch):
+def test_disabled_self_heal_never_attempts_or_reports_barix_restart(monkeypatch):
     app = _app()
     with app.app_context():
         monkeypatch.setattr(detection, "probe_stream", lambda _url: None)
@@ -45,11 +45,13 @@ def test_probe_below_restart_threshold_reports_waiting_not_lockout(monkeypatch):
         detection.probe_and_record()
 
         assert called is False
-        assert _health_reason() == "Stream probe failed; waiting for restart threshold (0/3)"
+        assert JobHealth.query.filter_by(name="barix_auto_heal").first() is None
+        assert _health_reason("stream_probe") == "probe_failed_final"
 
 
 def test_probe_at_restart_threshold_records_restart_result(monkeypatch):
     app = _app()
+    app.config["SELF_HEAL_ENABLED"] = True
     with app.app_context():
         db.session.add(JobHealth(name="stream_probe", failure_count=3, restart_count=0))
         db.session.commit()
