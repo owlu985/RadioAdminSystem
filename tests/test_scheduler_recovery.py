@@ -135,7 +135,7 @@ def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
         "schedule_news_rotation", "schedule_icecast_analytics", "schedule_settings_backup",
         "schedule_radiodj_now_playing", "schedule_library_index_job",
         "schedule_transcode_cache_cleanup", "schedule_schedule_refresh",
-        "schedule_show_transition_monitor",
+        "schedule_show_transition_monitor", "run_show_transition_job",
     ):
         monkeypatch.setattr(scheduler_module, name, lambda: None)
     scheduler_module.scheduler = scheduler_module.BackgroundScheduler()

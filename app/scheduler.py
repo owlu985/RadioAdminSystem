@@ -105,6 +105,10 @@ def init_scheduler(app):
             schedule_library_index_job()
             schedule_transcode_cache_cleanup()
             schedule_schedule_refresh()
+            # Do not wait for an interval tick to establish the current state.
+            # This creates the active show's folder/recorder and pushes its
+            # metadata before the background service reports itself ready.
+            run_show_transition_job()
 
 def refresh_schedule():
     """Refresh the scheduler with the latest shows from the database."""
@@ -125,8 +129,13 @@ def refresh_schedule():
                 if datetime.fromisoformat(key[1]) >= now - timedelta(days=1)
             })
             for show in Show.query.all():
-                schedule_recording(show)
-                schedule_active_show_catchup(show, now)
+                try:
+                    schedule_recording(show)
+                    schedule_active_show_catchup(show, now)
+                except Exception as exc:  # noqa: BLE001
+                    # A bad path or malformed row for one show must not prevent
+                    # every later show from receiving its recorder trigger.
+                    logger.error("Unable to reconcile recorder for show %s: %s", show.id, exc)
             logger.info("Schedule refreshed with latest shows.")
             schedule_stream_probe()
             now = datetime.utcnow()

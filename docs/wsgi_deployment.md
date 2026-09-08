@@ -44,6 +44,17 @@ Start exactly one instance alongside the web application:
 python background_service.py
 ```
 
+For a permanent systemd installation, run this once from the checked-out
+repository (the script uses `.venv/bin/python` by default):
+
+```bash
+sudo ./scripts/install_background_service.sh
+```
+
+Set `RAMS_SERVICE_USER` and/or `RAMS_PYTHON_BIN` before `sudo` when the web
+application uses a different account or virtual environment. The service is
+enabled at boot and restarted automatically if it fails.
+
 This is the required companion process for WSGI deployments. Without it,
 scheduled recordings, stream probes, and RadioDJ/Icecast metadata polling do
 not run. The process-level file lock prevents a second background-service
