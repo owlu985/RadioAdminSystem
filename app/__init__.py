@@ -145,7 +145,6 @@ def create_app(config_class=Config):
             "RUN_SCHEMA_SETUP_ON_STARTUP",
             "RUN_MIGRATIONS_ON_STARTUP",
             "RUN_CLEANUP_ON_STARTUP",
-            "RUN_SCHEDULER_ON_STARTUP",
         }:
             return False
         return value
