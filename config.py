@@ -176,10 +176,9 @@ class Config:
     RUN_SCHEMA_SETUP_ON_STARTUP = _env_flag("RAMS_RUN_SCHEMA_SETUP_ON_STARTUP", "1")
     RUN_MIGRATIONS_ON_STARTUP = _env_flag("RAMS_RUN_MIGRATIONS_ON_STARTUP", "1")
     RUN_CLEANUP_ON_STARTUP = _env_flag("RAMS_RUN_CLEANUP_ON_STARTUP", "1")
-    # Scheduler ownership is opt-in at the configuration level so importing the
-    # app from an arbitrary WSGI worker can never create recorder/probe threads.
-    # run.py opts in for the single-process direct server; production uses the
-    # explicitly started background_service.py process.
+    # Scheduler ownership is opt-in at the configuration level. Both supported
+    # single-process entrypoints (run.py and wsgi.py) opt in before importing
+    # this module, preventing accidental schedulers on arbitrary imports.
     RUN_SCHEDULER_ON_STARTUP = _env_flag("RAMS_RUN_SCHEDULER_ON_STARTUP", "0")
     SCHEDULE_REFRESH_INTERVAL_SECONDS = 60
     SHOW_TRANSITION_POLL_SECONDS = 15

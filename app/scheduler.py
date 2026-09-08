@@ -107,7 +107,7 @@ def init_scheduler(app):
             schedule_schedule_refresh()
             # Do not wait for an interval tick to establish the current state.
             # This creates the active show's folder/recorder and pushes its
-            # metadata before the background service reports itself ready.
+            # metadata before the WSGI application reports itself ready.
             run_show_transition_job()
 
 def refresh_schedule():
