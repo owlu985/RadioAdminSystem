@@ -758,8 +758,11 @@ def now_widget():
     if base and base.get("status") != "off_air":
         return jsonify(base)
     # The widget's working RadioDJ feed is authoritative for recent-track
-    # transitions.  Logging is idempotent, so polling the same song is ignored.
-    nowplaying_payload = _get_cached_radiodj_nowplaying(write_log=True)
+    # transitions.  Drive the Icecast update from this path too, rather than
+    # relying solely on the optional background scheduler.  Both side effects
+    # are idempotent, so repeated widget polls for the same song are ignored.
+    # The early return above preserves scheduled-show metadata priority.
+    nowplaying_payload = _get_cached_radiodj_nowplaying(push_icecast=True, write_log=True)
     if nowplaying_payload:
         track_payload = dict(nowplaying_payload)
         track_payload["cover_url"] = _cover_url_for_track(
