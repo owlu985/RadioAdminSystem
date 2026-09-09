@@ -978,7 +978,7 @@ conflicting virtual host for the same hostname.
         python-home=/opt/RadioAdminSystem/.venv \
         python-path=/opt/RadioAdminSystem \
         processes=1 threads=10 \
-        maximum-requests=1000
+        maximum-requests=0
     WSGIProcessGroup radioadmin-test
     WSGIApplicationGroup %{GLOBAL}
 
@@ -1008,6 +1008,12 @@ consistent and test every generated link.
 Use `processes=1` while RAMS uses SQLite and in-memory rate-limit/cache state.
 Threads provide request concurrency. Moving to multiple processes requires
 testing database contention, shared cache/rate limits, and all in-memory state.
+Because this process also owns APScheduler and active ffmpeg recordings, do not
+set a nonzero `maximum-requests` or `restart-interval`. Those options recycle
+the scheduler owner during normal traffic. A PID change next to APScheduler's
+`cannot schedule new futures after shutdown` message identifies that lifecycle
+event rather than a failed show-transition job. Avoiding automatic recycling
+also avoids interrupting an active recording.
 
 Enable and validate the site:
 

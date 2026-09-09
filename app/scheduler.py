@@ -1,4 +1,5 @@
 from apscheduler.schedulers.background import BackgroundScheduler
+from apscheduler.executors.pool import ThreadPoolExecutor as APSchedulerThreadPoolExecutor
 from datetime import datetime, time, timedelta
 import time
 from app.db_utils import table_exists
@@ -31,7 +32,28 @@ import json
 import os
 import subprocess
 
-scheduler = BackgroundScheduler()
+class ShutdownAwareThreadPoolExecutor(APSchedulerThreadPoolExecutor):
+    """Ignore due jobs after Python has begun shutting down the worker pool."""
+
+    def submit_job(self, job, run_times):
+        # Python shuts concurrent.futures pools down before every other thread
+        # has necessarily stopped.  During a mod_wsgi recycle, APScheduler can
+        # therefore get one final wake-up after its executor is already closed.
+        # There is no work that can safely be submitted at that point, and the
+        # replacement WSGI process will reconcile recurring/active jobs.
+        if getattr(self._pool, "_shutdown", False):
+            return
+        return super().submit_job(job, run_times)
+
+
+def _new_scheduler(timezone=None):
+    return BackgroundScheduler(
+        timezone=timezone,
+        executors={"default": ShutdownAwareThreadPoolExecutor()},
+    )
+
+
+scheduler = _new_scheduler()
 ACTIVE_RECORDINGS = {}
 CATCHED_UP_SHOW_WINDOWS = set()
 logger = None
@@ -60,7 +82,7 @@ def _reset_scheduler(reason: str, timezone=None):
     """Recreate scheduler instance when its executor can no longer accept jobs."""
     global scheduler
     logger.warning("Resetting scheduler instance: %s", reason)
-    scheduler = BackgroundScheduler(timezone=timezone)
+    scheduler = _new_scheduler(timezone=timezone)
 
 
 def _schedule_now() -> datetime:

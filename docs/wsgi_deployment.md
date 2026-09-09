@@ -14,7 +14,7 @@ create duplicate recordings.
 Example Apache mod_wsgi configuration:
 
 ```apache
-WSGIDaemonProcess rams processes=1 threads=5 python-home=/opt/rams/.venv python-path=/opt/rams
+WSGIDaemonProcess rams processes=1 threads=5 maximum-requests=0 python-home=/opt/rams/.venv python-path=/opt/rams
 WSGIProcessGroup rams
 WSGIScriptAlias / /opt/rams/wsgi.py
 ```
@@ -28,6 +28,22 @@ gunicorn --workers 1 --threads 5 --bind 127.0.0.1:5000 wsgi:application
 Do not use Gunicorn `--preload`, and do not configure more than one daemon
 process or worker. Restarting the WSGI process also restarts the one scheduler;
 startup reconciliation immediately resumes any show already in progress.
+
+Do not configure periodic daemon recycling (for example, a nonzero mod_wsgi
+`maximum-requests` or `restart-interval`) on the scheduler-owning process.
+Recycling replaces the process that owns APScheduler and any active ffmpeg
+recording. The retiring process can otherwise log `cannot schedule new futures
+after shutdown` while Python tears down APScheduler's executor, and the new
+process can briefly encounter the prior recording during startup catch-up.
+Planned deploys should therefore be scheduled around recordings where possible.
+RAMS also uses a shutdown-aware APScheduler executor so a final scheduler tick
+from a retiring process is discarded rather than logged as a traceback.
+
+`maximum number of running instances reached (1)` is different: it means an
+interval elapsed while the preceding invocation was still running. RAMS keeps
+`max_instances=1` intentionally so slow RadioDJ, stream, or recording calls do
+not overlap. An occasional message is harmless; repeated messages mean the
+configured interval is shorter than that external operation's response time.
 
 ## Startup behavior
 

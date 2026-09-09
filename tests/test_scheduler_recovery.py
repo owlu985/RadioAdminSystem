@@ -16,6 +16,28 @@ class FakeScheduler:
         self.jobs.append((func, trigger, kwargs))
 
 
+def test_shutdown_executor_drops_final_scheduler_tick_without_error():
+    executor = scheduler_module.ShutdownAwareThreadPoolExecutor(max_workers=1)
+    executor._pool.shutdown(wait=False)
+
+    # APScheduler's normal executor raises RuntimeError here, which the
+    # scheduler reports with a traceback during WSGI process teardown.
+    executor.submit_job(SimpleNamespace(id="retiring-job"), [datetime.now()])
+
+
+def test_new_schedulers_always_use_shutdown_aware_executor():
+    created = scheduler_module._new_scheduler()
+
+    try:
+        created.start(paused=True)
+        assert isinstance(
+            created._executors["default"],
+            scheduler_module.ShutdownAwareThreadPoolExecutor,
+        )
+    finally:
+        created.shutdown(wait=False)
+
+
 def _show(show_id=7):
     return SimpleNamespace(
         id=show_id,
@@ -138,7 +160,7 @@ def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
         "schedule_show_transition_monitor", "run_show_transition_job",
     ):
         monkeypatch.setattr(scheduler_module, name, lambda: None)
-    scheduler_module.scheduler = scheduler_module.BackgroundScheduler()
+    scheduler_module.scheduler = scheduler_module._new_scheduler()
 
     try:
         scheduler_module.init_scheduler(app)
