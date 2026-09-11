@@ -59,11 +59,35 @@ The scheduler:
 - bounds recovery bookkeeping and recorder concurrency to avoid accumulation
   across schedule refreshes.
 
-Run schema setup separately during deployment:
+Run schema setup separately **after every code update and before restarting the
+web service**. WSGI safe mode deliberately prevents web workers from changing
+the database, so deploying a model change without this step leaves the existing
+SQLite database unchanged:
 
 ```bash
-python scripts/db_setup.py
+cd /opt/RadioAdminSystem
+sudo -u rams env RAMS_WSGI_SAFE_MODE=1 \
+  /opt/RadioAdminSystem/venv/bin/python scripts/db_setup.py --all
 ```
+
+Back up `instance/app.db` before applying schema changes. Use the virtual
+environment and service account from the installation; the paths above match a
+standard `/opt/RadioAdminSystem` deployment.
+
+If SQLAlchemy reports `no such table: dj_recording_access_code` after installing
+the DJ recording portal, the code was updated but this deployment step was not
+run against the database used by the service. Stop or restart the service as
+appropriate for the deployment, run the command above, and then verify the
+table against that same database:
+
+```bash
+sudo -u rams sqlite3 /opt/RadioAdminSystem/instance/app.db \
+  ".schema dj_recording_access_code"
+```
+
+The schema command is idempotent: it preserves existing data and creates tables
+that are missing. Do not fix this error by deleting `app.db`, because that would
+discard the station's existing data.
 
 The direct development entrypoint (`python run.py`) also owns one scheduler.
 Importing the application through any other entrypoint leaves scheduler startup

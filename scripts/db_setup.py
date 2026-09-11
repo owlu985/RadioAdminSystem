@@ -39,14 +39,18 @@ def main() -> None:
 
     with app.app_context():
         if args.schema or run_all:
+            print(f"Ensuring database schema at {app.config['SQLALCHEMY_DATABASE_URI']} ...")
             ensure_schema(app, app.logger)
+            print("Database schema is up to date.")
 
         if args.migrate or run_all:
+            print("Applying database migrations ...")
             migrations_dir = os.path.join(app.instance_path, "migrations")
             if not os.path.exists(migrations_dir):
                 init(directory=migrations_dir)
             migrate(message="Auto migration", directory=migrations_dir)
             upgrade(directory=migrations_dir)
+            print("Database migrations are up to date.")
 
 
 if __name__ == "__main__":
