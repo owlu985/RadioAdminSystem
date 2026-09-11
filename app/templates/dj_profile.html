@@ -132,6 +132,26 @@
             </div>
         </div>
     </div>
+
+    {% if can_manage_access %}
+    <div class="card mt-3">
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <span>Recording Portal Access</span>
+            <button class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#createRecordingCodeModal">Create code</button>
+        </div>
+        <div class="card-body p-0">
+            <div class="table-responsive"><table class="table mb-0">
+                <thead><tr><th>Code</th><th>Created</th><th>Expires</th><th>Last used</th><th>Status</th><th></th></tr></thead>
+                <tbody>{% for code in access_codes %}<tr>
+                    <td>••••</td><td>{{ code.created_at|datetime_local }}</td><td>{{ code.expires_at|datetime_local if code.expires_at else 'Never' }}</td><td>{{ code.last_used_at|datetime_local if code.last_used_at else 'Never' }}</td>
+                    <td>{% if code.revoked_at %}<span class="badge bg-secondary">Revoked</span>{% elif code.expires_at and code.expires_at <= now %}<span class="badge bg-warning text-dark">Expired</span>{% else %}<span class="badge bg-success">Active</span>{% endif %}</td>
+                    <td class="text-end">{% if code.is_active(now) %}<form method="post" action="{{ url_for('main.revoke_dj_recording_access', dj_id=dj.id, code_id=code.id) }}"><button class="btn btn-sm btn-outline-danger" onclick="return confirm('Revoke this recording access code?')">Revoke</button></form>{% endif %}</td>
+                </tr>{% else %}<tr><td colspan="6" class="text-muted">No access codes have been created.</td></tr>{% endfor %}</tbody>
+            </table></div>
+        </div>
+    </div>
+    <div class="modal fade" id="createRecordingCodeModal" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-centered"><div class="modal-content"><form method="post" action="{{ url_for('main.create_dj_recording_access', dj_id=dj.id) }}"><div class="modal-header"><h5 class="modal-title">Create recording access</h5><button class="btn-close" type="button" data-bs-dismiss="modal" aria-label="Close"></button></div><div class="modal-body"><p>Generate a four-digit code for {{ dj.first_name }} {{ dj.last_name }}.</p><div class="form-check"><input class="form-check-input" type="radio" name="expiry" id="expiry30" value="30_days" checked><label class="form-check-label" for="expiry30">Expire after 30 days</label></div><div class="form-check"><input class="form-check-input" type="radio" name="expiry" id="expiryNever" value="never"><label class="form-check-label" for="expiryNever">Never expires</label></div><div class="form-check"><input class="form-check-input" type="radio" name="expiry" id="expiryCustom" value="custom"><label class="form-check-label" for="expiryCustom">Custom expiration date</label></div><input class="form-control mt-2" type="date" name="expires_at" aria-label="Custom expiration date"></div><div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button class="btn btn-primary" type="submit">Create code</button></div></form></div></div></div>
+    {% endif %}
 </div>
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
 <script>

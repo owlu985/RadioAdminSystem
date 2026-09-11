@@ -60,6 +60,24 @@ class DJ(db.Model):
     shows = db.relationship("Show", secondary=show_dj, back_populates="djs")
 
 
+class DJRecordingAccessCode(db.Model):
+    __tablename__ = "dj_recording_access_code"
+
+    id = db.Column(db.Integer, primary_key=True)
+    dj_id = db.Column(db.Integer, db.ForeignKey("dj.id"), nullable=False, index=True)
+    code_digest = db.Column(db.String(64), nullable=False, index=True)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=True)
+    revoked_at = db.Column(db.DateTime, nullable=True)
+    last_used_at = db.Column(db.DateTime, nullable=True)
+
+    dj = db.relationship("DJ", backref=db.backref("recording_access_codes", lazy=True))
+
+    def is_active(self, now=None) -> bool:
+        now = now or datetime.utcnow()
+        return self.revoked_at is None and (self.expires_at is None or self.expires_at > now)
+
+
 class DJDisciplinary(db.Model):
     __tablename__ = "dj_disciplinary"
 

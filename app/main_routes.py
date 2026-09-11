@@ -56,6 +56,7 @@ from .models import (
     PodcastEpisode,
     MarathonEvent,
     MusicAnalysis,
+    DJRecordingAccessCode,
 )
 from app.plugins import ensure_plugin_record, plugin_display_name
 from sqlalchemy import case, func, tuple_, or_
@@ -100,6 +101,14 @@ from app.services.recording_periods import (
 from app.services.health import get_health_snapshot, reset_health_counts
 from app.services.system_resources import get_memory_status
 from app.services.listener_analytics import peak_listeners_for_show
+from app.services.dj_recording_access import (
+    PORTAL_SESSION_KEY,
+    authenticate as authenticate_dj_recording_code,
+    create_access_code,
+    current_access,
+    login_is_blocked,
+    logout as logout_dj_recording_portal,
+)
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.live_reads import upsert_cards, card_query, chunk_cards
 from app.services.archivist_db import import_archivist_csv, search_archivist
@@ -462,9 +471,58 @@ def _resolve_recording_path(token: str) -> str | None:
         return None
     full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
     root = os.path.normcase(os.path.abspath(os.path.normpath(_recordings_root())))
-    if not full.startswith(root) or not os.path.isfile(full):
+    try:
+        within_root = os.path.commonpath([full, root]) == root
+    except ValueError:
+        within_root = False
+    if not within_root or not os.path.isfile(full):
         return None
     return full
+
+
+def _portal_response(response):
+    response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    response.headers["Cache-Control"] = "private, no-store"
+    response.headers["Referrer-Policy"] = "same-origin"
+    return response
+
+
+def _portal_show_keys(dj: DJ) -> set[str]:
+    shows = list(dj.shows or [])
+    primary = Show.query.filter_by(host_first_name=dj.first_name, host_last_name=dj.last_name).all()
+    by_id = {show.id: show for show in shows + primary}
+    return {
+        _normalize_key(show.show_name or f"{show.host_first_name} {show.host_last_name}")
+        for show in by_id.values()
+    }
+
+
+def _portal_entries(access, *, show=None, period=None) -> list[RecordingEntry]:
+    allowed = _portal_show_keys(access.dj)
+    return [entry for entry in _collect_recordings(show=show, period=period) if entry.show_key in allowed]
+
+
+def _portal_entry(access, token: str) -> RecordingEntry | None:
+    full = _resolve_recording_path(token)
+    if not full:
+        return None
+    periods = load_recording_periods().get("periods", [])
+    period_map = _period_folder_map(periods)
+    entry = _build_recording_entry(
+        full=full,
+        base_root=_recordings_root(),
+        period_map=period_map,
+        period_folders=set(period_map),
+        root=_recordings_root(),
+    )
+    return entry if entry.show_key in _portal_show_keys(access.dj) else None
+
+
+def _require_portal_access():
+    access = current_access()
+    if not access:
+        abort(403, description="Enter a valid DJ recording access code.")
+    return access
 
 
 @main_bp.route("/psa/player")
@@ -855,6 +913,139 @@ def recordings_download():
     return response
 
 
+@main_bp.route("/dj-recordings", methods=["GET", "POST"])
+def dj_recordings_login():
+    if current_access():
+        return redirect(url_for("main.dj_recordings_archive"))
+    error = None
+    status = 200
+    if request.method == "POST":
+        if login_is_blocked():
+            error = "Too many attempts. Please wait 15 minutes and try again."
+            status = 429
+        elif authenticate_dj_recording_code((request.form.get("code") or "").strip()):
+            return redirect(url_for("main.dj_recordings_archive"))
+        else:
+            error = "That code is invalid or is no longer active."
+            status = 401
+    response = make_response(render_template("dj_recordings_login.html", error=error), status)
+    return _portal_response(response)
+
+
+@main_bp.post("/dj-recordings/logout")
+def dj_recordings_logout():
+    logout_dj_recording_portal()
+    return redirect(url_for("main.dj_recordings_login"))
+
+
+@main_bp.route("/dj-recordings/archive")
+def dj_recordings_archive():
+    access = _require_portal_access()
+    show_filter = (request.args.get("show") or "").strip() or None
+    period = request.args.get("period") or current_recording_period()
+    periods = load_recording_periods().get("periods", [])
+    if period not in periods and period != ALL_PERIODS_VALUE:
+        period = current_recording_period()
+    available = _portal_entries(access, period=period)
+    shows = sorted({entry.show_name for entry in available})
+    entries = [entry for entry in available if not show_filter or entry.show_key == _normalize_key(show_filter)]
+    page = max(request.args.get("page", 1, type=int), 1)
+    total_pages = max(math.ceil(len(entries) / RECORDINGS_PAGE_SIZE), 1)
+    page = min(page, total_pages)
+    start = (page - 1) * RECORDINGS_PAGE_SIZE
+    response = make_response(render_template(
+        "dj_recordings_archive.html",
+        access=access,
+        recordings=entries[start:start + RECORDINGS_PAGE_SIZE],
+        total_entries=len(entries),
+        current_page=page,
+        total_pages=total_pages,
+        shows=shows,
+        periods=periods,
+        selected_show=show_filter or "",
+        selected_period=period,
+        all_periods_value=ALL_PERIODS_VALUE,
+    ))
+    return _portal_response(response)
+
+
+@main_bp.route("/dj-recordings/audio/<path:token>")
+def dj_recordings_audio(token: str):
+    access = _require_portal_access()
+    entry = _portal_entry(access, token)
+    if not entry:
+        abort(404)
+    return _portal_response(send_file(entry.full_path, conditional=True))
+
+
+@main_bp.route("/dj-recordings/view/<path:token>")
+def dj_recordings_view(token: str):
+    access = _require_portal_access()
+    entry = _portal_entry(access, token)
+    if not entry:
+        abort(404)
+    log_entries = read_log_csv(entry.log_csv_path) if entry.has_log else []
+    response = make_response(render_template(
+        "dj_recordings_view.html", access=access, recording=entry, entries=log_entries
+    ))
+    return _portal_response(response)
+
+
+@main_bp.route("/dj-recordings/log/<fmt>/<path:token>")
+def dj_recordings_log_download(fmt: str, token: str):
+    access = _require_portal_access()
+    entry = _portal_entry(access, token)
+    if not entry or not entry.has_log or fmt not in {"csv", "docx"}:
+        abort(404)
+    stem = os.path.splitext(entry.filename)[0]
+    if fmt == "csv":
+        return _portal_response(send_file(entry.log_csv_path, as_attachment=True, download_name=f"{stem}.csv"))
+    response = make_response(build_docx(read_log_csv(entry.log_csv_path)))
+    response.headers["Content-Disposition"] = f"attachment; filename={stem}.docx"
+    response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    return _portal_response(response)
+
+
+@main_bp.post("/dj-recordings/download")
+def dj_recordings_download():
+    access = _require_portal_access()
+    if request.form.get("copyright_acknowledged") != "1":
+        abort(400, description="Copyright acknowledgement is required.")
+    tokens = request.form.getlist("tokens")
+    entries = []
+    if tokens:
+        for token in tokens:
+            entry = _portal_entry(access, token)
+            if not entry:
+                abort(404)
+            entries.append(entry)
+    else:
+        show = (request.form.get("show") or "").strip() or None
+        period = request.form.get("period") or current_recording_period()
+        periods = load_recording_periods().get("periods", [])
+        if period not in periods and period != ALL_PERIODS_VALUE:
+            abort(400, description="Invalid recording period.")
+        entries = _portal_entries(access, show=show, period=period)
+    if not entries:
+        abort(404)
+    if len(entries) == 1 and request.form.get("single") == "1":
+        response = send_file(entries[0].full_path, as_attachment=True, download_name=entries[0].filename)
+        return _portal_response(response)
+
+    tmp = NamedTemporaryFile(delete=False, suffix=".zip")
+    tmp_path = tmp.name
+    tmp.close()
+    with zipfile.ZipFile(tmp_path, "w", compression=zipfile.ZIP_DEFLATED) as archive:
+        for entry in entries:
+            folder = _safe_folder_value(entry.show_name)
+            archive.write(entry.full_path, arcname=os.path.join(folder, entry.filename))
+            if entry.has_log:
+                archive.write(entry.log_csv_path, arcname=os.path.join(folder, os.path.basename(entry.log_csv_path)))
+    response = send_file(tmp_path, mimetype="application/zip", as_attachment=True, download_name="my_radio_shows.zip")
+    response.call_on_close(lambda: os.unlink(tmp_path))
+    return _portal_response(response)
+
+
 @main_bp.route("/media/file/<path:token>")
 def media_file(token: str):
     try:
@@ -947,6 +1138,12 @@ def dj_profile(dj_id: int):
             .all()
         )
 
+        can_manage_access = role in ALLOWED_ADMIN_ROLES or "*" in perms or "dj:manage" in perms
+        access_codes = (
+            DJRecordingAccessCode.query.filter_by(dj_id=dj.id)
+            .order_by(DJRecordingAccessCode.created_at.desc()).all()
+            if can_manage_access else []
+        )
         return render_template(
             "dj_profile.html",
             dj=dj,
@@ -955,7 +1152,57 @@ def dj_profile(dj_id: int):
             absences=absences,
             log_sheets=log_sheets,
             allowed_roles=sorted(ALLOWED_ADMIN_ROLES),
+            can_manage_access=can_manage_access,
+            access_codes=access_codes,
+            now=datetime.utcnow(),
         )
+
+
+@main_bp.post("/djs/<int:dj_id>/recording-access")
+@permission_required({"dj:manage"})
+def create_dj_recording_access(dj_id: int):
+    dj = DJ.query.get_or_404(dj_id)
+    expiry = request.form.get("expiry", "30_days")
+    expires_at = None
+    if expiry == "30_days":
+        expires_at = datetime.utcnow() + timedelta(days=30)
+    elif expiry == "custom":
+        try:
+            expires_at = datetime.strptime(request.form.get("expires_at") or "", "%Y-%m-%d") + timedelta(days=1)
+        except ValueError:
+            flash("Choose a valid custom expiration date.", "danger")
+            return redirect(url_for("main.dj_profile", dj_id=dj.id))
+        if expires_at <= datetime.utcnow():
+            flash("The expiration date must be in the future.", "danger")
+            return redirect(url_for("main.dj_profile", dj_id=dj.id))
+    elif expiry != "never":
+        abort(400)
+    try:
+        _, code = create_access_code(dj.id, expires_at=expires_at, indefinite=expiry == "never")
+    except RuntimeError as exc:
+        flash(str(exc), "danger")
+    else:
+        portal_url = url_for("main.dj_recordings_login", _external=True)
+        flash(
+            f"Recording access code for {dj.first_name} {dj.last_name}: {code}. "
+            f"Portal: {portal_url}. This code will only be shown once.",
+            "success",
+        )
+    return redirect(url_for("main.dj_profile", dj_id=dj.id))
+
+
+@main_bp.post("/djs/<int:dj_id>/recording-access/<int:code_id>/revoke")
+@permission_required({"dj:manage"})
+def revoke_dj_recording_access(dj_id: int, code_id: int):
+    DJ.query.get_or_404(dj_id)
+    record = DJRecordingAccessCode.query.filter_by(id=code_id, dj_id=dj_id).first_or_404()
+    if record.revoked_at is None:
+        record.revoked_at = datetime.utcnow()
+        db.session.commit()
+        if session.get(PORTAL_SESSION_KEY) == record.id:
+            session.pop(PORTAL_SESSION_KEY, None)
+        flash("Recording access code revoked.", "success")
+    return redirect(url_for("main.dj_profile", dj_id=dj_id))
 
 
 DISCIPLINE_PUNISHMENTS = {
@@ -1525,6 +1772,7 @@ def delete_dj(dj_id):
 
     dj.shows = []
     DJDisciplinary.query.filter_by(dj_id=dj.id).delete(synchronize_session=False)
+    DJRecordingAccessCode.query.filter_by(dj_id=dj.id).delete(synchronize_session=False)
     db.session.delete(dj)
     db.session.commit()
 

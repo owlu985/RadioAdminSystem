@@ -1,0 +1,44 @@
+<div class="modal fade" id="copyrightModal" tabindex="-1" aria-labelledby="copyrightModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered"><div class="modal-content">
+    <div class="modal-header"><h5 class="modal-title" id="copyrightModalLabel">Copyright Notice</h5><button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button></div>
+    <div class="modal-body">
+      <p>This recording may contain copyrighted music or other protected material. You are responsible for obtaining any permission or license required before sharing, distributing, publicly posting, broadcasting, or publicly performing this recording.</p>
+      <p>If you do not wish to obtain—or do not otherwise have—the necessary permission or license, you must use audio-editing software to remove the applicable copyrighted content before sharing, distributing, publicly posting, broadcasting, or publicly performing the recording.</p>
+      <p class="mb-0">WLMC Radio and Landmark College do not authorize your use of third-party content and are not responsible for any use you make of this recording after downloading it. By continuing, you acknowledge that you are downloading and using the recording at your own risk.</p>
+    </div>
+    <div class="modal-footer"><button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button><button type="button" class="btn btn-primary" id="confirmCopyrightDownload">I understand — download</button></div>
+  </div></div>
+</div>
+<script>
+(() => {
+  let pendingForm = null;
+  const modalElement = document.getElementById('copyrightModal');
+  const modal = new bootstrap.Modal(modalElement);
+  document.querySelectorAll('[data-copyright-download]').forEach((button) => {
+    button.addEventListener('click', () => {
+      pendingForm = button.closest('form');
+      if (!pendingForm) return;
+      if (pendingForm.dataset.requireSelection === 'true' && !pendingForm.querySelector('input[name="tokens"]:checked')) {
+        window.alert('Select at least one recording to download.');
+        pendingForm = null;
+        return;
+      }
+      modal.show();
+    });
+  });
+  document.getElementById('confirmCopyrightDownload').addEventListener('click', () => {
+    if (!pendingForm) return;
+    let acknowledgement = pendingForm.querySelector('input[name="copyright_acknowledged"]');
+    if (!acknowledgement) {
+      acknowledgement = document.createElement('input');
+      acknowledgement.type = 'hidden';
+      acknowledgement.name = 'copyright_acknowledged';
+      pendingForm.appendChild(acknowledgement);
+    }
+    acknowledgement.value = '1';
+    modal.hide();
+    pendingForm.submit();
+    pendingForm = null;
+  });
+})();
+</script>
