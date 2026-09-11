@@ -1,0 +1,10 @@
+<nav class="navbar navbar-dark bg-dark">
+    <div class="container">
+        <a class="navbar-brand" href="{{ url_for('main.dj_recordings_archive') }}">WLMC DJ Recording Archive</a>
+        {% if access %}
+        <form method="post" action="{{ url_for('main.dj_recordings_logout') }}">
+            <button class="btn btn-sm btn-outline-light" type="submit">Exit archive</button>
+        </form>
+        {% endif %}
+    </div>
+</nav>
