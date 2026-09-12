@@ -1,4 +1,4 @@
-from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, Response, stream_with_context
+from flask import Blueprint, render_template, request, redirect, url_for, flash, session, current_app, send_file, abort, send_from_directory, make_response, jsonify, Response
 from io import BytesIO, StringIO
 from dataclasses import dataclass
 import mutagen  # type: ignore
@@ -52,13 +52,11 @@ from .models import (
     LogSheet,
     DJHandoffNote,
     Plugin,
-    WebsiteContent,
-    PodcastEpisode,
     MarathonEvent,
     MusicAnalysis,
     DJRecordingAccessCode,
 )
-from app.plugins import ensure_plugin_record, plugin_display_name
+from app.plugins import ensure_plugin_record
 from sqlalchemy import case, func, tuple_, or_
 from sqlalchemy.orm import load_only, selectinload
 from .logger import init_logger
@@ -69,7 +67,6 @@ from app.auth_utils import (
     ROLE_PERMISSIONS,
     ALLOWED_ADMIN_ROLES,
     PERMISSION_GROUPS,
-    PERMISSION_LOOKUP,
     effective_permissions,
 )
 from app.services.library.music_search import (
@@ -2693,9 +2690,14 @@ def edit_show(id):
 @main_bp.route('/plugins')
 @permission_required({"plugins:manage"})
 def plugins_home():
-    ensure_plugin_record("website_content")
-    plugins = Plugin.query.order_by(Plugin.name.asc()).all()
     plugin_meta = current_app.config.get("PLUGIN_REGISTRY", {})
+    plugins = (
+        Plugin.query.filter(Plugin.name.in_(plugin_meta))
+        .order_by(Plugin.name.asc())
+        .all()
+        if plugin_meta
+        else []
+    )
     return render_template(
         'plugins.html',
         plugins=plugins,
@@ -2707,6 +2709,8 @@ def plugins_home():
 @main_bp.route('/plugins/<string:name>/toggle', methods=['POST'])
 @admin_required
 def toggle_plugin(name):
+    if name not in current_app.config.get("PLUGIN_REGISTRY", {}):
+        abort(404)
     plugin = ensure_plugin_record(name)
     plugin.enabled = not plugin.enabled
     db.session.commit()
@@ -2841,8 +2845,6 @@ def settings():
                 'NAS_MUSIC_ROOT': _clean_optional(request.form.get('music_library_path', '').strip()),
                 'RADIODJ_API_BASE_URL': _clean_optional(request.form.get('radiodj_api_base_url', '').strip()),
                 'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
-                'AUDIO_HOST_UPLOAD_DIR': request.form.get('audio_host_upload_dir', current_app.config.get('AUDIO_HOST_UPLOAD_DIR')).strip(),
-                'AUDIO_HOST_BACKDROP_DEFAULT': request.form.get('audio_host_backdrop_default', current_app.config.get('AUDIO_HOST_BACKDROP_DEFAULT', '')).strip(),
             }
 
             update_user_config(updated_settings)
@@ -2944,8 +2946,6 @@ def settings():
         'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
         'imaging_library_path': config.get('IMAGING_LIBRARY_PATH', ''),
         'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
-        'audio_host_upload_dir': config.get('AUDIO_HOST_UPLOAD_DIR', ''),
-        'audio_host_backdrop_default': config.get('AUDIO_HOST_BACKDROP_DEFAULT', ''),
         'recording_periods': load_recording_periods().get("periods", []),
         'current_recording_period': current_recording_period(),
     }

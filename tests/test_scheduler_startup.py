@@ -74,7 +74,6 @@ def test_safe_mode_allows_explicit_single_owner_scheduler(monkeypatch, tmp_path)
         RUN_PLUGIN_LOAD_ON_STARTUP = False
         DATA_ROOT = str(tmp_path / "data")
         LOGS_DIR = str(tmp_path / "logs")
-        AUDIO_HOST_UPLOAD_DIR = str(tmp_path / "audio")
         SQLALCHEMY_DATABASE_URI = f"sqlite:///{tmp_path / 'app.db'}"
 
     created_app = app_module.create_app(SingleWorkerConfig)

@@ -524,7 +524,7 @@
                                 </div>
                                 <div class="col-md-6">
                                     <label for="data_root" class="form-label">RAMS Data Root</label>
-                                    <input type="text" name="data_root" id="data_root" class="form-control" value="{{ data_root }}" placeholder="Path for RAMS data (uploads, hosted audio, logs)">
+                                    <input type="text" name="data_root" id="data_root" class="form-control" value="{{ data_root }}" placeholder="Path for RAMS data (uploads and logs)">
                                 </div>
                             </div>
                             <div class="row g-3 mb-3">
@@ -582,16 +582,6 @@
                                         <button type="submit" name="archivist_import" value="1" class="btn btn-outline-primary">Import CSV/TSV</button>
                                     </div>
                                     <div class="form-text mt-2">Imports Artist, Title, Album, Catalog, and PriceRange columns from the archivist catalog.</div>
-                                </div>
-                            </div>
-                            <div class="row g-3 mb-3">
-                                <div class="col-md-6">
-                                    <label for="audio_host_upload_dir" class="form-label">Hosted Audio Upload Directory</label>
-                                    <input type="text" name="audio_host_upload_dir" id="audio_host_upload_dir" class="form-control" value="{{ audio_host_upload_dir }}" placeholder="/path/to/nas/hosted_audio">
-                                </div>
-                                <div class="col-md-6">
-                                    <label for="audio_host_backdrop_default" class="form-label">Default Backdrop (path or URL)</label>
-                                    <input type="text" name="audio_host_backdrop_default" id="audio_host_backdrop_default" class="form-control" value="{{ audio_host_backdrop_default }}" placeholder="Leave blank to use logo">
                                 </div>
                             </div>
                         </div>

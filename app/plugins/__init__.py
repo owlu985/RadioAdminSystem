@@ -3,8 +3,6 @@ from importlib import import_module
 from pathlib import Path
 from typing import Dict, Optional
 
-from flask import current_app
-
 from app.models import Plugin, db
 
 
@@ -44,12 +42,3 @@ def load_plugins(app) -> Dict[str, PluginInfo]:
     app.config["PLUGIN_REGISTRY"] = registry
     app.config["PLUGIN_DISPLAY_NAMES"] = {k: v.display_name for k, v in registry.items()}
     return registry
-
-
-def plugin_display_name(name: str) -> str:
-    registry: Dict[str, PluginInfo] = current_app.config.get("PLUGIN_REGISTRY", {})
-    info = registry.get(name)
-    if info:
-        return info.display_name
-    labels = current_app.config.get("PLUGIN_DISPLAY_NAMES", {})
-    return labels.get(name, name)

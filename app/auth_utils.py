@@ -75,8 +75,6 @@ PERMISSION_GROUPS = [
     ),
 ]
 
-PERMISSION_LOOKUP = {item["key"]: item for _, items in PERMISSION_GROUPS for item in items}
-
 ROLE_PERMISSIONS = {
     "admin": {"*"},
     "manager": {

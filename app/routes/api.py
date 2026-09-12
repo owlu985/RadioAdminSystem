@@ -3,9 +3,8 @@ from __future__ import annotations
 import time
 import threading
 from datetime import datetime, timedelta, timezone, date
-from flask import Blueprint, jsonify, current_app, request, session, url_for, render_template, abort, send_file
+from flask import Blueprint, jsonify, current_app, request, session, url_for, abort, send_file
 import os
-import shutil
 import json
 import base64
 import io
@@ -19,14 +18,7 @@ from app.models import (
     DJ,
     Show,
     SavedSearch,
-    Plugin,
-    WebsiteContent,
-    WebsiteArticle,
-    PressFeature,
-    WebsiteBanner,
-    PodcastEpisode,
     DJAbsence,
-    HostedAudio,
     MarathonEvent,
     ArchivistRipResult,
     NowPlayingState,
@@ -1432,112 +1424,6 @@ def schedule_api():
     payload = {"events": events, "timezone": tz}
     api_cache.set("schedule", payload, ttl=300)
     return jsonify(payload)
-
-
-@api_bp.route("/plugins/website/content")
-def website_plugin_content():
-    plugin = Plugin.query.filter_by(name="website_content").first()
-    if plugin and not plugin.enabled:
-        return jsonify({"status": "disabled", "message": "website_content plugin disabled"}), 503
-
-    content = WebsiteContent.query.first()
-    articles = WebsiteArticle.query.order_by(WebsiteArticle.position, WebsiteArticle.id).all()
-    podcasts = PodcastEpisode.query.order_by(PodcastEpisode.created_at.desc()).all()
-    press = PressFeature.query.order_by(PressFeature.position, PressFeature.id).all()
-
-    hero = None
-    if articles:
-        first = articles[0]
-        hero = {
-            "headline": first.title,
-            "body": first.body,
-            "image_url": first.image_url,
-            "updated_at": first.created_at.isoformat(),
-        }
-    elif content:
-        hero = {
-            "headline": content.headline,
-            "body": content.body,
-            "image_url": content.image_url,
-            "updated_at": content.updated_at.isoformat() if content.updated_at else None,
-        }
-
-    return jsonify({
-        "status": "ok",
-        "content": hero,
-        "articles": [
-            {
-                "id": a.id,
-                "title": a.title,
-                "body": a.body,
-                "image_url": a.image_url,
-                "position": a.position,
-                "created_at": a.created_at.isoformat() if a.created_at else None,
-            }
-            for a in articles
-        ],
-        "press": [
-            {
-                "id": f.id,
-                "name": f.name,
-                "url": f.url,
-                "logo": f.logo,
-                "position": f.position,
-                "created_at": f.created_at.isoformat() if f.created_at else None,
-            }
-            for f in press
-        ],
-        "podcasts": [
-            {
-                "id": p.id,
-                "title": p.title,
-                "description": p.description,
-                "embed_code": p.embed_code,
-                "created_at": p.created_at.isoformat(),
-            }
-            for p in podcasts
-        ],
-    })
-
-
-@api_bp.route("/plugins/website/banner")
-def website_banner():
-    plugin = Plugin.query.filter_by(name="website_content").first()
-    if plugin and not plugin.enabled:
-        return "", 204
-
-    banner = WebsiteBanner.query.first()
-    if not banner or not banner.message:
-        return "", 204
-    return jsonify({
-        "message": banner.message,
-        "link": banner.link,
-        "tone": banner.tone,
-    })
-
-
-@api_bp.route("/plugins/audio/embed/<int:item_id>")
-def audio_embed(item_id: int):
-    item = HostedAudio.query.get_or_404(item_id)
-    backdrop_url = item.backdrop_url
-    upload_dir = current_app.config.get("AUDIO_HOST_UPLOAD_DIR")
-    default_backdrop = current_app.config.get("AUDIO_HOST_BACKDROP_DEFAULT")
-    if not backdrop_url:
-        if default_backdrop and os.path.isfile(default_backdrop):
-            if upload_dir:
-                os.makedirs(upload_dir, exist_ok=True)
-                dest = os.path.join(upload_dir, os.path.basename(default_backdrop))
-                if not os.path.exists(dest):
-                    try:
-                        shutil.copyfile(default_backdrop, dest)
-                    except Exception:
-                        pass
-                backdrop_url = url_for('audio_host_plugin.serve_file', filename=os.path.basename(default_backdrop), _external=True)
-        elif default_backdrop and default_backdrop.startswith("http"):
-            backdrop_url = default_backdrop
-    if not backdrop_url:
-        backdrop_url = url_for('static', filename='logo.png', _external=True)
-    return render_template("embed_audio.html", item=item, backdrop_url=backdrop_url)
 
 
 @api_bp.route("/weather/tempest")
