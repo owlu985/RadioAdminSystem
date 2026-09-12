@@ -4,8 +4,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+import json
 import os
 import re
+import tempfile
+
+import mutagen  # type: ignore
 
 from app.services.log_export import read_recording_metadata, write_recording_metadata
 
@@ -26,6 +30,16 @@ class LegacySuggestion:
     dj_names: str
     recorded_date: str
     recognized: bool
+    duration_seconds: int | None
+    modified_at: datetime
+
+    @property
+    def duration_label(self) -> str:
+        if self.duration_seconds is None:
+            return "Unknown"
+        hours, remainder = divmod(self.duration_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        return f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
 
 
 def _display_name(value: str) -> str:
@@ -35,6 +49,49 @@ def _display_name(value: str) -> str:
 def split_dj_names(value: str) -> list[str]:
     """An ampersand always separates hosts in legacy metadata."""
     return [name.strip() for name in value.split("&") if name.strip()]
+
+
+def legacy_ignore_path(path: str) -> str:
+    return f"{path}.rams-ignore"
+
+
+def ignore_legacy_recording(path: str) -> str:
+    """Atomically mark a non-show audio file so future scans skip it."""
+    marker = legacy_ignore_path(path)
+    directory = os.path.dirname(marker) or "."
+    fd, temporary = tempfile.mkstemp(prefix=".rams-ignore-", dir=directory)
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump({
+                "ignored_by": "legacy_recording_import",
+                "source_filename": os.path.basename(path),
+                "ignored_at": datetime.utcnow().isoformat(timespec="seconds") + "Z",
+            }, handle, indent=2, sort_keys=True)
+            handle.write("\n")
+        os.replace(temporary, marker)
+    except Exception:
+        try:
+            os.unlink(temporary)
+        except OSError:
+            pass
+        raise
+    return marker
+
+
+def _audio_duration(path: str) -> int | None:
+    try:
+        audio = mutagen.File(path)
+        length = getattr(getattr(audio, "info", None), "length", None)
+        return max(0, round(float(length))) if length is not None else None
+    except Exception:
+        return None
+
+
+def _modified_at(path: str) -> datetime:
+    try:
+        return datetime.fromtimestamp(os.path.getmtime(path))
+    except OSError:
+        return datetime.fromtimestamp(0)
 
 
 def parse_legacy_filename(path: str, period_root: str) -> LegacySuggestion:
@@ -66,6 +123,8 @@ def parse_legacy_filename(path: str, period_root: str) -> LegacySuggestion:
         dj_names=dj_names,
         recorded_date=recorded_date,
         recognized=bool(match),
+        duration_seconds=_audio_duration(path),
+        modified_at=_modified_at(path),
     )
 
 
@@ -77,7 +136,9 @@ def discover_legacy_recordings(period_root: str) -> list[LegacySuggestion]:
         dirs.sort(key=str.casefold)
         for filename in sorted(files, key=str.casefold):
             path = os.path.join(root, filename)
-            if filename.lower().endswith(AUDIO_EXTENSIONS) and not read_recording_metadata(path):
+            if (filename.lower().endswith(AUDIO_EXTENSIONS)
+                    and not os.path.isfile(legacy_ignore_path(path))
+                    and not read_recording_metadata(path)):
                 found.append(parse_legacy_filename(path, period_root))
     return found
 

@@ -89,7 +89,12 @@ from app.services.library.dj_library import (
 )
 from app.services.library.media_library import decode_media_token
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
-from app.services.legacy_recordings import discover_legacy_recordings, split_dj_names, write_legacy_sidecar
+from app.services.legacy_recordings import (
+    discover_legacy_recordings,
+    ignore_legacy_recording,
+    split_dj_names,
+    write_legacy_sidecar,
+)
 from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
     UNASSIGNED_PERIOD_LABEL,
@@ -732,6 +737,17 @@ def legacy_recordings_import():
     period_root = os.path.join(_recordings_root(), period_folder_name(selected_period)) if selected_period else ""
 
     if request.method == "POST":
+        ignore_token = request.form.get("ignore_token")
+        if ignore_token:
+            full = _resolve_recording_path(ignore_token)
+            if (not full or not period_root
+                    or os.path.commonpath([os.path.abspath(full), os.path.abspath(period_root)]) != os.path.abspath(period_root)):
+                abort(400)
+            ignore_legacy_recording(full)
+            flash(f"Ignored {os.path.basename(full)}. It will not appear in future legacy scans.", "success")
+            return redirect(url_for("main.legacy_recordings_import", period=selected_period,
+                                    page=request.form.get("page", 1, type=int)))
+
         imported = 0
         for token in request.form.getlist("tokens"):
             full = _resolve_recording_path(token)

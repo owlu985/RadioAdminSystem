@@ -1,8 +1,11 @@
 import json
+import wave
 
 from app.main_routes import _extract_recording_names
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
+    ignore_legacy_recording,
+    legacy_ignore_path,
     parse_legacy_filename,
     split_dj_names,
     write_legacy_sidecar,
@@ -66,3 +69,31 @@ def test_sidecar_names_override_legacy_folder_and_filename_labels(tmp_path):
     )
 
     assert names == ("The Archive Hour", "Alex Smith & Pat Jones")
+
+
+def test_ignored_non_show_file_is_removed_from_future_scans(tmp_path):
+    recording = tmp_path / "class_project.mp3"
+    recording.write_bytes(b"not actually an mp3")
+    assert len(discover_legacy_recordings(str(tmp_path))) == 1
+
+    marker = ignore_legacy_recording(str(recording))
+
+    assert marker == legacy_ignore_path(str(recording))
+    assert json.loads((tmp_path / "class_project.mp3.rams-ignore").read_text())["source_filename"] == recording.name
+    assert recording.exists()
+    assert discover_legacy_recordings(str(tmp_path)) == []
+
+
+def test_scan_reports_audio_duration_and_modified_date(tmp_path):
+    recording = tmp_path / "Alex_Smith_01_02_2015.wav"
+    with wave.open(str(recording), "wb") as audio:
+        audio.setnchannels(1)
+        audio.setsampwidth(2)
+        audio.setframerate(8_000)
+        audio.writeframes(b"\0\0" * 16_000)
+
+    result = discover_legacy_recordings(str(tmp_path))[0]
+
+    assert result.duration_seconds == 2
+    assert result.duration_label == "0:02"
+    assert result.modified_at.year >= 2015
