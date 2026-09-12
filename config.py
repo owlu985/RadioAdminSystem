@@ -133,8 +133,6 @@ class Config:
     VOICE_TRACKS_ROOT = os.path.join(NAS_ROOT, "voice_tracks")
     TRANSCODE_ALAC_TO_MP3 = True
     TRANSCODE_CACHE_RETENTION_HOURS = 48
-    AUDIO_HOST_UPLOAD_DIR = os.path.join(DATA_ROOT, "hosted_audio")
-    AUDIO_HOST_BACKDROP_DEFAULT = os.path.join(DATA_ROOT, "hosted_audio_default.jpg")
     RADIODJ_IMPORT_FOLDER = os.path.join(DATA_ROOT, "radiodj_imports")
     RADIODJ_API_BASE_URL = os.getenv("RADIODJ_API_BASE_URL")
     RADIODJ_API_PASSWORD = os.getenv("RADIODJ_API_PASSWORD")

@@ -41,7 +41,6 @@ This document summarizes the major features available in RAMS, with links to key
 - Live read card generator with printable layout and expiry tracking for on-air copy.
 - Social posting console to draft/queue multi-network posts (simulated by default until enabled in Settings).
 - Archivist catalog import/search from CSV/TSV to speed cross-referencing against external music databases.
-- Hosted audio plugin for slim iframe embeds, upload/URL support, and configurable backdrops for posting interviews or long-form audio externally.
 - Automation Bridge plugin to manage rule-based inserts and RadioDJ playlist drops for urgent cuts/marathons.
 - Remote Studio Link plugin to track low-latency send/return coordination sessions with passcodes/notes.
 
@@ -73,7 +72,6 @@ This document summarizes the major features available in RAMS, with links to key
 - DJ list: `/api/djs`
 - Schedule grid JSON/iCal feeds
 - News upload and config-backed endpoints
-- Website content & podcast plugin feed: `/api/plugins/website/content`; hosted audio embeds: `/api/plugins/audio/embed/<id>`
 - OAuth/token helpers: `/api/oauth/last-token`, `/api/oauth/x-token` (admin)
 
 ## Additional Utilities

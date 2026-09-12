@@ -90,8 +90,7 @@ The current code includes:
 - optional Barix InStreamer restart/self-heal behavior;
 - Google and Discord OAuth plus a local emergency/master login;
 - settings and selected-data backups;
-- plugins for Automation Bridge, hosted audio, website content, and Remote
-  Studio Link.
+- plugins for Automation Bridge and Remote Studio Link.
 
 RAMS is not one continuously running Python process in production. It has two
 runtime roles:
@@ -863,7 +862,7 @@ sqlite:////opt/RadioAdminSystem/instance/app.db
 
 The code defines tables for users, DJs, shows, disciplinary records, logs,
 show runs, playback queues, stream probes, now-playing state, absences, news,
-music analysis/CUE data, jobs, plugins, hosted audio, website content,
+music analysis/CUE data, jobs, plugins,
 Automation Bridge, and Remote Link.
 
 SQLite is appropriate for a small single-node installation, but it has limited

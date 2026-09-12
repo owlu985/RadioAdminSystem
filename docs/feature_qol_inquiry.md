@@ -6,7 +6,7 @@
 - **Scheduling & Recording**: Multi-day shows with multi-DJ support, ShowRun tracking, APScheduler-driven recordings, marathon recorder for 24–48 hour events, and test-mode NAS paths.
 - **Detection & Monitoring**: Stream probes with silence/automation/live classification, Icecast listener analytics with ignored IPs, alerts pipeline (simulated until enabled), job self-heal tracking, and dashboard status cards.
 - **Logging & Compliance**: Public DJ log submission with autosave and HTML/CSV/DOCX exports, PSA compliance endpoint, log manager/viewer, and ShowRun fallback creation.
-- **News & Content**: Flexible news types with upload/rotation scheduling, website content & podcast plugin (API exposed), API docs page, and plugin registry/loader for modular extensions.
+- **News & Content**: Flexible news types with upload/rotation scheduling, an API docs page, and a plugin registry/loader for modular extensions.
 - **Music Library**: NAS search with metadata editing/cue editor, M4A/MP4 tag handling, cover-art harvesting, MusicBrainz enrichment, waveform/loudness analysis, saved searches, and duplicate/quality queues.
 - **DJ Experience**: DJ status page (clock, weather, station status), absence workflow with approvals, DJ profiles (shows, absences, logs, discipline), disciplinary tracking, public schedule grid + iCal, and now/next APIs.
 - **Backups & Settings**: Settings export/import, JSON backups for DJs/shows/discipline, configurable bind host/port, alert/webhook/email settings, Tempest weather config, and station background/branding assets.
@@ -38,8 +38,6 @@
 
 - **News & Content**
   - Add staged/published states and version history for news uploads with rollback.
-  - Schedule front-page content/podcast entries with future publish/expiry and preview mode.
-  - Allow bulk upload of podcast embeds via CSV for faster ingest.
 
 - **Music Library**
   - Cache waveform/peaks for faster cue editing and add keyboard shortcuts for cue point jumps.

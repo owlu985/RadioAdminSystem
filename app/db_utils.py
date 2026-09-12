@@ -326,30 +326,6 @@ def ensure_schema(app, logger) -> None:
                 )
                 """
             ))
-        if "website_content" not in insp.get_table_names():
-            conn.execute(text(
-                """
-                CREATE TABLE IF NOT EXISTS website_content (
-                    id INTEGER PRIMARY KEY,
-                    headline VARCHAR(255),
-                    body TEXT,
-                    image_url VARCHAR(500),
-                    updated_at DATETIME NOT NULL
-                )
-                """
-            ))
-        if "podcast_episode" not in insp.get_table_names():
-            conn.execute(text(
-                """
-                CREATE TABLE IF NOT EXISTS podcast_episode (
-                    id INTEGER PRIMARY KEY,
-                    title VARCHAR(255) NOT NULL,
-                    description TEXT,
-                    embed_code TEXT NOT NULL,
-                    created_at DATETIME NOT NULL
-                )
-                """
-            ))
         if "now_playing_state" not in insp.get_table_names():
             conn.execute(text(
                 """
@@ -414,19 +390,6 @@ def ensure_schema(app, logger) -> None:
                 )
                 """
             ))
-        if "hosted_audio" not in insp.get_table_names():
-            conn.execute(text(
-                """
-                CREATE TABLE IF NOT EXISTS hosted_audio (
-                    id INTEGER PRIMARY KEY,
-                    title VARCHAR(255) NOT NULL,
-                    description TEXT,
-                    file_url VARCHAR(512) NOT NULL,
-                    backdrop_url VARCHAR(512),
-                    created_at DATETIME NOT NULL
-                )
-                """
-            ))
         if "saved_search" not in insp.get_table_names():
             conn.execute(text(
                 """
@@ -455,10 +418,6 @@ def ensure_schema(app, logger) -> None:
                     )
                     """
             ))
-
-    if not Plugin.query.filter_by(name="website_content").first():
-        db.session.add(Plugin(name="website_content", enabled=True))
-        db.session.commit()
 
     news_config_path = app.config["NEWS_TYPES_CONFIG"]
     if not os.path.exists(news_config_path):

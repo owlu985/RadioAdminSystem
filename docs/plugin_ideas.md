@@ -21,7 +21,6 @@ Below are suggestions for modular plugins and broader feature expansions that ca
 ## News & Content Plugins
 - **Newsroom Assignments**: Pitch/assignment board with status (pitched/assigned/in edit/published) and deadlines; quick publish to site.
 - **Versioned News/PSA Publishing**: Draft/approve/publish with scheduled activation/expiry and rollback history.
-- **Website Content Hub**: Extend the existing website/podcast plugin with hero blocks, carousels, and sectioned pages driven by JSON.
 
 ## Community & Engagement Plugins
 - **Listener Feedback & Polls**: Lightweight surveys tied to shows/runs; summary cards for PDs and DJs.
