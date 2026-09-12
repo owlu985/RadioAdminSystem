@@ -44,6 +44,11 @@ def safety_app(tmp_path):
         DATA_BACKUP_DIRNAME = "data_backups"
 
     app = create_app(Config)
+    # Flask's instance path is derived from the checkout location rather than
+    # DATA_ROOT. Backup helpers write beneath it, so redirect it as well to keep
+    # the test independent of permissions on a deployed /opt checkout.
+    app.instance_path = str(tmp_path / "instance")
+    Path(app.instance_path).mkdir(parents=True, exist_ok=True)
     with app.app_context():
         db.create_all()
         yield app
