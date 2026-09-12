@@ -88,7 +88,13 @@ from app.services.library.dj_library import (
     match_youtube_playlist,
 )
 from app.services.library.media_library import decode_media_token
-from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path
+from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
+from app.services.legacy_recordings import (
+    discover_legacy_recordings,
+    ignore_legacy_recording,
+    split_dj_names,
+    write_legacy_sidecar,
+)
 from app.services.radiodj_client import RadioDJClient
 from app.services.recording_periods import (
     UNASSIGNED_PERIOD_LABEL,
@@ -227,6 +233,7 @@ ALL_PERIODS_VALUE = "__all__"
 DEFAULT_GROUP_BY = "both"
 GROUP_BY_VALUES = {"show", "dj", "both"}
 RECORDINGS_PAGE_SIZE = 15
+LEGACY_IMPORT_PAGE_SIZE = 25
 
 
 def _recordings_root() -> str:
@@ -247,6 +254,8 @@ class RecordingEntry:
     size_bytes: int
     modified_at: datetime
     period_label: str
+    is_legacy: bool
+    pdf_log_path: str
 
 
 def _parse_recording_label(filename: str) -> str | None:
@@ -329,8 +338,12 @@ def _extract_recording_names(
     base_root: str,
     period_folders: set[str],
 ) -> tuple[str, str]:
-    show_name = None
-    dj_name = None
+    metadata = read_recording_metadata(full)
+    show_name = (metadata.get("show_name") or "").strip() or None
+    metadata_djs = metadata.get("dj_names") or metadata.get("hosts") or metadata.get("dj") or []
+    if isinstance(metadata_djs, str):
+        metadata_djs = split_dj_names(metadata_djs)
+    dj_name = " & ".join(str(name).strip() for name in metadata_djs if str(name).strip()) or None
 
     parts = _path_parts(full, base_root)
     period_folder = None
@@ -351,10 +364,10 @@ def _extract_recording_names(
         elif period_folder is None:
             dj_folder = remaining[0]
 
-    if dj_folder:
+    if dj_folder and not dj_name:
         dj_name = dj_folder.replace("_", " ").strip()
 
-    if show_folder:
+    if show_folder and not show_name:
         show_name = show_folder.replace("_", " ").strip()
 
     if not show_name:
@@ -402,6 +415,8 @@ def _build_recording_entry(
     )
     stat = os.stat(full)
     log_path = recording_csv_path(full)
+    metadata = read_recording_metadata(full)
+    pdf_log_path = os.path.splitext(full)[0] + ".pdf"
     has_log = os.path.isfile(log_path)
     return RecordingEntry(
         show_name=show_name,
@@ -416,6 +431,8 @@ def _build_recording_entry(
         size_bytes=stat.st_size,
         modified_at=datetime.fromtimestamp(stat.st_mtime),
         period_label=_period_label_for_path(full, base_root, period_map),
+        is_legacy=bool(metadata.get("legacy_import")),
+        pdf_log_path=pdf_log_path if os.path.isfile(pdf_log_path) else "",
     )
 
 
@@ -708,6 +725,91 @@ def recordings_manage():
         periods=periods,
         all_periods_value=ALL_PERIODS_VALUE,
     )
+
+
+@main_bp.route("/recordings/legacy-import", methods=["GET", "POST"])
+@permission_required({"logs:edit"})
+def legacy_recordings_import():
+    periods = load_recording_periods().get("periods", [])
+    selected_period = request.values.get("period") or (periods[0] if periods else "")
+    if selected_period not in periods:
+        selected_period = periods[0] if periods else ""
+    period_root = os.path.join(_recordings_root(), period_folder_name(selected_period)) if selected_period else ""
+
+    if request.method == "POST":
+        ignore_token = request.form.get("ignore_token")
+        if ignore_token:
+            full = _resolve_recording_path(ignore_token)
+            if (not full or not period_root
+                    or os.path.commonpath([os.path.abspath(full), os.path.abspath(period_root)]) != os.path.abspath(period_root)):
+                abort(400)
+            ignore_legacy_recording(full)
+            flash(f"Ignored {os.path.basename(full)}. It will not appear in future legacy scans.", "success")
+            return redirect(url_for("main.legacy_recordings_import", period=selected_period,
+                                    page=request.form.get("page", 1, type=int)))
+
+        imported = 0
+        for token in request.form.getlist("tokens"):
+            full = _resolve_recording_path(token)
+            if not full or not period_root or os.path.commonpath([os.path.abspath(full), os.path.abspath(period_root)]) != os.path.abspath(period_root):
+                continue
+            show_name = (request.form.get(f"show_{token}") or "").strip()
+            dj_names = split_dj_names(request.form.get(f"djs_{token}") or "")
+            recorded_date = (request.form.get(f"date_{token}") or "").strip() or None
+            if not show_name:
+                flash(f"Show name is required for {os.path.basename(full)}.", "warning")
+                continue
+            write_legacy_sidecar(full, period=selected_period, show_name=show_name, dj_names=dj_names, recorded_date=recorded_date)
+            for name in dj_names:
+                pieces = name.split(None, 1)
+                first_name, last_name = pieces[0], pieces[1] if len(pieces) > 1 else "(Legacy)"
+                dj = DJ.query.filter(func.lower(DJ.first_name) == first_name.lower(), func.lower(DJ.last_name) == last_name.lower()).first()
+                if not dj:
+                    dj = DJ(first_name=first_name, last_name=last_name, is_archived=True)
+                    db.session.add(dj)
+                dj.period_list = [*dj.period_list, selected_period]
+            imported += 1
+        db.session.commit()
+        flash(f"Imported {imported} legacy recording{'s' if imported != 1 else ''}.", "success")
+        return redirect(url_for("main.legacy_recordings_import", period=selected_period))
+
+    suggestions = discover_legacy_recordings(period_root) if period_root else []
+    page = max(request.args.get("page", 1, type=int), 1)
+    total_pages = max(math.ceil(len(suggestions) / LEGACY_IMPORT_PAGE_SIZE), 1)
+    page = min(page, total_pages)
+    start = (page - 1) * LEGACY_IMPORT_PAGE_SIZE
+    rows = []
+    for suggestion in suggestions[start:start + LEGACY_IMPORT_PAGE_SIZE]:
+        rows.append((suggestion, base64.urlsafe_b64encode(suggestion.path.encode()).decode()))
+    return render_template("legacy_recordings_import.html", rows=rows, periods=periods,
+                           selected_period=selected_period, page=page, total_pages=total_pages,
+                           total=len(suggestions))
+
+
+@main_bp.post("/recordings/legacy-log/<path:token>")
+@permission_required({"logs:edit"})
+def legacy_recording_log_upload(token: str):
+    full = _resolve_recording_path(token)
+    upload = request.files.get("log")
+    if not full or not upload or not upload.filename.lower().endswith(".pdf"):
+        abort(400, description="Select a PDF log.")
+    destination = os.path.splitext(full)[0] + ".pdf"
+    upload.save(destination)
+    metadata = read_recording_metadata(full)
+    metadata["log_file"] = os.path.basename(destination)
+    write_recording_metadata(full, metadata)
+    flash("PDF log attached.", "success")
+    return redirect(request.referrer or url_for("main.recordings_manage"))
+
+
+@main_bp.get("/recordings/legacy-log/<path:token>")
+@permission_required({"logs:view"})
+def legacy_recording_log_download(token: str):
+    full = _resolve_recording_path(token)
+    pdf_path = os.path.splitext(full)[0] + ".pdf" if full else ""
+    if not pdf_path or not os.path.isfile(pdf_path):
+        abort(404)
+    return send_file(pdf_path, as_attachment=True, download_name=os.path.basename(pdf_path), mimetype="application/pdf")
 
 
 @main_bp.route("/recordings/file/<path:token>")
