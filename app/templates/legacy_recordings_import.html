@@ -4,22 +4,70 @@
 <body>{% include '_nav.html' %}<main class="container py-4">
 <div class="d-flex justify-content-between align-items-start mb-3"><div><h1 class="h3">Import legacy recordings</h1><p class="text-muted">Create RAMS sidecars for one recording period at a time. Recognized dates and DJs are suggested; review every row before saving.</p></div><a class="btn btn-secondary" href="{{ url_for('main.recordings_manage') }}">Back</a></div>
 <form method="get" class="card card-body mb-3"><div class="row align-items-end"><div class="col-md-5"><label class="form-label" for="period">Recording period</label><select class="form-select" id="period" name="period">{% for period in periods %}<option value="{{ period }}" {% if period == selected_period %}selected{% endif %}>{{ period }}</option>{% endfor %}</select></div><div class="col"><button class="btn btn-primary">Scan period</button></div></div></form>
-<div class="alert alert-info">{{ total }} audio file{{ '' if total == 1 else 's' }} without sidecars. Showing up to 25 at a time. Separate multiple DJs with <strong>&amp;</strong>; missing DJs will be created as archived legacy profiles and assigned to this period. Ignore non-show audio to permanently remove it from future scans.</div>
-<form method="post">
+<div class="alert alert-info"><span id="legacyTotal">{{ total }}</span> audio file{{ '' if total == 1 else 's' }} without sidecars. Showing up to 25 at a time. Fields may be left blank. Separate multiple DJs with <strong>&amp;</strong>; missing DJs will be created as archived legacy profiles and assigned to this period. Ignore non-show audio to permanently remove it from future scans.</div>
+<div id="legacyMessage" class="alert d-none" role="status"></div>
+<form method="post" id="legacyImportForm">
 <input type="hidden" name="period" value="{{ selected_period }}"><input type="hidden" name="page" value="{{ page }}">
 <div class="table-responsive"><table class="table align-middle"><thead><tr><th>Import</th><th>File</th><th>Length</th><th>Modified</th><th>Show name</th><th>DJ(s)</th><th>Date</th><th>Pattern</th><th></th></tr></thead><tbody>
 {% for rec, token in rows %}
-<tr>
+<tr data-recording-token="{{ token }}">
 <td><input type="checkbox" class="form-check-input" name="tokens" value="{{ token }}" checked></td>
 <td><strong>{{ rec.filename }}</strong><div class="small text-muted">{{ rec.relative_path }}</div></td>
-<td class="text-nowrap">{{ rec.duration_label }}</td><td class="text-nowrap">{{ rec.modified_at|datetime_local }} {{ app_timezone }}</td>
-<td><input class="form-control" name="show_{{ token }}" value="{{ rec.show_name }}" required></td>
-<td><input class="form-control" name="djs_{{ token }}" value="{{ rec.dj_names }}" placeholder="First Last &amp; Second DJ"></td>
+<td class="text-nowrap legacy-duration" data-details-url="{{ url_for('main.legacy_recording_file_details', token=token) }}"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="visually-hidden">Loading length</span></td><td class="text-nowrap">{{ rec.modified_at|datetime_local }} {{ app_timezone }}</td>
+<td><input class="form-control legacy-metadata" name="show_{{ token }}" value="{{ rec.show_name }}"></td>
+<td><input class="form-control legacy-metadata" name="djs_{{ token }}" value="{{ rec.dj_names }}" placeholder="First Last &amp; Second DJ"></td>
 <td><input type="date" class="form-control" name="date_{{ token }}" value="{{ rec.recorded_date }}"></td>
 <td>{% if rec.recognized %}<span class="badge text-bg-success">recognized</span>{% else %}<span class="badge text-bg-warning">review</span>{% endif %}</td>
-<td><button class="btn btn-sm btn-outline-danger" type="submit" name="ignore_token" value="{{ token }}" formnovalidate onclick="return confirm('Ignore this file in all future legacy scans?')">Ignore</button></td>
+<td></td>
 </tr>
 {% else %}<tr><td colspan="9" class="text-muted">No unimported audio files were found in this period.</td></tr>{% endfor %}
-</tbody></table></div>{% if rows %}<button class="btn btn-success">Save selected sidecars</button>{% endif %}</form>
+</tbody></table></div>{% if rows %}<div class="d-flex gap-2"><button class="btn btn-success" type="submit" id="saveSelected">Save selected sidecars</button><button class="btn btn-outline-danger" type="button" id="ignoreSelected">Ignore selected</button></div>{% endif %}</form>
 {% if total_pages > 1 %}<nav class="mt-3"><ul class="pagination"><li class="page-item {% if page == 1 %}disabled{% endif %}"><a class="page-link" href="{{ url_for('main.legacy_recordings_import', period=selected_period, page=page-1) }}">Previous</a></li><li class="page-item disabled"><span class="page-link">Page {{ page }} of {{ total_pages }}</span></li><li class="page-item {% if page == total_pages %}disabled{% endif %}"><a class="page-link" href="{{ url_for('main.legacy_recordings_import', period=selected_period, page=page+1) }}">Next</a></li></ul></nav>{% endif %}
-</main></body></html>
+</main>
+<script>
+const form = document.getElementById('legacyImportForm');
+const message = document.getElementById('legacyMessage');
+const selected = () => Array.from(form.querySelectorAll('input[name="tokens"]:checked'));
+
+document.getElementById('saveSelected')?.addEventListener('click', (event) => {
+    const rows = selected().map(box => box.closest('tr'));
+    const hasBlank = rows.some(row => Array.from(row.querySelectorAll('.legacy-metadata, input[type="date"]')).some(input => !input.value.trim()));
+    if (hasBlank && !window.confirm('One or more selected recordings have blank fields. Are you sure you want to leave these blank?')) event.preventDefault();
+});
+
+document.getElementById('ignoreSelected')?.addEventListener('click', async () => {
+    const boxes = selected();
+    if (!boxes.length) return window.alert('Select at least one file to ignore.');
+    if (!window.confirm(`Ignore ${boxes.length} selected file${boxes.length === 1 ? '' : 's'} in all future legacy scans?`)) return;
+    const payload = new FormData();
+    payload.set('period', form.elements.period.value);
+    payload.set('page', form.elements.page.value);
+    payload.set('action', 'ignore');
+    payload.set('response_format', 'json');
+    boxes.forEach(box => payload.append('tokens', box.value));
+    const button = document.getElementById('ignoreSelected');
+    button.disabled = true;
+    try {
+        const response = await fetch(window.location.href, {method: 'POST', body: payload, headers: {'X-Requested-With': 'XMLHttpRequest'}});
+        if (!response.ok) throw new Error('Ignore request failed');
+        const result = await response.json();
+        result.tokens.forEach(token => form.querySelector(`tr[data-recording-token="${CSS.escape(token)}"]`)?.remove());
+        const total = document.getElementById('legacyTotal');
+        total.textContent = Math.max(0, Number(total.textContent) - result.ignored);
+        message.className = 'alert alert-success';
+        message.textContent = `Ignored ${result.ignored} file${result.ignored === 1 ? '' : 's'}.`;
+    } catch (error) {
+        message.className = 'alert alert-danger';
+        message.textContent = 'The selected files could not be ignored. Please try again.';
+    } finally { button.disabled = false; }
+});
+
+document.querySelectorAll('.legacy-duration').forEach(async cell => {
+    try {
+        const response = await fetch(cell.dataset.detailsUrl);
+        if (!response.ok) throw new Error();
+        cell.textContent = (await response.json()).duration_label;
+    } catch (error) { cell.textContent = 'Unknown'; }
+});
+</script>
+</body></html>

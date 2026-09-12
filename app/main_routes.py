@@ -92,6 +92,7 @@ from app.services.log_export import build_docx, read_log_csv, read_recording_met
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
     ignore_legacy_recording,
+    legacy_recording_details,
     split_dj_names,
     write_legacy_sidecar,
 )
@@ -737,14 +738,18 @@ def legacy_recordings_import():
     period_root = os.path.join(_recordings_root(), period_folder_name(selected_period)) if selected_period else ""
 
     if request.method == "POST":
-        ignore_token = request.form.get("ignore_token")
-        if ignore_token:
-            full = _resolve_recording_path(ignore_token)
-            if (not full or not period_root
-                    or os.path.commonpath([os.path.abspath(full), os.path.abspath(period_root)]) != os.path.abspath(period_root)):
-                abort(400)
-            ignore_legacy_recording(full)
-            flash(f"Ignored {os.path.basename(full)}. It will not appear in future legacy scans.", "success")
+        if request.form.get("action") == "ignore":
+            ignored_tokens = []
+            for token in request.form.getlist("tokens"):
+                full = _resolve_recording_path(token)
+                if (not full or not period_root
+                        or os.path.commonpath([os.path.abspath(full), os.path.abspath(period_root)]) != os.path.abspath(period_root)):
+                    continue
+                ignore_legacy_recording(full)
+                ignored_tokens.append(token)
+            if request.form.get("response_format") == "json":
+                return jsonify({"ignored": len(ignored_tokens), "tokens": ignored_tokens})
+            flash(f"Ignored {len(ignored_tokens)} file{'s' if len(ignored_tokens) != 1 else ''}. They will not appear in future legacy scans.", "success")
             return redirect(url_for("main.legacy_recordings_import", period=selected_period,
                                     page=request.form.get("page", 1, type=int)))
 
@@ -756,9 +761,6 @@ def legacy_recordings_import():
             show_name = (request.form.get(f"show_{token}") or "").strip()
             dj_names = split_dj_names(request.form.get(f"djs_{token}") or "")
             recorded_date = (request.form.get(f"date_{token}") or "").strip() or None
-            if not show_name:
-                flash(f"Show name is required for {os.path.basename(full)}.", "warning")
-                continue
             write_legacy_sidecar(full, period=selected_period, show_name=show_name, dj_names=dj_names, recorded_date=recorded_date)
             for name in dj_names:
                 pieces = name.split(None, 1)
@@ -773,7 +775,9 @@ def legacy_recordings_import():
         flash(f"Imported {imported} legacy recording{'s' if imported != 1 else ''}.", "success")
         return redirect(url_for("main.legacy_recordings_import", period=selected_period))
 
-    suggestions = discover_legacy_recordings(period_root) if period_root else []
+    # Audio duration probes can be slow on a NAS. Keep the initial scan to cheap
+    # directory/sidecar checks and load durations asynchronously for this page.
+    suggestions = discover_legacy_recordings(period_root, include_duration=False) if period_root else []
     page = max(request.args.get("page", 1, type=int), 1)
     total_pages = max(math.ceil(len(suggestions) / LEGACY_IMPORT_PAGE_SIZE), 1)
     page = min(page, total_pages)
@@ -784,6 +788,15 @@ def legacy_recordings_import():
     return render_template("legacy_recordings_import.html", rows=rows, periods=periods,
                            selected_period=selected_period, page=page, total_pages=total_pages,
                            total=len(suggestions))
+
+
+@main_bp.get("/recordings/legacy-details/<path:token>")
+@permission_required({"logs:edit"})
+def legacy_recording_file_details(token: str):
+    full = _resolve_recording_path(token)
+    if not full:
+        abort(404)
+    return jsonify(legacy_recording_details(full))
 
 
 @main_bp.post("/recordings/legacy-log/<path:token>")

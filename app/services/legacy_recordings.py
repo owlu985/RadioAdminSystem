@@ -11,7 +11,7 @@ import tempfile
 
 import mutagen  # type: ignore
 
-from app.services.log_export import read_recording_metadata, write_recording_metadata
+from app.services.log_export import recording_metadata_path, write_recording_metadata
 
 
 AUDIO_EXTENSIONS = (".mp3", ".wav", ".m4a", ".aac")
@@ -94,7 +94,7 @@ def _modified_at(path: str) -> datetime:
         return datetime.fromtimestamp(0)
 
 
-def parse_legacy_filename(path: str, period_root: str) -> LegacySuggestion:
+def parse_legacy_filename(path: str, period_root: str, *, include_duration: bool = True) -> LegacySuggestion:
     filename = os.path.basename(path)
     stem = os.path.splitext(filename)[0]
     match = next((pattern.match(stem) for pattern in LEGACY_PATTERNS if pattern.match(stem)), None)
@@ -123,12 +123,12 @@ def parse_legacy_filename(path: str, period_root: str) -> LegacySuggestion:
         dj_names=dj_names,
         recorded_date=recorded_date,
         recognized=bool(match),
-        duration_seconds=_audio_duration(path),
+        duration_seconds=_audio_duration(path) if include_duration else None,
         modified_at=_modified_at(path),
     )
 
 
-def discover_legacy_recordings(period_root: str) -> list[LegacySuggestion]:
+def discover_legacy_recordings(period_root: str, *, include_duration: bool = True) -> list[LegacySuggestion]:
     if not os.path.isdir(period_root):
         return []
     found = []
@@ -138,9 +138,21 @@ def discover_legacy_recordings(period_root: str) -> list[LegacySuggestion]:
             path = os.path.join(root, filename)
             if (filename.lower().endswith(AUDIO_EXTENSIONS)
                     and not os.path.isfile(legacy_ignore_path(path))
-                    and not read_recording_metadata(path)):
-                found.append(parse_legacy_filename(path, period_root))
+                    and not os.path.isfile(recording_metadata_path(path))):
+                found.append(parse_legacy_filename(path, period_root, include_duration=include_duration))
     return found
+
+
+def legacy_recording_details(path: str) -> dict[str, int | str | None]:
+    """Load potentially expensive audio details separately from directory scans."""
+    duration = _audio_duration(path)
+    if duration is None:
+        duration_label = "Unknown"
+    else:
+        hours, remainder = divmod(duration, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_label = f"{hours}:{minutes:02d}:{seconds:02d}" if hours else f"{minutes}:{seconds:02d}"
+    return {"duration_seconds": duration, "duration_label": duration_label}
 
 
 def write_legacy_sidecar(path: str, *, period: str, show_name: str, dj_names: list[str], recorded_date: str | None) -> str:

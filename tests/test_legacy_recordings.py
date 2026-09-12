@@ -1,6 +1,7 @@
 import json
 import wave
 
+import app.services.legacy_recordings as legacy_recordings
 from app.main_routes import _extract_recording_names
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
@@ -97,3 +98,13 @@ def test_scan_reports_audio_duration_and_modified_date(tmp_path):
     assert result.duration_seconds == 2
     assert result.duration_label == "0:02"
     assert result.modified_at.year >= 2015
+
+
+def test_fast_scan_defers_audio_header_reads(tmp_path, monkeypatch):
+    recording = tmp_path / "Alex_Smith_01_02_2015.mp3"
+    recording.write_bytes(b"audio")
+    monkeypatch.setattr(legacy_recordings, "_audio_duration", lambda path: (_ for _ in ()).throw(AssertionError("slow probe")))
+
+    result = discover_legacy_recordings(str(tmp_path), include_duration=False)[0]
+
+    assert result.duration_seconds is None
