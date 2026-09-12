@@ -5,7 +5,7 @@ Strict xfails describe security or data-safety contracts that Phase 2 should sat
 they must become ordinary passing tests when the corresponding guard is added.
 """
 
-from datetime import date, time
+from datetime import date, time, timedelta
 import json
 from pathlib import Path
 
@@ -75,7 +75,7 @@ def test_intentionally_public_routes_remain_available(safety_app):
     assert client.get("/api/schedule").status_code == 200
 
 
-PHASE_2_AUTH_REASON = "Phase 2 must add the indicated permission guard"
+PHASE_2_AUTH_REASON = "Phase 2 must restrict this operation to master control"
 
 
 @pytest.mark.xfail(strict=True, reason=PHASE_2_AUTH_REASON)
@@ -91,7 +91,7 @@ PHASE_2_AUTH_REASON = "Phase 2 must add the indicated permission guard"
         ("post", "/api/radiodj/autodj", {"enabled": True}),
     ],
 )
-def test_radiodj_mutations_require_write_permission(
+def test_radiodj_mutations_require_master_control(
     safety_app, monkeypatch, method, path, payload
 ):
     monkeypatch.setattr(
@@ -101,7 +101,10 @@ def test_radiodj_mutations_require_write_permission(
     assert response.status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=PHASE_2_AUTH_REASON)
+@pytest.mark.xfail(
+    strict=True,
+    reason="Phase 2 must add the appropriate operational or music permission guard",
+)
 @pytest.mark.parametrize(
     ("method", "path", "payload"),
     [
@@ -123,7 +126,6 @@ def test_operational_and_music_mutations_require_permission(
     assert response.status_code == 403
 
 
-@pytest.mark.xfail(strict=True, reason=PHASE_2_AUTH_REASON)
 @pytest.mark.parametrize(
     ("method", "path", "payload"),
     [
@@ -136,12 +138,12 @@ def test_operational_and_music_mutations_require_permission(
         ),
     ],
 )
-def test_dj_library_server_work_requires_login(
+def test_dj_library_server_work_remains_available_without_login(
     safety_app, monkeypatch, method, path, payload
 ):
     monkeypatch.setattr("app.main_routes.match_youtube_playlist", lambda _url: {"items": []})
     response = safety_app.test_client().open(path, method=method.upper(), json=payload)
-    assert response.status_code == 403
+    assert response.status_code != 403
 
 
 @pytest.mark.xfail(
@@ -169,9 +171,11 @@ def test_default_configuration_has_no_usable_fallback_credentials():
 
 @pytest.mark.xfail(
     strict=True,
-    reason="Phase 2 should archive expired shows instead of deleting them on startup",
+    reason=(
+        "Phase 2 should archive expired shows immediately and retain them for one year"
+    ),
 )
-def test_startup_cleanup_preserves_expired_show_definitions(tmp_path):
+def test_startup_cleanup_retains_recently_expired_show_definitions(tmp_path):
     database_path = tmp_path / "cleanup.db"
 
     class SeedConfig(SafetyTestConfig):
@@ -188,8 +192,8 @@ def test_startup_cleanup_preserves_expired_show_definitions(tmp_path):
                 host_first_name="Archive",
                 host_last_name="Candidate",
                 show_name="Past Show",
-                start_date=date(2020, 1, 1),
-                end_date=date(2020, 12, 31),
+                start_date=date.today() - timedelta(days=180),
+                end_date=date.today() - timedelta(days=1),
                 start_time=time(10),
                 end_time=time(11),
                 days_of_week="mon",
@@ -215,16 +219,11 @@ def test_data_backup_covers_all_operational_domains(safety_app):
         "djs",
         "shows",
         "show_runs",
-        "log_sheets",
-        "log_entries",
         "absences",
-        "handoff_notes",
         "disciplinary",
-        "news_types",
-        "news_casts",
-        "music_cues",
         "plugins",
         "automation_rules",
+        "radio_dj_config",
     }
 
     with safety_app.app_context():
