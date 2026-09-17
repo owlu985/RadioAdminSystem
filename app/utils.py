@@ -324,7 +324,7 @@ def active_absence_for_show(show: Show, *, now: datetime | None = None) -> DJAbs
 def next_show_occurrence(show: Show, *, now: datetime | None = None, include_uncovered_absence: bool = False) -> tuple[datetime, datetime] | None:
     """Return the next scheduled start/end datetimes for a show within the next two weeks."""
     if now is None:
-        now = datetime.now()
+        now = datetime.now(get_config_timezone()).replace(tzinfo=None)
 
     days = [d.strip() for d in (show.days_of_week or '').split(',') if d.strip()]
     if not days:

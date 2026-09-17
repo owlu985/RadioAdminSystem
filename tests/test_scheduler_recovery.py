@@ -38,6 +38,22 @@ def test_new_schedulers_always_use_shutdown_aware_executor():
         created.shutdown(wait=False)
 
 
+def test_clean_premature_ffmpeg_exit_is_not_treated_as_complete():
+    assert scheduler_module._ffmpeg_completed(0, elapsed=1, requested_duration=3600) is False
+    assert scheduler_module._ffmpeg_completed(255, elapsed=3600, requested_duration=3600) is False
+    assert scheduler_module._ffmpeg_completed(0, elapsed=3599, requested_duration=3600) is True
+
+
+def test_recovered_recording_uses_a_new_part_instead_of_overwriting(tmp_path):
+    base = tmp_path / "Afternoon_Show_09-17-26_RAWDATA"
+    (tmp_path / "Afternoon_Show_09-17-26_RAWDATA.mp3").write_bytes(b"partial")
+
+    path, part = scheduler_module._next_recording_path(str(base))
+
+    assert path == f"{base}_part2.mp3"
+    assert part == 1
+
+
 def _show(show_id=7):
     return SimpleNamespace(
         id=show_id,
