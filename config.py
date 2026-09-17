@@ -49,6 +49,9 @@ class Config:
     STREAM_PROBE_SECONDS = 8
     STREAM_PROBE_TIMEOUT_SECONDS = 25
     STREAM_PROBE_INTERVAL_MINUTES = 1
+    # Restart a show recorder when FFmpeg remains alive but its output file is
+    # no longer growing. This catches silent/stuck HTTP stream connections.
+    RECORDING_STALL_TIMEOUT_SECONDS = 45
 
     # REST/API defaults
     DEFAULT_OFF_AIR_MESSAGE = "WLMC is currently off-air"

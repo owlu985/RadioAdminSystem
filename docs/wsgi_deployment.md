@@ -16,8 +16,21 @@ Example Apache mod_wsgi configuration:
 ```apache
 WSGIDaemonProcess rams processes=1 threads=5 maximum-requests=0 python-home=/opt/rams/.venv python-path=/opt/rams
 WSGIProcessGroup rams
+WSGIApplicationGroup %{GLOBAL}
 WSGIScriptAlias / /opt/rams/wsgi.py
 ```
+
+`WSGIApplicationGroup %{GLOBAL}` is required because audio-analysis dependencies
+may load CPython extension modules that are unsafe in mod_wsgi sub-interpreters.
+Without it, Apache logs warnings such as "NumPy was imported from a Python
+sub-interpreter" and native modules can exhibit subtle failures. RAMS no longer
+uses NumPy for stream detection, but global interpreter mode remains the safe
+deployment setting for the rest of the dependency stack.
+
+Confirm that request log entries and warnings are not alternating among multiple
+process IDs. Different PIDs a few minutes apart can indicate either daemon
+recycling or more than one WSGI process; both configurations can terminate an
+active recorder and start competing schedulers.
 
 Example Gunicorn command:
 

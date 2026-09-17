@@ -22,7 +22,6 @@ These dependencies cover the full RAMS feature set (recording/detection, OAuth, 
 - MarkupSafe==3.0.2
 - mod_wsgi==5.0.1
 - msgspec==0.18.6
-- numpy==2.1.3
 - pydub==0.25.1
 - python-dateutil==2.9.0.post0
 - pytz==2024.2

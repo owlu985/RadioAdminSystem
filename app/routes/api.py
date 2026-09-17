@@ -29,6 +29,7 @@ from app.models import (
 from app.utils import (
     datetime_iso_local,
     get_config_timezone_name,
+    get_config_timezone,
     get_current_show,
     format_show_window,
     show_display_title,
@@ -657,13 +658,16 @@ def _find_next_show(now: datetime) -> tuple[Show | None, tuple[datetime, datetim
 
 @api_bp.route("/now", strict_slashes=False)
 def now_playing():
-    now = datetime.utcnow()
-    show = get_current_show()
-    absence = active_absence_for_show(show, now=now) if show else None
+    # Show rows contain station-local wall-clock times, not UTC timestamps.
+    # Comparing them with utcnow() made the studio display skip several hours
+    # ahead whenever the station timezone differed from the server timezone.
+    schedule_now = datetime.now(get_config_timezone()).replace(tzinfo=None)
+    show = get_current_show(now=schedule_now)
+    absence = active_absence_for_show(show, now=datetime.utcnow()) if show else None
     override_enabled = _override_enabled()
 
     if not show:
-        absent_show, absent_slot = get_current_absent_show(now)
+        absent_show, absent_slot = get_current_absent_show(schedule_now)
         base = {
             "status": "automation" if absent_slot else "off_air",
             "message": "Approved absence without substitute; station is in automation." if absent_slot else current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
@@ -680,7 +684,7 @@ def now_playing():
             track = _get_cached_radiodj_nowplaying()
             if track:
                 base.update({"status": "automation", "source": "radiodj_cached", "track": track})
-        next_show, window, next_absence = _find_next_show(now)
+        next_show, window, next_absence = _find_next_show(schedule_now)
         if next_show and window:
             start_dt, end_dt = window
             base["next_show"] = {
@@ -709,7 +713,7 @@ def now_playing():
         dj_last_name=dj_last,
     )
 
-    next_show, window, next_absence = _find_next_show(now)
+    next_show, window, next_absence = _find_next_show(schedule_now)
 
     payload = {
         "status": "on_air",
