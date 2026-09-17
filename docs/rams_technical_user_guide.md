@@ -365,7 +365,7 @@ fall into these functional groups:
 | Database/migrations | Flask-SQLAlchemy, SQLAlchemy, Flask-Migrate, Alembic, Mako, greenlet |
 | Scheduling/time | APScheduler, python-dateutil, pytz, tzdata, tzlocal, six |
 | HTTP and OAuth | requests, requests-oauthlib, Authlib |
-| Audio and metadata | ffmpeg-python, pydub, numpy, mutagen, future |
+| Audio and metadata | ffmpeg-python, pydub, mutagen, future |
 | Sessions/cache/serialization | Flask-Session, cachelib, msgspec |
 | Deployment/support | mod_wsgi, colorama, typing_extensions |
 

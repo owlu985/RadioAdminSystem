@@ -317,6 +317,30 @@ def _ffmpeg_completed(returncode, elapsed, requested_duration):
     return returncode == 0 and elapsed >= max(0, requested_duration - 2)
 
 
+def _wait_for_recorder(process, output_file, stall_timeout, *, clock=time.monotonic, sleep=time.sleep):
+    """Wait for FFmpeg while ensuring that it continues writing audio bytes."""
+    last_size = -1
+    last_progress = clock()
+    stalled = False
+
+    while process.poll() is None:
+        try:
+            current_size = os.path.getsize(output_file)
+        except OSError:
+            current_size = 0
+        if current_size > last_size:
+            last_size = current_size
+            last_progress = clock()
+        elif clock() - last_progress >= stall_timeout:
+            stalled = True
+            process.terminate()
+            break
+        sleep(1)
+
+    stdout, stderr = process.communicate()
+    return stdout, stderr, stalled
+
+
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
                   label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None,
                   show_occurrence_date=None):
@@ -391,7 +415,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             process = None
             try:
                 process = subprocess.Popen([
-                    'ffmpeg', '-y', '-i', stream_url, '-t', str(remaining_duration), '-acodec', 'copy', output_file,
+                    'ffmpeg', '-loglevel', 'error', '-y', '-i', stream_url,
+                    '-t', str(remaining_duration), '-acodec', 'copy', output_file,
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 key = _active_recording_key(show_name, output_file)
                 ACTIVE_RECORDINGS[key] = {
@@ -404,12 +429,23 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                     'stop_requested': False,
                     'stop_reason': None,
                 }
-                _, stderr = process.communicate()
+                stall_timeout = max(
+                    5,
+                    int(flask_app.config.get("RECORDING_STALL_TIMEOUT_SECONDS", 45))
+                    if flask_app else 45,
+                )
+                _, stderr, stalled = _wait_for_recorder(
+                    process, output_file, stall_timeout
+                )
                 state = ACTIVE_RECORDINGS.get(key, {})
                 elapsed = max(0.0, time.monotonic() - attempt_started)
                 if state.get('stop_requested'):
                     logger.info("Recording stopped for %s: %s", output_file, state.get('stop_reason'))
                     return
+                if stalled:
+                    raise RuntimeError(
+                        f"ffmpeg wrote no new audio for {stall_timeout} seconds"
+                    )
                 # Live HTTP inputs can close cleanly, causing ffmpeg to return
                 # zero after writing only a second or two.  A zero status is a
                 # success only when it actually ran for the requested time.

@@ -54,6 +54,39 @@ def test_recovered_recording_uses_a_new_part_instead_of_overwriting(tmp_path):
     assert part == 1
 
 
+def test_recorder_watchdog_terminates_ffmpeg_that_stops_writing(tmp_path):
+    output = tmp_path / "stalled.mp3"
+    output.write_bytes(b"initial audio")
+    now = [0]
+
+    class StalledProcess:
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return 255 if self.terminated else None
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = 255
+
+        def communicate(self):
+            return b"", b""
+
+    process = StalledProcess()
+
+    _, _, stalled = scheduler_module._wait_for_recorder(
+        process,
+        str(output),
+        stall_timeout=5,
+        clock=lambda: now[0],
+        sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+
+    assert stalled is True
+    assert process.terminated is True
+
+
 def _show(show_id=7):
     return SimpleNamespace(
         id=show_id,

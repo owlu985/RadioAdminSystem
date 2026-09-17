@@ -92,3 +92,9 @@ def test_manual_restart_bypasses_disabled_auto_heal(monkeypatch):
 
     assert result.accepted is True
     assert result.status == "accepted"
+
+
+def test_percentile_does_not_require_numpy():
+    assert detection._percentile([], 95) == 0
+    assert detection._percentile([1, 2, 3], 50) == 2
+    assert detection._percentile([0, 10], 25) == 2.5
