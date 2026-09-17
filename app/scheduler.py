@@ -29,6 +29,7 @@ import ffmpeg
 import mutagen
 from mutagen.id3 import COMM, TALB, TIT2, TPE1, ID3, ID3NoHeaderError
 import json
+import math
 import os
 import subprocess
 
@@ -298,6 +299,24 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at, note=None):
         logger.error("Failed to tag recording %s: %s", path, exc)
 
 
+def _next_recording_path(base_output_file, segment=0):
+    """Return a new path without overwriting a recording from an earlier run."""
+    part = segment
+    while True:
+        suffix = "" if part == 0 else f"_part{part + 1}"
+        candidate = f"{base_output_file}{suffix}.mp3"
+        if not os.path.exists(candidate) and not any(
+            state.get("output_file") == candidate for state in ACTIVE_RECORDINGS.values()
+        ):
+            return candidate, part
+        part += 1
+
+
+def _ffmpeg_completed(returncode, elapsed, requested_duration):
+    """Distinguish a complete timed capture from a clean, premature EOF."""
+    return returncode == 0 and elapsed >= max(0, requested_duration - 2)
+
+
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
                   label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None,
                   show_occurrence_date=None):
@@ -346,12 +365,13 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
     try:
         if marathon_event_id:
             _update_marathon_status(marathon_event_id, "running")
-        remaining_duration = int(duration)
+        remaining_duration = max(0, int(duration))
+        recording_deadline = time.monotonic() + remaining_duration
         segment = 0
         while remaining_duration > 0:
-            suffix = "" if segment == 0 else f"_{segment}"
-            output_file = f"{base_output_file}{suffix}.mp3"
+            output_file, segment = _next_recording_path(base_output_file, segment)
             started_at = datetime.utcnow()
+            attempt_started = time.monotonic()
             sidecar_start = started_at
             sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
             try:
@@ -386,10 +406,23 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 }
                 _, stderr = process.communicate()
                 state = ACTIVE_RECORDINGS.get(key, {})
-                if process.returncode not in (0, 255) and not state.get('stop_requested'):
+                elapsed = max(0.0, time.monotonic() - attempt_started)
+                if state.get('stop_requested'):
+                    logger.info("Recording stopped for %s: %s", output_file, state.get('stop_reason'))
+                    return
+                # Live HTTP inputs can close cleanly, causing ffmpeg to return
+                # zero after writing only a second or two.  A zero status is a
+                # success only when it actually ran for the requested time.
+                completed_duration = _ffmpeg_completed(process.returncode, elapsed, remaining_duration)
+                if not completed_duration:
                     err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
+                    if process.returncode == 0 and not completed_duration:
+                        err_msg = (
+                            f"stream ended after {elapsed:.1f}s with "
+                            f"{remaining_duration}s requested"
+                        )
                     raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
-                logger.info(f"Recording started for {output_file}.")
+                logger.info(f"Recording completed for {output_file}.")
                 logger.info(f"Start time:{start_time}.")
                 if show_name and os.path.exists(output_file):
                     _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
@@ -415,8 +448,7 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                         except Exception:
                             logger.warning("Unable to reap recorder process for %s", output_file)
 
-            elapsed = max(1, int((datetime.utcnow() - started_at).total_seconds()))
-            remaining_duration = max(0, remaining_duration - elapsed)
+            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
 
             if show_name and os.path.exists(output_file):
                 _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
@@ -431,12 +463,11 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 reason=f"Recording restart: {restart_result.status}: {restart_result.message}",
                 restarted=restart_result.should_count_restart,
             )
-            if not restart_result.accepted:
-                break
-
-            record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
+            if restart_result.accepted:
+                record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
             segment += 1
             time.sleep(3)
+            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
         if marathon_event_id:
             event = _active_marathon()
             if event and chunk_end and chunk_end >= event.end_time:
