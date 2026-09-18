@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
+import math
 import time
 import subprocess
 
@@ -29,6 +30,20 @@ class DetectionResult:
     reason: str
 
 
+def _percentile(values, percentile: float) -> float:
+    """Return a linearly interpolated percentile without native extensions."""
+    if not values:
+        return 0.0
+    ordered = sorted(values)
+    position = (len(ordered) - 1) * percentile / 100
+    lower = math.floor(position)
+    upper = math.ceil(position)
+    if lower == upper:
+        return float(ordered[lower])
+    weight = position - lower
+    return float(ordered[lower] * (1 - weight) + ordered[upper] * weight)
+
+
 def _record_barix_restart_result(result: BarixRestartResult, reason_prefix: str = "Barix auto-heal") -> None:
     """Persist a clear, user-visible health reason for a Barix restart decision."""
     record_failure(
@@ -46,17 +61,16 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
 
     from pydub import AudioSegment
     from pydub.utils import make_chunks
-    import numpy as np
 
     try:
         audio = AudioSegment.from_file(file_path)
-        samples = np.array(audio.get_array_of_samples())
+        samples = audio.get_array_of_samples()
 
-        if samples.size == 0:
+        if not samples:
             return DetectionResult(0, 1.0, 0, "dead_air", "empty_audio")
 
-        rms = np.sqrt(np.mean(samples.astype(float) ** 2))
-        avg_db = 20 * np.log10(rms) if rms > 0 else -100
+        rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
+        avg_db = 20 * math.log10(rms) if rms > 0 else -100
 
         chunk_ms = config.get("SILENCE_CHUNK_MS", 500)
         chunks = make_chunks(audio, chunk_ms)
@@ -75,7 +89,7 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
         automation_ratio = automation_chunks / total_chunks
         dynamic_range = 0.0
         if chunk_dbs:
-            dynamic_range = float(np.percentile(chunk_dbs, 95) - np.percentile(chunk_dbs, 5))
+            dynamic_range = _percentile(chunk_dbs, 95) - _percentile(chunk_dbs, 5)
 
         silence_ratio_threshold = config.get("SILENCE_RATIO_DEAD_AIR", 0.5)
         soft_dead_air_db = config.get("DEAD_AIR_SOFT_DB", -60)

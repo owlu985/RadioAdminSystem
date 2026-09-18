@@ -29,6 +29,7 @@ import ffmpeg
 import mutagen
 from mutagen.id3 import COMM, TALB, TIT2, TPE1, ID3, ID3NoHeaderError
 import json
+import math
 import os
 import subprocess
 
@@ -144,25 +145,25 @@ def refresh_schedule():
             for job in scheduler.get_jobs():
                 if job.id.startswith((SHOW_JOB_PREFIX, TEMP_SHOW_JOB_PREFIX, MARATHON_JOB_PREFIX)):
                     scheduler.remove_job(job.id)
-            now = _schedule_now()
+            reconciliation_time = _schedule_now()
             # Keep recovery de-duplication bounded to recent show windows.
             CATCHED_UP_SHOW_WINDOWS.intersection_update({
                 key for key in CATCHED_UP_SHOW_WINDOWS
-                if datetime.fromisoformat(key[1]) >= now - timedelta(days=1)
+                if datetime.fromisoformat(key[1]) >= reconciliation_time - timedelta(days=1)
             })
             for show in Show.query.all():
                 try:
                     schedule_recording(show)
-                    schedule_active_show_catchup(show, now)
+                    schedule_active_show_catchup(show, reconciliation_time)
                 except Exception as exc:  # noqa: BLE001
                     # A bad path or malformed row for one show must not prevent
                     # every later show from receiving its recorder trigger.
-                    logger.error("Unable to reconcile recorder for show %s: %s", show.id, exc)
+                    logger.exception("Unable to reconcile recorder for show %s: %s", show.id, exc)
             logger.info("Schedule refreshed with latest shows.")
             schedule_stream_probe()
-            now = datetime.utcnow()
+            marathon_time = datetime.utcnow()
             for event in MarathonEvent.query.filter(
-                MarathonEvent.end_time >= now, MarathonEvent.canceled_at.is_(None)
+                MarathonEvent.end_time >= marathon_time, MarathonEvent.canceled_at.is_(None)
             ).all():
                 _schedule_marathon_jobs(event)
             api_cache.invalidate("schedule")
@@ -298,6 +299,48 @@ def _apply_recording_tags(path, show_name, hosts, recorded_at, note=None):
         logger.error("Failed to tag recording %s: %s", path, exc)
 
 
+def _next_recording_path(base_output_file, segment=0):
+    """Return a new path without overwriting a recording from an earlier run."""
+    part = segment
+    while True:
+        suffix = "" if part == 0 else f"_part{part + 1}"
+        candidate = f"{base_output_file}{suffix}.mp3"
+        if not os.path.exists(candidate) and not any(
+            state.get("output_file") == candidate for state in ACTIVE_RECORDINGS.values()
+        ):
+            return candidate, part
+        part += 1
+
+
+def _ffmpeg_completed(returncode, elapsed, requested_duration):
+    """Distinguish a complete timed capture from a clean, premature EOF."""
+    return returncode == 0 and elapsed >= max(0, requested_duration - 2)
+
+
+def _wait_for_recorder(process, output_file, stall_timeout, *, clock=time.monotonic, sleep=time.sleep):
+    """Wait for FFmpeg while ensuring that it continues writing audio bytes."""
+    last_size = -1
+    last_progress = clock()
+    stalled = False
+
+    while process.poll() is None:
+        try:
+            current_size = os.path.getsize(output_file)
+        except OSError:
+            current_size = 0
+        if current_size > last_size:
+            last_size = current_size
+            last_progress = clock()
+        elif clock() - last_progress >= stall_timeout:
+            stalled = True
+            process.terminate()
+            break
+        sleep(1)
+
+    stdout, stderr = process.communicate()
+    return stdout, stderr, stalled
+
+
 def record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id=None, chunk_end=None,
                   label=None, show_name=None, hosts=None, show_start_date=None, show_end_date=None, show_id=None,
                   show_occurrence_date=None):
@@ -346,12 +389,13 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
     try:
         if marathon_event_id:
             _update_marathon_status(marathon_event_id, "running")
-        remaining_duration = int(duration)
+        remaining_duration = max(0, int(duration))
+        recording_deadline = time.monotonic() + remaining_duration
         segment = 0
         while remaining_duration > 0:
-            suffix = "" if segment == 0 else f"_{segment}"
-            output_file = f"{base_output_file}{suffix}.mp3"
+            output_file, segment = _next_recording_path(base_output_file, segment)
             started_at = datetime.utcnow()
+            attempt_started = time.monotonic()
             sidecar_start = started_at
             sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
             try:
@@ -371,7 +415,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             process = None
             try:
                 process = subprocess.Popen([
-                    'ffmpeg', '-y', '-i', stream_url, '-t', str(remaining_duration), '-acodec', 'copy', output_file,
+                    'ffmpeg', '-loglevel', 'error', '-y', '-i', stream_url,
+                    '-t', str(remaining_duration), '-acodec', 'copy', output_file,
                 ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
                 key = _active_recording_key(show_name, output_file)
                 ACTIVE_RECORDINGS[key] = {
@@ -384,12 +429,36 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                     'stop_requested': False,
                     'stop_reason': None,
                 }
-                _, stderr = process.communicate()
+                stall_timeout = max(
+                    5,
+                    int(flask_app.config.get("RECORDING_STALL_TIMEOUT_SECONDS", 45))
+                    if flask_app else 45,
+                )
+                _, stderr, stalled = _wait_for_recorder(
+                    process, output_file, stall_timeout
+                )
                 state = ACTIVE_RECORDINGS.get(key, {})
-                if process.returncode not in (0, 255) and not state.get('stop_requested'):
+                elapsed = max(0.0, time.monotonic() - attempt_started)
+                if state.get('stop_requested'):
+                    logger.info("Recording stopped for %s: %s", output_file, state.get('stop_reason'))
+                    return
+                if stalled:
+                    raise RuntimeError(
+                        f"ffmpeg wrote no new audio for {stall_timeout} seconds"
+                    )
+                # Live HTTP inputs can close cleanly, causing ffmpeg to return
+                # zero after writing only a second or two.  A zero status is a
+                # success only when it actually ran for the requested time.
+                completed_duration = _ffmpeg_completed(process.returncode, elapsed, remaining_duration)
+                if not completed_duration:
                     err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
+                    if process.returncode == 0 and not completed_duration:
+                        err_msg = (
+                            f"stream ended after {elapsed:.1f}s with "
+                            f"{remaining_duration}s requested"
+                        )
                     raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
-                logger.info(f"Recording started for {output_file}.")
+                logger.info(f"Recording completed for {output_file}.")
                 logger.info(f"Start time:{start_time}.")
                 if show_name and os.path.exists(output_file):
                     _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
@@ -415,8 +484,7 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                         except Exception:
                             logger.warning("Unable to reap recorder process for %s", output_file)
 
-            elapsed = max(1, int((datetime.utcnow() - started_at).total_seconds()))
-            remaining_duration = max(0, remaining_duration - elapsed)
+            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
 
             if show_name and os.path.exists(output_file):
                 _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
@@ -431,12 +499,11 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 reason=f"Recording restart: {restart_result.status}: {restart_result.message}",
                 restarted=restart_result.should_count_restart,
             )
-            if not restart_result.accepted:
-                break
-
-            record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
+            if restart_result.accepted:
+                record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
             segment += 1
             time.sleep(3)
+            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
         if marathon_event_id:
             event = _active_marathon()
             if event and chunk_end and chunk_end >= event.end_time:
@@ -541,13 +608,13 @@ def _show_recording_args(show, duration, occurrence_date=None):
     ]
 
 
-def schedule_active_show_catchup(show, now=None):
+def schedule_active_show_catchup(show, reference_time=None):
     """Start the unrecorded remainder of a show after service startup/recovery."""
-    now = now or _schedule_now()
+    reference_time = reference_time or _schedule_now()
     windows = []
-    for show_date in (now.date(), now.date() - timedelta(days=1)):
+    for show_date in (reference_time.date(), reference_time.date() - timedelta(days=1)):
         window = scheduled_window_for_date(show, show_date)
-        if window and window[0] <= now < window[1]:
+        if window and window[0] <= reference_time < window[1]:
             windows.append(window)
     if not windows:
         return False
@@ -569,10 +636,10 @@ def schedule_active_show_catchup(show, now=None):
     scheduler.add_job(
         record_stream,
         "date",
-        run_date=now,
+        run_date=reference_time,
         args=_show_recording_args(
             show,
-            max(1, int((end_dt - now).total_seconds())),
+            max(1, int((end_dt - reference_time).total_seconds())),
             start_dt.date(),
         ),
         id=f"{CATCHUP_JOB_PREFIX}{show.id}:{start_dt.isoformat()}",
@@ -583,7 +650,7 @@ def schedule_active_show_catchup(show, now=None):
     logger.warning(
         "Show %s is already in progress; recording the remaining %s seconds after scheduler recovery.",
         show.id,
-        int((end_dt - now).total_seconds()),
+        int((end_dt - reference_time).total_seconds()),
     )
     return True
 

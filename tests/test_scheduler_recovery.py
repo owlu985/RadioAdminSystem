@@ -38,6 +38,55 @@ def test_new_schedulers_always_use_shutdown_aware_executor():
         created.shutdown(wait=False)
 
 
+def test_clean_premature_ffmpeg_exit_is_not_treated_as_complete():
+    assert scheduler_module._ffmpeg_completed(0, elapsed=1, requested_duration=3600) is False
+    assert scheduler_module._ffmpeg_completed(255, elapsed=3600, requested_duration=3600) is False
+    assert scheduler_module._ffmpeg_completed(0, elapsed=3599, requested_duration=3600) is True
+
+
+def test_recovered_recording_uses_a_new_part_instead_of_overwriting(tmp_path):
+    base = tmp_path / "Afternoon_Show_09-17-26_RAWDATA"
+    (tmp_path / "Afternoon_Show_09-17-26_RAWDATA.mp3").write_bytes(b"partial")
+
+    path, part = scheduler_module._next_recording_path(str(base))
+
+    assert path == f"{base}_part2.mp3"
+    assert part == 1
+
+
+def test_recorder_watchdog_terminates_ffmpeg_that_stops_writing(tmp_path):
+    output = tmp_path / "stalled.mp3"
+    output.write_bytes(b"initial audio")
+    now = [0]
+
+    class StalledProcess:
+        returncode = None
+        terminated = False
+
+        def poll(self):
+            return 255 if self.terminated else None
+
+        def terminate(self):
+            self.terminated = True
+            self.returncode = 255
+
+        def communicate(self):
+            return b"", b""
+
+    process = StalledProcess()
+
+    _, _, stalled = scheduler_module._wait_for_recorder(
+        process,
+        str(output),
+        stall_timeout=5,
+        clock=lambda: now[0],
+        sleep=lambda seconds: now.__setitem__(0, now[0] + seconds),
+    )
+
+    assert stalled is True
+    assert process.terminated is True
+
+
 def _show(show_id=7):
     return SimpleNamespace(
         id=show_id,
@@ -143,6 +192,50 @@ def test_show_transition_monitor_checks_every_show_even_after_one_fails(monkeypa
 
     assert checked == [1, 2, 3]
     assert metadata_updates == [True]
+
+
+def test_refresh_passes_initialized_station_time_to_every_show(monkeypatch):
+    reconciliation_time = datetime(2026, 9, 17, 14, 5)
+    shows = [SimpleNamespace(id=29), SimpleNamespace(id=30)]
+    observed = []
+
+    class RefreshScheduler:
+        running = True
+
+        @staticmethod
+        def get_jobs():
+            return []
+
+    monkeypatch.setattr(scheduler_module, "scheduler", RefreshScheduler())
+    monkeypatch.setattr(scheduler_module, "table_exists", lambda _name: True)
+    monkeypatch.setattr(scheduler_module, "_schedule_now", lambda: reconciliation_time)
+    monkeypatch.setattr(
+        scheduler_module,
+        "Show",
+        SimpleNamespace(query=SimpleNamespace(all=lambda: shows)),
+    )
+    monkeypatch.setattr(scheduler_module, "schedule_recording", lambda _show: None)
+    monkeypatch.setattr(
+        scheduler_module,
+        "schedule_active_show_catchup",
+        lambda show, reference_time: observed.append((show.id, reference_time)),
+    )
+    monkeypatch.setattr(scheduler_module, "schedule_stream_probe", lambda: None)
+    monkeypatch.setattr(scheduler_module, "MarathonEvent", SimpleNamespace(
+        end_time=SimpleNamespace(__ge__=lambda *_args: True),
+        canceled_at=SimpleNamespace(is_=lambda _value: True),
+        query=SimpleNamespace(filter=lambda *_args: SimpleNamespace(all=lambda: [])),
+    ))
+    monkeypatch.setattr(scheduler_module.api_cache, "invalidate", lambda _key: None)
+    monkeypatch.setattr(scheduler_module, "logger", SimpleNamespace(
+        info=lambda *_args: None,
+        error=lambda *_args: None,
+        exception=lambda *_args: None,
+    ))
+
+    scheduler_module.refresh_schedule()
+
+    assert observed == [(29, reconciliation_time), (30, reconciliation_time)]
 
 
 def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):

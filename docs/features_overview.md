@@ -23,7 +23,7 @@ This document summarizes the major features available in RAMS, with links to key
 - Public schedule grid UI with JSON and iCal feeds for the website.
 
 ## Recording, Detection, and Alerts
-- Stream probing via FFmpeg/pydub/numpy classifies silence, automation, and live audio; results logged to StreamProbe and ShowRun.
+- Stream probing via FFmpeg/pydub classifies silence, automation, and live audio; results logged to StreamProbe and ShowRun.
 - Self-healing: probe/recorder failures auto-retry; health counters visible on dashboard.
 - Dead-air/stream-down alert pipeline (Discord webhook and optional email) with rate-limiting; defaults simulate sending until enabled in Settings.
 - PSA player (public, noindex) with refreshable library, queue controls, and a DJ Tools menu entry.
