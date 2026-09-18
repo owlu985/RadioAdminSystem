@@ -145,25 +145,25 @@ def refresh_schedule():
             for job in scheduler.get_jobs():
                 if job.id.startswith((SHOW_JOB_PREFIX, TEMP_SHOW_JOB_PREFIX, MARATHON_JOB_PREFIX)):
                     scheduler.remove_job(job.id)
-            now = _schedule_now()
+            reconciliation_time = _schedule_now()
             # Keep recovery de-duplication bounded to recent show windows.
             CATCHED_UP_SHOW_WINDOWS.intersection_update({
                 key for key in CATCHED_UP_SHOW_WINDOWS
-                if datetime.fromisoformat(key[1]) >= now - timedelta(days=1)
+                if datetime.fromisoformat(key[1]) >= reconciliation_time - timedelta(days=1)
             })
             for show in Show.query.all():
                 try:
                     schedule_recording(show)
-                    schedule_active_show_catchup(show, now)
+                    schedule_active_show_catchup(show, reconciliation_time)
                 except Exception as exc:  # noqa: BLE001
                     # A bad path or malformed row for one show must not prevent
                     # every later show from receiving its recorder trigger.
-                    logger.error("Unable to reconcile recorder for show %s: %s", show.id, exc)
+                    logger.exception("Unable to reconcile recorder for show %s: %s", show.id, exc)
             logger.info("Schedule refreshed with latest shows.")
             schedule_stream_probe()
-            now = datetime.utcnow()
+            marathon_time = datetime.utcnow()
             for event in MarathonEvent.query.filter(
-                MarathonEvent.end_time >= now, MarathonEvent.canceled_at.is_(None)
+                MarathonEvent.end_time >= marathon_time, MarathonEvent.canceled_at.is_(None)
             ).all():
                 _schedule_marathon_jobs(event)
             api_cache.invalidate("schedule")
@@ -608,13 +608,13 @@ def _show_recording_args(show, duration, occurrence_date=None):
     ]
 
 
-def schedule_active_show_catchup(show, now=None):
+def schedule_active_show_catchup(show, reference_time=None):
     """Start the unrecorded remainder of a show after service startup/recovery."""
-    now = now or _schedule_now()
+    reference_time = reference_time or _schedule_now()
     windows = []
-    for show_date in (now.date(), now.date() - timedelta(days=1)):
+    for show_date in (reference_time.date(), reference_time.date() - timedelta(days=1)):
         window = scheduled_window_for_date(show, show_date)
-        if window and window[0] <= now < window[1]:
+        if window and window[0] <= reference_time < window[1]:
             windows.append(window)
     if not windows:
         return False
@@ -636,10 +636,10 @@ def schedule_active_show_catchup(show, now=None):
     scheduler.add_job(
         record_stream,
         "date",
-        run_date=now,
+        run_date=reference_time,
         args=_show_recording_args(
             show,
-            max(1, int((end_dt - now).total_seconds())),
+            max(1, int((end_dt - reference_time).total_seconds())),
             start_dt.date(),
         ),
         id=f"{CATCHUP_JOB_PREFIX}{show.id}:{start_dt.isoformat()}",
@@ -650,7 +650,7 @@ def schedule_active_show_catchup(show, now=None):
     logger.warning(
         "Show %s is already in progress; recording the remaining %s seconds after scheduler recovery.",
         show.id,
-        int((end_dt - now).total_seconds()),
+        int((end_dt - reference_time).total_seconds()),
     )
     return True
 

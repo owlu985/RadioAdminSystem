@@ -194,6 +194,50 @@ def test_show_transition_monitor_checks_every_show_even_after_one_fails(monkeypa
     assert metadata_updates == [True]
 
 
+def test_refresh_passes_initialized_station_time_to_every_show(monkeypatch):
+    reconciliation_time = datetime(2026, 9, 17, 14, 5)
+    shows = [SimpleNamespace(id=29), SimpleNamespace(id=30)]
+    observed = []
+
+    class RefreshScheduler:
+        running = True
+
+        @staticmethod
+        def get_jobs():
+            return []
+
+    monkeypatch.setattr(scheduler_module, "scheduler", RefreshScheduler())
+    monkeypatch.setattr(scheduler_module, "table_exists", lambda _name: True)
+    monkeypatch.setattr(scheduler_module, "_schedule_now", lambda: reconciliation_time)
+    monkeypatch.setattr(
+        scheduler_module,
+        "Show",
+        SimpleNamespace(query=SimpleNamespace(all=lambda: shows)),
+    )
+    monkeypatch.setattr(scheduler_module, "schedule_recording", lambda _show: None)
+    monkeypatch.setattr(
+        scheduler_module,
+        "schedule_active_show_catchup",
+        lambda show, reference_time: observed.append((show.id, reference_time)),
+    )
+    monkeypatch.setattr(scheduler_module, "schedule_stream_probe", lambda: None)
+    monkeypatch.setattr(scheduler_module, "MarathonEvent", SimpleNamespace(
+        end_time=SimpleNamespace(__ge__=lambda *_args: True),
+        canceled_at=SimpleNamespace(is_=lambda _value: True),
+        query=SimpleNamespace(filter=lambda *_args: SimpleNamespace(all=lambda: [])),
+    ))
+    monkeypatch.setattr(scheduler_module.api_cache, "invalidate", lambda _key: None)
+    monkeypatch.setattr(scheduler_module, "logger", SimpleNamespace(
+        info=lambda *_args: None,
+        error=lambda *_args: None,
+        exception=lambda *_args: None,
+    ))
+
+    scheduler_module.refresh_schedule()
+
+    assert observed == [(29, reconciliation_time), (30, reconciliation_time)]
+
+
 def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
     app = Flask(__name__)
     app.config["SCHEDULE_TIMEZONE"] = "America/New_York"
