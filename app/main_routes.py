@@ -1099,7 +1099,9 @@ def dj_recordings_audio(token: str):
     entry = _portal_entry(access, token)
     if not entry:
         abort(404)
-    return _portal_response(send_file(entry.full_path, conditional=True, download_name=entry.filename))
+    # Werkzeug's automatic ETag strictly encodes the filesystem path as UTF-8.
+    # Portal responses are private/no-store; range requests still work without it.
+    return _portal_response(send_file(entry.full_path, conditional=True, download_name=entry.filename, etag=False))
 
 
 @main_bp.route("/dj-recordings/view/<path:token>")
@@ -1123,7 +1125,7 @@ def dj_recordings_log_download(fmt: str, token: str):
         abort(404)
     stem = os.path.splitext(entry.filename)[0]
     if fmt == "csv":
-        return _portal_response(send_file(entry.log_csv_path, as_attachment=True, download_name=f"{stem}.csv"))
+        return _portal_response(send_file(entry.log_csv_path, as_attachment=True, download_name=f"{stem}.csv", etag=False))
     response = make_response(build_docx(read_log_csv(entry.log_csv_path)))
     response.headers["Content-Disposition"] = f"attachment; filename={stem}.docx"
     response.headers["Content-Type"] = "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
@@ -1153,7 +1155,7 @@ def dj_recordings_download():
     if not entries:
         abort(404)
     if len(entries) == 1 and request.form.get("single") == "1":
-        response = send_file(entries[0].full_path, as_attachment=True, download_name=entries[0].filename)
+        response = send_file(entries[0].full_path, as_attachment=True, download_name=entries[0].filename, etag=False)
         return _portal_response(response)
 
     tmp = NamedTemporaryFile(delete=False, suffix=".zip")

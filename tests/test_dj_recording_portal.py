@@ -276,6 +276,9 @@ def test_non_utf8_recording_can_be_listed_streamed_and_downloaded(portal_app):
     streamed = client.get(f"/dj-recordings/audio/{entry.token}")
     assert streamed.status_code == 200
     assert streamed.data == b"old audio"
+    ranged = client.get(f"/dj-recordings/audio/{entry.token}", headers={"Range": "bytes=0-2"})
+    assert ranged.status_code == 206
+    assert ranged.data == b"old"
     downloaded = client.post("/dj-recordings/download", data={
         "tokens": entry.token, "single": "1", "copyright_acknowledged": "1",
     })
