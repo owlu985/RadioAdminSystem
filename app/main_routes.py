@@ -2167,1012 +2167,1088 @@ def manage_absences():
 
         counts = {
                 "pending": DJAbsence.query.filter_by(status="pending").count(),
-                "approved": DJAbsence.query.filter_by(stat…61689 tokens truncated… character.</div>
-                </div>
-                <div class="col-6 col-lg-2"><label class="form-label" for="yearFilter">Year</label><select class="form-select" id="yearFilter"><option value="">All years</option></select></div>
-                <div class="col-6 col-lg-2"><label class="form-label" for="genreFilter">Genre</label><select class="form-select" id="genreFilter"><option value="">All genres</option></select></div>
-                <div class="col-6 col-lg-1"><div class="form-check mb-2"><input class="form-check-input" id="explicitFilter" type="checkbox"><label class="form-check-label" for="explicitFilter">Explicit</label></div></div>
-                <div class="col-6 col-lg-2 d-flex gap-1">
-                    <button class="btn btn-outline-success flex-fill" id="saveSearchBtn" type="button">Save</button>
-                    <div class="dropdown flex-fill"><button class="btn btn-outline-secondary dropdown-toggle w-100" data-bs-toggle="dropdown" type="button">Saved</button><ul class="dropdown-menu dropdown-menu-end" id="savedList"></ul></div>
-                </div>
-            </div>
-            <div class="alert alert-light border mt-3 mb-0 d-none" id="maintenanceResults" role="status"></div>
-        </div>
-    </div>
-
-    <div class="row g-3">
-        <div class="col-lg-3">
-            <div class="card h-100">
-                <div class="card-header">
-                    <ul class="nav nav-pills card-header-pills" id="libraryTabs">
-                        <li class="nav-item">
-                            <button class="nav-link active" data-mode="music" type="button">Music</button>
-                        </li>
-                        <li class="nav-item">
-                            <button class="nav-link" data-mode="psa" type="button">PSA / Imaging</button>
-                        </li>
-                    </ul>
-                </div>
-                <div class="card-body p-0">
-                    <div class="library-controls border-bottom p-3" id="musicControls">
-                        <div class="d-flex justify-content-between align-items-center mb-2">
-                            <div class="fw-semibold small text-uppercase text-muted">Browse</div>
-                            <div class="btn-group btn-group-sm" id="browseModeToggle" role="group" aria-label="Browse mode">
-                                <button class="btn btn-outline-secondary active" data-browse="artist" type="button">Artist</button>
-                                <button class="btn btn-outline-secondary" data-browse="genre" type="button">Genre</button>
-                            </div>
-                        </div>
-                        <div class="small text-muted">The search and filters above narrow every browser view.</div>
-                    </div>
-                    <div class="library-pane p-3">
-                        <div id="musicBrowser">
-                            <div id="artistBrowser">
-                                <div class="mb-3">
-                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
-                                    <div class="list-group list-group-flush" id="artistList"></div>
-                                </div>
-                                <div>
-                                    <div class="fw-semibold small text-uppercase text-muted">Albums</div>
-                                    <div class="list-group list-group-flush" id="albumList"></div>
-                                </div>
-                            </div>
-                            <div id="genreBrowser" class="d-none">
-                                <div class="mb-3">
-                                    <div class="fw-semibold small text-uppercase text-muted">Genres</div>
-                                    <div class="list-group list-group-flush" id="genreList"></div>
-                                </div>
-                                <div>
-                                    <div class="fw-semibold small text-uppercase text-muted">Artists</div>
-                                    <div class="list-group list-group-flush" id="genreArtistList"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div id="psaBrowser" class="d-none">
-                            <div class="mb-3">
-                                <div class="fw-semibold small text-uppercase text-muted">Collections</div>
-                                <div class="list-group list-group-flush" id="psaCategoryList"></div>
-                            </div>
-                            <div>
-                                <div class="fw-semibold small text-uppercase text-muted">Items</div>
-                                <div class="list-group list-group-flush" id="psaItemList"></div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-5">
-            <div class="card h-100 workspace-card">
-                <div class="card-header d-flex justify-content-between align-items-center">
-                    <span>Library Items</span>
-                    <div class="btn-group btn-group-sm" role="group">
-                        <button class="btn btn-outline-secondary active" id="listToggle" type="button">List</button>
-                        <button class="btn btn-outline-secondary" id="gridToggle" type="button">Grid</button>
-                    </div>
-                </div>
-                <div class="card-body">
-                    <div class="d-flex justify-content-between align-items-center mb-2">
-                        <div class="text-muted small" id="selectionSummary">Select an artist, album, or PSA collection.</div>
-                        <div class="text-muted small">Sort by: <span id="sortLabel">Artist</span></div>
-                    </div>
-                    <div class="btn-group btn-group-sm mb-2" id="trackFilter" role="group" aria-label="Track filters">
-                        <button class="btn btn-outline-secondary active" data-filter="all" type="button">All</button>
-                        <button class="btn btn-outline-secondary" data-filter="recent" type="button">Recent</button>
-                        <button class="btn btn-outline-secondary" data-filter="missing_cues" type="button">Missing Cues</button>
-                    </div>
-                    <div class="table-responsive" id="listView">
-                        <table class="table table-sm table-hover align-middle">
-                            <thead>
-                                <tr>
-                                    <th><input class="form-check-input" id="selectAll" type="checkbox" aria-label="Select all shown tracks"></th>
-                                    <th class="sort-header" data-sort="artist">Artist<span class="sort-indicator" id="sort-artist"></span></th>
-                                    <th class="sort-header" data-sort="album">Album<span class="sort-indicator" id="sort-album"></span></th>
-                                    <th>Title</th>
-                                    <th class="sort-header" data-sort="year">Year<span class="sort-indicator" id="sort-year"></span></th>
-                                    <th class="sort-header" data-sort="genre">Genre<span class="sort-indicator" id="sort-genre"></span></th>
-                                </tr>
-                            </thead>
-                            <tbody id="trackTableBody"></tbody>
-                        </table>
-                    </div>
-                    <div class="row g-2 d-none" id="gridView"></div>
-                </div>
-            </div>
-        </div>
-        <div class="col-lg-4 editor-column">
-            <div class="card h-100">
-                <div class="card-header d-flex justify-content-between"><span id="editorHeading">Metadata Editor</span><span class="badge bg-primary d-none" id="bulkCount"></span></div>
-                <div class="card-body">
-                    <form id="metadataForm">
-                        <div class="mb-3">
-                            <div class="d-flex align-items-center gap-3 flex-wrap">
-                                <img class="cover-preview" id="previewCover" alt="Album cover preview">
-                                <div class="flex-grow-1">
-                                    <div class="small text-muted text-uppercase">Preview Player</div>
-                                    <div class="fw-semibold" id="previewTitle">Select a track to preview.</div>
-                                    <div class="text-muted small" id="previewSubtitle">Album art and audio preview will appear here.</div>
-                                    <audio class="w-100 mt-2" id="previewPlayer" controls preload="none"></audio>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Artist</label>
-                            <input type="text" class="form-control" id="metaArtist" placeholder="Artist name">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Album</label>
-                            <input type="text" class="form-control" id="metaAlbum" placeholder="Album name">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Title</label>
-                            <input type="text" class="form-control" id="metaTitle" placeholder="Song or spot title">
-                        </div>
-                        <div class="row g-2">
-                            <div class="col-sm-6">
-                                <label class="form-label">Year</label>
-                                <input type="text" class="form-control" id="metaYear" placeholder="YYYY">
-                            </div>
-                            <div class="col-sm-6">
-                                <label class="form-label">Genre</label>
-                                <input type="text" class="form-control" id="metaGenre" placeholder="Genre">
-                            </div>
-                        </div>
-                        <div class="form-check form-switch mt-3">
-                            <input class="form-check-input" type="checkbox" id="metaExplicit">
-                            <label class="form-check-label" for="metaExplicit">Explicit</label>
-                        </div>
-                        <hr>
-                        <a class="text-decoration-none" id="cueEditorLink" href="#" target="_blank" rel="noopener">
-                            <div class="cue-link-card">
-                                <div class="d-flex justify-content-between align-items-center">
-                                    <div>
-                                        <div class="fw-semibold">Cues</div>
-                                        <div class="text-muted small">Open the cue editor for this track.</div>
-                                    </div>
-                                    <span class="text-primary fw-semibold">Edit →</span>
-                                </div>
-                            </div>
-                        </a>
-                        <div class="mt-3">
-                            <label class="form-label small text-muted">File Path</label>
-                            <input type="text" class="form-control form-control-sm" id="metaPath" readonly>
-                        </div>
-                        <div class="text-muted small mt-2" id="saveStatus"></div>
-                        <div class="d-flex justify-content-end gap-2 mt-3">
-                            <button class="btn btn-outline-primary btn-sm" type="button" id="openDetail" disabled>Details</button>
-                            <button class="btn btn-outline-secondary btn-sm" type="button" id="resetMetadata">Reset</button>
-                            <button class="btn btn-primary btn-sm" type="button" id="saveMetadata" disabled>Save</button>
-                        </div>
-                    </form>
-                    <hr>
-                    <div class="d-flex justify-content-between align-items-center">
-                        <div><div class="fw-semibold">Bulk edit</div><div class="text-muted small">Select rows, enter only fields to change, then apply.</div></div>
-                        <button class="btn btn-outline-secondary btn-sm" type="button" data-bs-toggle="collapse" data-bs-target="#bulkEditor">Open</button>
-                    </div>
-                    <div class="collapse mt-3" id="bulkEditor">
-                        <div class="row g-2">
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="artist" placeholder="Artist"></div>
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="album" placeholder="Album"></div>
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="genre" placeholder="Genre"></div>
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="year" placeholder="Year"></div>
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="composer" placeholder="Composer"></div>
-                            <div class="col-6"><input class="form-control form-control-sm bulk-field" data-key="isrc" placeholder="ISRC"></div>
-                            <div class="col-12"><label class="form-label small">Cover artwork</label><input class="form-control form-control-sm" id="bulkCover" type="file" accept="image/*"></div>
-                            <div class="col-12"><button class="btn btn-primary btn-sm w-100" id="applyBulk" type="button" disabled>Apply to selected</button></div>
-                        </div>
-                        <div class="small mt-2" id="bulkStatus"></div>
-                    </div>
-                </div>
-            </div>
-        </div>
-    </div>
-</div>
-
-<script>
-    const libraryData = {{ library_index | tojson }};
-    let savedSearches = [];
-    const normalizeText = (value) => (value ?? '').toString().toLowerCase();
-    const state = {
-        mode: 'music',
-        artists: libraryData.music || [],
-        genres: libraryData.genres || [],
-        psa: libraryData.psa_imaging || [],
-        musicBrowseMode: 'artist',
-        searchTerm: '',
-        artistIndex: new Map(),
-        genreIndex: new Map(),
-        artistSearch: new Map(),
-        albumSearch: new Map(),
-        genreSearch: new Map(),
-        genreArtistSearch: new Map(),
-        selectedArtist: null,
-        selectedAlbum: null,
-        selectedGenre: null,
-        selectedGenreArtist: null,
-        selectedCategory: null,
-        selectedItem: null,
-        tracks: [],
-        trackFilter: 'all',
-        view: 'list',
-        sortKey: 'artist',
-        sortDir: 'asc',
-        year: '',
-        genre: '',
-        explicitOnly: false,
-        selectedPaths: new Set()
-    };
-
-    const artistList = document.getElementById('artistList');
-    const albumList = document.getElementById('albumList');
-    const genreList = document.getElementById('genreList');
-    const genreArtistList = document.getElementById('genreArtistList');
-    const psaCategoryList = document.getElementById('psaCategoryList');
-    const psaItemList = document.getElementById('psaItemList');
-    const trackTableBody = document.getElementById('trackTableBody');
-    const gridView = document.getElementById('gridView');
-    const listView = document.getElementById('listView');
-    const selectionSummary = document.getElementById('selectionSummary');
-    const sortLabel = document.getElementById('sortLabel');
-    const librarySearch = document.getElementById('librarySearch');
-    const trackFilterGroup = document.getElementById('trackFilter');
-    const musicControls = document.getElementById('musicControls');
-    const selectAll = document.getElementById('selectAll');
-    const applyBulk = document.getElementById('applyBulk');
-    const bulkCount = document.getElementById('bulkCount');
-
-    const formFields = {
-        artist: document.getElementById('metaArtist'),
-        album: document.getElementById('metaAlbum'),
-        title: document.getElementById('metaTitle'),
-        year: document.getElementById('metaYear'),
-        genre: document.getElementById('metaGenre'),
-        explicit: document.getElementById('metaExplicit'),
-        path: document.getElementById('metaPath')
-    };
-    const previewCover = document.getElementById('previewCover');
-    const previewPlayer = document.getElementById('previewPlayer');
-    const previewTitle = document.getElementById('previewTitle');
-    const previewSubtitle = document.getElementById('previewSubtitle');
-    const cueEditorLink = document.getElementById('cueEditorLink');
-    const saveMetadataBtn = document.getElementById('saveMetadata');
-    const saveStatus = document.getElementById('saveStatus');
-    const placeholderCover = 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="200" height="200"><rect width="100%25" height="100%25" fill="%23f8f9fa"/><text x="50%25" y="50%25" font-family="Arial" font-size="20" fill="%2399a0a7" dominant-baseline="middle" text-anchor="middle">No Cover</text></svg>';
-    const formState = {
-        baseline: null,
-        saving: false
-    };
-    previewCover.src = placeholderCover;
-    cueEditorLink.classList.add('disabled');
-
-    const debounce = (callback, wait = 200) => {
-        let timeout;
-        return (...args) => {
-            window.clearTimeout(timeout);
-            timeout = window.setTimeout(() => callback(...args), wait);
-        };
-    };
-
-    const allMusicTracks = () => state.artists.flatMap(artist =>
-        (artist.albums || []).flatMap(album => album.tracks || [])
-    );
-
-    const showAllMatchingTracks = () => {
-        if (state.mode !== 'music') return;
-        state.tracks = allMusicTracks();
-        state.selectedArtist = null;
-        state.selectedAlbum = null;
-        renderTracks();
-    };
-
-    const buildArtistCache = () => {
-        const artistIndex = new Map();
-        const artistSearch = new Map();
-        const albumSearch = new Map();
-        state.artists.forEach(artist => {
-            const albumSearchMap = new Map();
-            const artistParts = [artist.name];
-            (artist.albums || []).forEach(album => {
-                const albumParts = [album.name, album.genre, album.year];
-                (album.tracks || []).forEach(track => {
-                    albumParts.push(track.title, track.genre, track.artist, track.album, track.composer, track.isrc, track.folder, track.mood);
-                });
-                const albumBlob = normalizeText(albumParts.join(' '));
-                albumSearchMap.set(album.name, albumBlob);
-                artistParts.push(albumBlob);
-            });
-            artistIndex.set(artist.name, { ...artist, albumSearchMap });
-            artistSearch.set(artist.name, normalizeText(artistParts.join(' ')));
-            albumSearch.set(artist.name, albumSearchMap);
-        });
-        state.artistIndex = artistIndex;
-        state.artistSearch = artistSearch;
-        state.albumSearch = albumSearch;
-    };
-
-    const buildGenreCache = () => {
-        const genreIndex = new Map();
-        const genreSearch = new Map();
-        const genreArtistSearch = new Map();
-        state.genres.forEach(genre => {
-            const artistSearchMap = new Map();
-            const genreParts = [genre.name];
-            (genre.tracks || []).forEach(track => {
-                const artistName = track.artist || 'Unknown Artist';
-                const artistBlob = artistSearchMap.get(artistName) || '';
-                const nextBlob = `${artistBlob} ${track.title || ''} ${track.album || ''} ${track.genre || ''} ${track.composer || ''} ${track.isrc || ''} ${track.folder || ''} ${track.mood || ''}`.trim();
-                artistSearchMap.set(artistName, normalizeText(nextBlob));
-                genreParts.push(track.artist, track.album, track.title, track.genre);
-            });
-            genreIndex.set(genre.name, genre);
-            genreSearch.set(genre.name, normalizeText(genreParts.join(' ')));
-            genreArtistSearch.set(genre.name, artistSearchMap);
-        });
-        state.genreIndex = genreIndex;
-        state.genreSearch = genreSearch;
-        state.genreArtistSearch = genreArtistSearch;
-    };
-
-    const buildCaches = () => {
-        buildArtistCache();
-        buildGenreCache();
-    };
-
-    const setActiveListItem = (container, activeValue) => {
-        container.querySelectorAll('.list-group-item').forEach(item => {
-            item.classList.toggle('active', item.dataset.value === activeValue);
-        });
-    };
-
-    const updateMetadataForm = (item) => {
-        formFields.artist.value = item?.artist || '';
-        formFields.album.value = item?.album || '';
-        formFields.title.value = item?.title || '';
-        formFields.year.value = item?.year || '';
-        formFields.genre.value = item?.genre || '';
-        formFields.explicit.checked = Boolean(item?.explicit);
-        formFields.path.value = item?.path || '';
-        const title = item?.title || 'Select a track to preview.';
-        const artist = item?.artist || '';
-        const album = item?.album || '';
-        previewTitle.textContent = title;
-        previewSubtitle.textContent = [artist, album].filter(Boolean).join(' · ') || 'Album art and audio preview will appear here.';
-        const path = item?.path || '';
-        previewPlayer.src = path ? `/music/stream?path=${encodeURIComponent(path)}` : '';
-        previewCover.src = path ? `/music/cover?path=${encodeURIComponent(path)}` : placeholderCover;
-        previewCover.onerror = () => {
-            previewCover.src = placeholderCover;
-        };
-        cueEditorLink.href = path ? `/music/cue?path=${encodeURIComponent(path)}` : '#';
-        cueEditorLink.classList.toggle('disabled', !path);
-        cueEditorLink.setAttribute('aria-disabled', path ? 'false' : 'true');
-        document.getElementById('openDetail').disabled = !path;
-        saveStatus.textContent = '';
-        formState.baseline = getFormState();
-        updateSaveState();
-    };
-
-    const getFormState = () => ({
-        artist: formFields.artist.value.trim(),
-        album: formFields.album.value.trim(),
-        title: formFields.title.value.trim(),
-        year: formFields.year.value.trim(),
-        genre: formFields.genre.value.trim(),
-        explicit: formFields.explicit.checked,
-        path: formFields.path.value
-    });
-
-    const hasFormChanges = () => {
-        if (!formState.baseline) {
-            return false;
+                "approved": DJAbsence.query.filter_by(status="approved").count(),
+                "rejected": DJAbsence.query.filter_by(status="rejected").count(),
+                "resolved": DJAbsence.query.filter_by(status="resolved").count(),
         }
-        const current = getFormState();
-        return Object.keys(current).some(key => current[key] !== formState.baseline[key]);
-    };
+        return render_template(
+                "absence_manage.html", absences=absences, status_filter=status_filter, counts=counts, djs=djs, shows=shows
+        )
 
-    const updateSaveState = () => {
-        const allowSave = state.selectedItem && hasFormChanges() && !formState.saving;
-        saveMetadataBtn.disabled = !allowSave;
-    };
 
-    const sortTracks = (tracks) => {
-        const key = state.sortKey;
-        const dir = state.sortDir === 'asc' ? 1 : -1;
-        tracks.sort((a, b) => {
-            const aVal = (a[key] ?? '').toString().toLowerCase();
-            const bVal = (b[key] ?? '').toString().toLowerCase();
-            if (key === 'year') {
-                return dir * ((parseInt(aVal || '0', 10)) - (parseInt(bVal || '0', 10)));
+
+
+@main_bp.route("/music/search")
+@permission_required({"music:view"})
+def music_search_page():
+    email = session.get("user_email") or None
+    saved = []
+    if email:
+        saved = (
+            db.session.query(SavedSearch)
+            .filter(
+                (SavedSearch.created_by == email) | (SavedSearch.created_by.is_(None))
+            )
+            .order_by(SavedSearch.created_at.desc())
+            .limit(25)
+            .all()
+        )
+    library_index = get_library_editor_index()
+    return render_template("music_search.html", saved_searches=saved, library_index=library_index)
+
+
+@main_bp.route("/music/library/editor")
+@permission_required({"music:view"})
+def library_editor_page():
+    """Redirect legacy bookmarks to the unified music library."""
+    return redirect(url_for("main.music_search_page", **request.args))
+
+
+def _safe_music_path(path: str) -> str:
+    root = current_app.config.get("NAS_MUSIC_ROOT") or ""
+    if not root:
+        abort(404)
+    normalized = os.path.normcase(os.path.realpath(os.path.normpath(path)))
+    root_norm = os.path.normcase(os.path.realpath(os.path.normpath(root)))
+    if not normalized.startswith(root_norm):
+        abort(403)
+    if not os.path.exists(normalized):
+        abort(404)
+    return normalized
+
+
+def _is_alac(path: str) -> bool:
+    try:
+        probe = ffmpeg.probe(path)
+    except Exception:
+        return False
+    for stream in probe.get("streams", []):
+        if stream.get("codec_type") == "audio" and stream.get("codec_name") == "alac":
+            return True
+    return False
+
+
+def _transcode_cache_dir() -> str:
+    cache_dir = os.path.join(current_app.instance_path, "transcodes")
+    os.makedirs(cache_dir, exist_ok=True)
+    return cache_dir
+
+
+_transcode_guard = threading.Lock()
+_transcode_locks: weakref.WeakValueDictionary[str, threading.Lock] = weakref.WeakValueDictionary()
+_transcode_slots: threading.BoundedSemaphore | None = None
+
+
+def _transcode_slot() -> threading.BoundedSemaphore:
+    global _transcode_slots
+    if _transcode_slots is None:
+        count = max(1, int(current_app.config.get("TRANSCODE_MAX_CONCURRENCY", 2)))
+        _transcode_slots = threading.BoundedSemaphore(count)
+    return _transcode_slots
+
+
+def _target_lock(target: str) -> threading.Lock:
+    with _transcode_guard:
+        return _transcode_locks.setdefault(target, threading.Lock())
+
+
+def _transcode_cache_path(path: str) -> str:
+    stat = os.stat(path)
+    key_text = f"{path}:{stat.st_mtime}:{stat.st_size}"
+    try:
+        key = os.fsencode(key_text)
+    except Exception:
+        key = key_text.encode("utf-8", "surrogatepass")
+    return os.path.join(_transcode_cache_dir(), f"{hashlib.sha1(key).hexdigest()}.mp3")
+
+
+def _ensure_transcoded_mp3(path: str) -> str | None:
+    if not current_app.config.get("TRANSCODE_ALAC_TO_MP3", True):
+        return None
+    if os.path.splitext(path)[1].lower() != ".m4a":
+        return None
+    if not _is_alac(path):
+        return None
+    target = _transcode_cache_path(path)
+    if os.path.exists(target):
+        return target
+    lock = _target_lock(target)
+    timeout = max(1, int(current_app.config.get("TRANSCODE_TIMEOUT_SECONDS", 900)))
+    acquired_slot = False
+    temp_path = None
+    try:
+        with lock:
+            if os.path.exists(target):
+                return target
+            acquired_slot = _transcode_slot().acquire(timeout=timeout)
+            if not acquired_slot:
+                return None
+            fd, temp_path = tempfile.mkstemp(prefix="transcode-", suffix=".mp3", dir=_transcode_cache_dir())
+            os.close(fd)
+            subprocess.run(
+                [
+                    "ffmpeg",
+                    "-nostdin",
+                    "-hide_banner",
+                    "-loglevel",
+                    "error",
+                    "-y",
+                    "-i",
+                    path,
+                    "-vn",
+                    "-c:a",
+                    "libmp3lame",
+                    "-b:a",
+                    "192k",
+                    temp_path,
+                ],
+                check=True,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=timeout,
+            )
+            os.replace(temp_path, target)
+            temp_path = None
+    except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
+        if temp_path and os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except OSError:
+                pass
+        return None
+    finally:
+        if acquired_slot:
+            _transcode_slot().release()
+    return target
+
+
+def _send_audio(path: str):
+    transcoded = _ensure_transcoded_mp3(path)
+    if transcoded:
+        return send_file(transcoded, mimetype="audio/mpeg", conditional=True)
+    return send_file(path, conditional=True)
+
+
+@main_bp.route("/music/stream")
+@permission_required({"music:view"})
+def music_stream():
+    path = request.args.get("path")
+    if not path:
+        abort(404)
+    safe_path = _safe_music_path(path)
+    return _send_audio(safe_path)
+
+
+@main_bp.route("/music/pretranscode", methods=["POST"])
+@permission_required({"music:view"})
+def music_pretranscode():
+    payload = request.get_json(force=True, silent=True) or {}
+    path = payload.get("path")
+    if not path:
+        return jsonify({"status": "error", "message": "path required"}), 400
+    safe_path = _safe_music_path(path)
+    transcoded = _ensure_transcoded_mp3(safe_path)
+    return jsonify({"status": "ok", "transcoded": bool(transcoded)})
+
+
+@main_bp.route("/music/cover")
+@permission_required({"music:view"})
+def music_cover():
+    path = request.args.get("path")
+    if not path:
+        abort(404)
+    safe_path = _safe_music_path(path)
+    audio = mutagen.File(safe_path, easy=False)
+    if not audio:
+        abort(404)
+
+    image_data = None
+    mime = "image/jpeg"
+
+    if isinstance(audio, MP4):
+        covr = audio.tags.get("covr") if audio.tags else None
+        if covr:
+            image_data = bytes(covr[0])
+            mime = "image/jpeg"
+    else:
+        try:
+            id3 = ID3(safe_path)
+            apic = id3.get("APIC:") or id3.get("APIC")
+            if apic:
+                image_data = apic.data
+                mime = apic.mime or mime
+        except Exception:
+            if hasattr(audio, "pictures") and audio.pictures:
+                pic = audio.pictures[0]
+                image_data = pic.data
+                mime = pic.mime or mime
+
+    if not image_data:
+        abort(404)
+    return send_file(BytesIO(image_data), mimetype=mime, conditional=True)
+
+
+@main_bp.route("/music/detail")
+@permission_required({"music:view"})
+def music_detail_page():
+    path = request.args.get("path")
+    track = get_track(path) if path else None
+    if track:
+        peaks = track.get("peaks")
+        preview_peaks: list = []
+        if isinstance(peaks, dict):
+            preview_source = (
+                peaks.get("mono")
+                or peaks.get("left")
+                or peaks.get("right")
+                or []
+            )
+            if isinstance(preview_source, list):
+                preview_peaks = preview_source
+        elif isinstance(peaks, list):
+            preview_peaks = peaks
+
+        numeric_peaks: list = []
+        for val in preview_peaks:
+            try:
+                numeric_peaks.append(float(val))
+            except (TypeError, ValueError):
+                continue
+        track["peaks_preview"] = numeric_peaks
+    return render_template("music_detail.html", track=track)
+
+
+@main_bp.route("/music/edit", methods=["GET", "POST"])
+@permission_required({"music:edit"})
+def music_edit_page():
+    path = request.values.get("path")
+    if not path:
+        return render_template("music_edit.html", track=None, error="Missing path")
+    track = get_track(path)
+    if request.method == "POST":
+        if not track:
+            return render_template("music_edit.html", track=None, error="Track not found")
+        result = update_metadata(
+            path,
+            {field: request.form.get(field) for field in ["title", "artist", "album", "composer", "isrc", "year", "track", "disc", "copyright"]},
+        )
+        if result.get("status") != "ok":
+            return render_template("music_edit.html", track=track, error=result.get("message") or "Unable to save metadata")
+        track = get_track(path)
+        flash("Metadata updated.", "success")
+        return redirect(url_for("main.music_detail_page", path=path))
+    return render_template("music_edit.html", track=track, error=None)
+
+
+@main_bp.route("/music/cue", methods=["GET", "POST"])
+@permission_required({"music:edit"})
+def music_cue_page():
+    path = request.values.get("path")
+    if not path:
+        return render_template("music_edit.html", track=None, error="Missing path for cue editor")
+    raw_track = _read_tags(path)
+    track = raw_track.copy() if raw_track else None
+    analysis = MusicAnalysis.query.filter_by(path=path).first()
+    analysis_ready = bool(analysis and analysis.peaks and analysis.duration_seconds is not None)
+    if track and analysis:
+        track.update({
+            "duration_seconds": analysis.duration_seconds,
+            "peak_db": analysis.peak_db,
+            "rms_db": analysis.rms_db,
+            "peaks": json.loads(analysis.peaks) if analysis.peaks else None,
+            "bitrate": track.get("bitrate") or analysis.bitrate,
+            "hash": analysis.hash,
+            "missing_tags": analysis.missing_tags,
+        })
+    elif track:
+        track.setdefault("duration_seconds", None)
+        track.setdefault("peak_db", None)
+        track.setdefault("rms_db", None)
+        track.setdefault("peaks", None)
+    try:
+        safe_path = _safe_music_path(path)
+    except Exception:
+        safe_path = None
+    if safe_path:
+        _ensure_transcoded_mp3(safe_path)
+    cue_obj = load_cue(path)
+    cue = {
+        "cue_in": cue_obj.cue_in if cue_obj else None,
+        "intro": cue_obj.intro if cue_obj else None,
+        "loop_in": cue_obj.loop_in if cue_obj else None,
+        "loop_out": cue_obj.loop_out if cue_obj else None,
+        "hook_in": cue_obj.hook_in if cue_obj else None,
+        "hook_out": cue_obj.hook_out if cue_obj else None,
+        "start_next": cue_obj.start_next if cue_obj else None,
+        "outro": cue_obj.outro if cue_obj else None,
+        "cue_out": cue_obj.cue_out if cue_obj else None,
+    }
+    cue_ready = cue_obj is not None
+    if request.method == "POST":
+        payload = {}
+        for field in [
+            "cue_in",
+            "intro",
+            "loop_in",
+            "loop_out",
+            "hook_in",
+            "hook_out",
+            "start_next",
+            "outro",
+            "cue_out",
+        ]:
+            raw = request.form.get(field)
+            if raw is None or raw == "" or raw.lower() == "none":
+                payload[field] = None
+                continue
+            try:
+                payload[field] = float(raw)
+            except ValueError:
+                payload[field] = None
+        cue_obj = save_cue(path, payload)
+        cue.update(payload)
+        flash("CUE points saved.", "success")
+        return redirect(url_for("main.music_cue_page", path=path))
+    needs_generation = bool(track and (not analysis_ready or not cue_ready))
+    return render_template("music_cue.html", track=track, cue=cue, needs_generation=needs_generation)
+
+
+@main_bp.route("/production/live-reads", methods=["GET", "POST"])
+@permission_required({"news:edit"})
+def live_read_cards():
+    """Create and manage live read cards for printing."""
+
+    if request.method == "POST":
+        titles = request.form.getlist("card_title[]")
+        expiries = request.form.getlist("card_expiry[]")
+        copies = request.form.getlist("card_copy[]")
+        created = upsert_cards(titles, expiries, copies)
+        if created:
+            flash(f"Saved {created} card(s).", "success")
+        else:
+            flash("No cards were created. Please add a title or copy.", "warning")
+        return redirect(url_for("main.live_read_cards"))
+
+    include_expired = request.args.get("include_expired") == "1"
+    cards = card_query(include_expired=include_expired).all()
+    return render_template("live_reads.html", cards=cards, include_expired=include_expired, today=date.today())
+
+
+@main_bp.route("/production/live-reads/print")
+@permission_required({"news:edit"})
+def live_read_cards_print():
+    include_expired = request.args.get("include_expired") == "1"
+    cards = card_query(include_expired=include_expired).all()
+    return render_template(
+        "live_reads_print.html",
+        cards=cards,
+        include_expired=include_expired,
+        today=date.today(),
+        chunks=list(chunk_cards(cards)),
+    )
+
+
+@main_bp.route("/production/live-reads/<int:card_id>/delete", methods=["POST"])
+@admin_required
+def delete_live_read(card_id: int):
+    card = LiveReadCard.query.get_or_404(card_id)
+    db.session.delete(card)
+    db.session.commit()
+    flash("Card deleted.", "info")
+    return redirect(url_for("main.live_read_cards"))
+
+
+@main_bp.route("/archivist")
+@permission_required({"music:view"})
+def archivist_page():
+    query = (request.args.get("q") or "").strip()
+    show_all = request.args.get("show_all") == "1" or query == "%"
+    results = []
+    if query or show_all:
+        limit = 500 if show_all else 200
+        results = search_archivist(query or "%", limit=limit)
+
+    total = ArchivistEntry.query.count()
+    raw_results = ArchivistRipResult.query.order_by(ArchivistRipResult.created_at.desc()).limit(10).all()
+    rip_results = []
+    for item in raw_results:
+        segments = []
+        if item.segments_json:
+            try:
+                segments = json.loads(item.segments_json)
+            except json.JSONDecodeError:
+                segments = []
+        rip_results.append(
+            {
+                "id": item.id,
+                "filename": item.filename,
+                "duration_ms": item.duration_ms or 0,
+                "settings_json": item.settings_json or "",
+                "segments": segments,
+                "track_count": len(segments),
             }
-            if (aVal < bVal) return -1 * dir;
-            if (aVal > bVal) return 1 * dir;
-            return 0;
-        });
-    };
+        )
+    return render_template(
+        "archivist.html",
+        results=results,
+        query=query,
+        total=total,
+        show_all=show_all,
+        rip_results=rip_results,
+    )
 
-    const applyTrackFilters = (tracks) => {
-        return tracks.filter(track => {
-            const blob = normalizeText([track.title, track.artist, track.album, track.genre, track.year, track.composer, track.isrc, track.folder, track.mood].filter(Boolean).join(' '));
-            if (!matchesSearch(blob)) return false;
-            if (state.mode === 'music' && state.year && String(track.year || '') !== state.year) return false;
-            if (state.mode === 'music' && state.genre && normalizeText(track.genre) !== normalizeText(state.genre)) return false;
-            if (state.mode === 'music' && state.explicitOnly && !track.explicit) return false;
-            if (state.mode === 'music' && state.trackFilter === 'recent' && !track.is_recent) return false;
-            if (state.mode === 'music' && state.trackFilter === 'missing_cues' && !track.missing_cues) return false;
-            return true;
-        });
-    };
 
-    const updateBulkState = () => {
-        const count = state.selectedPaths.size;
-        bulkCount.textContent = `${count} selected`;
-        bulkCount.classList.toggle('d-none', count === 0);
-        applyBulk.disabled = count === 0;
-    };
+@main_bp.route("/marathon", methods=["GET", "POST"])
+@permission_required({"schedule:marathon"})
+def marathon_page():
+    if request.method == "POST":
+        name = (request.form.get("name") or "").strip()
+        start_raw = request.form.get("start")
+        end_raw = request.form.get("end")
+        chunk_hours = int(request.form.get("chunk_hours") or 2)
+        if not name or not start_raw or not end_raw:
+            flash("Please provide name, start, and end.", "warning")
+        else:
+            try:
+                start_dt = datetime.fromisoformat(start_raw)
+                end_dt = datetime.fromisoformat(end_raw)
+                schedule_marathon_event(name, start_dt, end_dt, chunk_hours=chunk_hours)
+                flash("Marathon recording scheduled.", "success")
+                return redirect(url_for("main.marathon_page"))
+            except Exception as exc:  # noqa: BLE001
+                logger.error("Failed to schedule marathon: %s", exc)
+                flash("Could not schedule marathon. Check dates and try again.", "danger")
 
-    const renderTracks = () => {
-        const baseTracks = state.tracks;
-        const filteredTracks = applyTrackFilters(baseTracks);
-        const sortedTracks = [...filteredTracks];
-        sortTracks(sortedTracks);
-        trackTableBody.innerHTML = '';
-        gridView.innerHTML = '';
-        if (!baseTracks.length) {
-            trackTableBody.innerHTML = '<tr><td colspan="6" class="text-muted">No items selected.</td></tr>';
-            if (state.mode === 'psa') {
-                selectionSummary.textContent = 'Select a PSA collection.';
-            } else if (state.musicBrowseMode === 'genre') {
-                selectionSummary.textContent = 'Select a genre to view tracks.';
-            } else {
-                selectionSummary.textContent = 'Select an artist or album.';
+    events = MarathonEvent.query.order_by(MarathonEvent.start_time.desc()).all()
+    now = datetime.utcnow()
+    for ev in events:
+        if ev.canceled_at:
+            continue
+        if ev.status == "pending" and ev.start_time <= now < ev.end_time:
+            ev.status = "running"
+        elif ev.status == "running" and now >= ev.end_time:
+            ev.status = "completed"
+    db.session.commit()
+
+    return render_template("marathon.html", events=events, now=now)
+
+
+@main_bp.route("/marathon/<int:event_id>/cancel", methods=["POST"])
+@admin_required
+def marathon_cancel(event_id: int):
+    if cancel_marathon_event(event_id):
+        flash("Marathon cancelled. Current chunk will finish, future chunks removed.", "info")
+    else:
+        flash("Marathon not found.", "warning")
+    return redirect(url_for("main.marathon_page"))
+
+
+@main_bp.route("/djs/photos/<path:filename>")
+def dj_photo(filename: str):
+    upload_dir = current_app.config.get("DJ_PHOTO_UPLOAD_DIR") or os.path.join(current_app.instance_path, "dj_photos")
+    return send_from_directory(upload_dir, filename, as_attachment=False)
+
+
+@main_bp.route('/show/add', methods=['GET', 'POST'])
+@permission_required({"schedule:edit"})
+def add_show():
+    """Route to add a new show."""
+
+    try:
+        if request.method == 'POST':
+            start_date = request.form['start_date'] or current_app.config['DEFAULT_START_DATE']
+            end_date = request.form['end_date'] or current_app.config['DEFAULT_END_DATE']
+            start_time = request.form['start_time']
+            end_time = request.form['end_time']
+
+            start_date_obj = datetime.strptime(start_date, '%Y-%m-%d').date()
+            end_date_obj = datetime.strptime(end_date, '%Y-%m-%d').date()
+            start_time_obj = datetime.strptime(start_time, '%H:%M').time()
+            end_time_obj = datetime.strptime(end_time, '%H:%M').time()
+
+            today = datetime.today().date()
+            if end_date_obj < today:
+                flash("End date cannot be in the past!", "danger")
+                return redirect(url_for('main.add_show'))
+
+            selected_days = request.form.getlist('days_of_week')
+            normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = (
+                DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+                .filter(DJ.id == primary_dj_id, DJ.is_archived.is_(False))
+                .first()
+            )
+            if not primary_dj:
+                flash("Select a primary DJ for this show.", "danger")
+                return redirect(url_for('main.add_show'))
+            selected_djs = request.form.getlist('dj_ids')
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids), DJ.is_archived.is_(False)).all() if cohost_ids else []
+
+            show = Show(
+                host_first_name=primary_dj.first_name,
+                host_last_name=primary_dj.last_name,
+                show_name=request.form.get('show_name'),
+                genre=request.form.get('genre'),
+                description=request.form.get('description'),
+                is_regular_host='is_regular_host' in request.form,
+                is_temporary='is_temporary' in request.form,
+                start_date=start_date_obj,
+                end_date=end_date_obj,
+                start_time=start_time_obj,
+                end_time=end_time_obj,
+                days_of_week=normalized_days
+            )
+            show.djs = dj_objs
+            db.session.add(show)
+            db.session.commit()
+            refresh_schedule()
+            logger.info("Show added successfully.")
+            flash("Show added successfully!", "success")
+            return redirect(url_for('main.shows'))
+
+        logger.info("Rendering add show page.")
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
+        return render_template('add_show.html', config=current_app.config, djs=all_djs)
+    except Exception as e:
+        logger.error(f"Error adding show: {e}")
+        flash(f"Error adding show: {e}", "danger")
+        return redirect(url_for('main.shows'))
+
+@main_bp.route('/show/edit/<int:id>', methods=['GET', 'POST'])
+@permission_required({"schedule:edit"})
+def edit_show(id):
+    """Route to edit an existing show."""
+
+    show = Show.query.get_or_404(id)
+    try:
+        if request.method == 'POST':
+            selected_days = request.form.getlist('days_of_week')
+            normalized_days = normalize_days_list(selected_days)
+            primary_dj_id = request.form.get('primary_dj_id', type=int)
+            primary_dj = (
+                DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+                .filter(DJ.id == primary_dj_id, DJ.is_archived.is_(False))
+                .first()
+            )
+            if not primary_dj:
+                flash("Select a primary DJ for this show.", "danger")
+                return redirect(url_for('main.edit_show', id=id))
+            selected_djs = request.form.getlist('dj_ids')
+            cohost_ids = [dj_id for dj_id in selected_djs if str(dj_id) != str(primary_dj_id)]
+            dj_objs = DJ.query.filter(DJ.id.in_(cohost_ids), DJ.is_archived.is_(False)).all() if cohost_ids else []
+            show.show_name = request.form.get('show_name')
+            show.genre = request.form.get('genre')
+            show.description = request.form.get('description')
+            show.is_regular_host = 'is_regular_host' in request.form
+            show.is_temporary = 'is_temporary' in request.form
+            show.host_first_name = primary_dj.first_name
+            show.host_last_name = primary_dj.last_name
+            show.start_date = datetime.strptime(request.form['start_date'], '%Y-%m-%d').date()
+            show.end_date = datetime.strptime(request.form['end_date'], '%Y-%m-%d').date()
+            show.start_time = datetime.strptime(request.form['start_time'].strip(), '%H:%M').time()
+            show.end_time = datetime.strptime(request.form['end_time'].strip(), '%H:%M').time()
+            show.days_of_week = normalized_days
+            show.djs = dj_objs
+
+            db.session.commit()
+            refresh_schedule()
+            logger.info("Show updated successfully.")
+            flash("Show updated successfully!", "success")
+
+            return redirect(url_for('main.shows'))
+
+        logger.info(f'Rendering edit show page for show {id}.')
+        all_djs = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .order_by(DJ.first_name, DJ.last_name)
+            .all()
+        )
+        primary_dj = (
+            DJ.query.options(load_only(DJ.id, DJ.first_name, DJ.last_name))
+            .filter(DJ.first_name == show.host_first_name, DJ.last_name == show.host_last_name)
+            .first()
+        )
+        selected_primary_id = primary_dj.id if primary_dj else None
+        selected_ids = {dj.id for dj in show.djs}
+        if selected_primary_id in selected_ids:
+            selected_ids.discard(selected_primary_id)
+        return render_template(
+            'edit_show.html',
+            show=show,
+            djs=all_djs,
+            selected_ids=selected_ids,
+            selected_primary_id=selected_primary_id,
+        )
+    except Exception as e:
+        logger.error(f"Error editing show: {e}")
+        flash(f"Error editing show: {e}", "danger")
+        return redirect(url_for('main.shows'))
+
+
+@main_bp.route('/plugins')
+@permission_required({"plugins:manage"})
+def plugins_home():
+    plugin_meta = current_app.config.get("PLUGIN_REGISTRY", {})
+    plugins = (
+        Plugin.query.filter(Plugin.name.in_(plugin_meta))
+        .order_by(Plugin.name.asc())
+        .all()
+        if plugin_meta
+        else []
+    )
+    return render_template(
+        'plugins.html',
+        plugins=plugins,
+        plugin_labels=current_app.config.get("PLUGIN_DISPLAY_NAMES", {}),
+        plugin_meta=plugin_meta,
+    )
+
+
+@main_bp.route('/plugins/<string:name>/toggle', methods=['POST'])
+@admin_required
+def toggle_plugin(name):
+    if name not in current_app.config.get("PLUGIN_REGISTRY", {}):
+        abort(404)
+    plugin = ensure_plugin_record(name)
+    plugin.enabled = not plugin.enabled
+    db.session.commit()
+    flash(f"Plugin '{name}' is now {'enabled' if plugin.enabled else 'disabled'}.", "success")
+    return redirect(url_for('main.plugins_home'))
+
+ALLOWED_SETTINGS_KEYS = [
+    'ADMIN_USERNAME', 'ADMIN_PASSWORD', 'BIND_HOST', 'BIND_PORT', 'STREAM_URL', 'OUTPUT_FOLDER', 'DEFAULT_START_DATE', 'DEFAULT_END_DATE',
+    'AUTO_CREATE_SHOW_FOLDERS', 'STATION_NAME', 'STATION_SLOGAN', 'STATION_BACKGROUND', 'SCHEDULE_TIMEZONE', 'TEMPEST_API_KEY',
+    'TEMPEST_STATION_ID', 'ALERTS_ENABLED', 'ALERTS_DRY_RUN', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_ENABLED',
+    'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM', 'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_PORT', 'ALERTS_SMTP_USERNAME',
+    'ALERTS_SMTP_PASSWORD', 'ALERT_DEAD_AIR_THRESHOLD_MINUTES', 'ALERT_STREAM_DOWN_THRESHOLD_MINUTES',
+    'ALERT_REPEAT_MINUTES', 'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
+    'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
+    'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'ICECAST_IGNORED_IPS', 'SELF_HEAL_ENABLED',
+    'MUSICBRAINZ_USER_AGENT', 'ICECAST_ANALYTICS_INTERVAL_MINUTES', 'SETTINGS_BACKUP_INTERVAL_HOURS',
+    'SETTINGS_BACKUP_RETENTION', 'DATA_BACKUP_DIRNAME', 'DATA_BACKUP_RETENTION_DAYS', 'THEME_DEFAULT', 'INLINE_HELP_ENABLED', 'ARCHIVIST_DB_PATH', 'ARCHIVIST_UPLOAD_DIR',
+    'RATE_LIMIT_ENABLED', 'RATE_LIMIT_REQUESTS', 'RATE_LIMIT_WINDOW_SECONDS', 'RATE_LIMIT_TRUSTED_IPS',
+    'HIGH_CONTRAST_DEFAULT', 'FONT_SCALE_PERCENT', 'PSA_LIBRARY_PATH', 'IMAGING_LIBRARY_PATH',
+    'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
+]
+
+
+def _clean_optional(value):
+    if value is None:
+        return None
+    if isinstance(value, str) and value.strip().lower() in {"", "none", "null"}:
+        return None
+    return value
+
+
+@main_bp.route('/settings', methods=['GET', 'POST'])
+@permission_required({"settings:edit"})
+def settings():
+    """Route to update the application settings."""
+
+    if request.method == 'POST':
+        try:
+            if request.form.get("archivist_import") == "1":
+                file = request.files.get("archivist_file")
+                if not file or file.filename == "":
+                    flash("Please choose a CSV/TSV file to import.", "warning")
+                    return redirect(url_for('main.settings'))
+                try:
+                    upload_dir = current_app.config.get("ARCHIVIST_UPLOAD_DIR")
+                    count = import_archivist_csv(
+                        file,
+                        current_app.config.get("ARCHIVIST_DB_PATH"),
+                        upload_dir,
+                    )
+                    flash(f"Imported {count} rows into the archivist database.", "success")
+                except Exception as exc:  # noqa: BLE001
+                    logger.error(f"Failed to import archivist data: {exc}")
+                    flash("Import failed. Please check the file format.", "danger")
+                return redirect(url_for('main.settings'))
+            updated_settings = {
+                'ADMIN_USERNAME': request.form['admin_username'],
+                'ADMIN_PASSWORD': request.form['admin_password'],
+                'BIND_HOST': request.form.get('bind_host', current_app.config.get('BIND_HOST', '127.0.0.1')).strip(),
+                'BIND_PORT': int(request.form.get('bind_port') or current_app.config.get('BIND_PORT', 5000)),
+                'STREAM_URL': request.form['stream_url'],
+                'ADMIN_URL_PREFIX': request.form.get('admin_url_prefix', current_app.config.get('ADMIN_URL_PREFIX', '')).strip(),
+                'OUTPUT_FOLDER': request.form['output_folder'],
+                'DEFAULT_START_DATE': request.form['default_start_date'],
+                'DEFAULT_END_DATE': request.form['default_end_date'],
+                'AUTO_CREATE_SHOW_FOLDERS': 'auto_create_show_folders' in request.form,
+                'STATION_NAME': request.form['station_name'],
+                'STATION_SLOGAN': request.form['station_slogan'],
+                'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
+                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4'))),
+                'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
+                'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
+                'ALERTS_ENABLED': 'alerts_enabled' in request.form,
+                'ALERTS_DRY_RUN': 'alerts_dry_run' in request.form,
+                'ALERTS_DISCORD_WEBHOOK': _clean_optional(request.form.get('alerts_discord_webhook', '').strip()),
+                'ALERTS_EMAIL_ENABLED': 'alerts_email_enabled' in request.form,
+                'ALERTS_EMAIL_TO': _clean_optional(request.form.get('alerts_email_to', '').strip()),
+                'ALERTS_EMAIL_FROM': _clean_optional(request.form.get('alerts_email_from', '').strip()),
+                'ALERTS_SMTP_SERVER': _clean_optional(request.form.get('alerts_smtp_server', '').strip()),
+                'ALERTS_SMTP_PORT': int(request.form.get('alerts_smtp_port') or current_app.config.get('ALERTS_SMTP_PORT', 587)),
+                'ALERTS_SMTP_USERNAME': _clean_optional(request.form.get('alerts_smtp_username', '').strip()),
+                'ALERTS_SMTP_PASSWORD': _clean_optional(request.form.get('alerts_smtp_password', '').strip()),
+                'ALERT_DEAD_AIR_THRESHOLD_MINUTES': int(request.form.get('alert_dead_air_threshold_minutes') or current_app.config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5)),
+                'ALERT_STREAM_DOWN_THRESHOLD_MINUTES': int(request.form.get('alert_stream_down_threshold_minutes') or current_app.config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1)),
+                'ALERT_REPEAT_MINUTES': int(request.form.get('alert_repeat_minutes') or current_app.config.get('ALERT_REPEAT_MINUTES', 15)),
+                'ICECAST_STATUS_URL': _clean_optional(request.form.get('icecast_status_url', '').strip()),
+                'ICECAST_LISTCLIENTS_URL': _clean_optional(request.form.get('icecast_listclients_url', '').strip()),
+                'ICECAST_USERNAME': _clean_optional(request.form.get('icecast_username', '').strip()),
+                'ICECAST_PASSWORD': _clean_optional(request.form.get('icecast_password', '').strip()),
+                'ICECAST_MOUNT': _clean_optional(request.form.get('icecast_mount', '').strip()),
+                'ICECAST_ANALYTICS_INTERVAL_MINUTES': int(request.form.get('icecast_analytics_interval_minutes') or current_app.config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5)),
+                'ICECAST_IGNORED_IPS': [ip.strip() for ip in (request.form.get('icecast_ignored_ips', '') or '').split(',') if ip.strip()],
+                'SELF_HEAL_ENABLED': 'self_heal_enabled' in request.form,
+                'STREAM_DOWN_RESTART_THRESHOLD': int(request.form.get('stream_down_restart_threshold') or current_app.config.get('STREAM_DOWN_RESTART_THRESHOLD', 3)),
+                'STREAM_PROBE_TIMEOUT_SECONDS': int(request.form.get('stream_probe_timeout_seconds') or current_app.config.get('STREAM_PROBE_TIMEOUT_SECONDS', 25)),
+                'BARIX_AUTO_RESTART_ENABLED': 'barix_auto_restart_enabled' in request.form,
+                'BARIX_IP': _clean_optional(request.form.get('barix_ip', '').strip()),
+                'BARIX_RESTART_URL': _clean_optional(request.form.get('barix_restart_url', '').strip()),
+                'BARIX_MAX_RESTARTS_PER_WINDOW': int(request.form.get('barix_max_restarts_per_window') or current_app.config.get('BARIX_MAX_RESTARTS_PER_WINDOW', 3)),
+                'BARIX_RESTART_WINDOW_MINUTES': int(request.form.get('barix_restart_window_minutes') or current_app.config.get('BARIX_RESTART_WINDOW_MINUTES', 20)),
+                'MUSICBRAINZ_USER_AGENT': _clean_optional(request.form.get('musicbrainz_user_agent', '').strip()),
+                'RATE_LIMIT_ENABLED': 'rate_limit_enabled' in request.form,
+                'RATE_LIMIT_REQUESTS': int(request.form.get('rate_limit_requests') or current_app.config.get('RATE_LIMIT_REQUESTS', 120)),
+                'RATE_LIMIT_WINDOW_SECONDS': int(request.form.get('rate_limit_window_seconds') or current_app.config.get('RATE_LIMIT_WINDOW_SECONDS', 60)),
+                'RATE_LIMIT_TRUSTED_IPS': [ip.strip() for ip in (request.form.get('rate_limit_trusted_ips', '') or '').split(',') if ip.strip()],
+                'OAUTH_CLIENT_ID': _clean_optional(request.form.get('oauth_client_id', '').strip()),
+                'OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('oauth_client_secret', '').strip()),
+                'OAUTH_ALLOWED_DOMAIN': _clean_optional(request.form.get('oauth_allowed_domain', '').strip()),
+                'DISCORD_OAUTH_CLIENT_ID': _clean_optional(request.form.get('discord_oauth_client_id', '').strip()),
+                'DISCORD_OAUTH_CLIENT_SECRET': _clean_optional(request.form.get('discord_oauth_client_secret', '').strip()),
+                'DISCORD_ALLOWED_GUILD_ID': _clean_optional(request.form.get('discord_allowed_guild_id', '').strip()),
+                'OAUTH_ONLY': 'oauth_only' in request.form,
+                'CUSTOM_ROLES': [r.strip() for r in request.form.get('custom_roles', '').split(',') if r.strip()],
+                'DISCIPLINE_CONTACT_EMAIL': _clean_optional(request.form.get('discipline_contact_email', '').strip()),
+                'DISCIPLINE_APPROVAL_REQUIRED_TYPES': [ptype for ptype in ["probation", "suspension", "removal", "warning", "custom"] if f"discipline_requires_{ptype}" in request.form],
+                'DISCIPLINE_CUSTOM_REQUIRES_APPROVAL': 'discipline_requires_custom' in request.form,
+                'DISCIPLINE_WARNING_REQUIRES_APPROVAL': 'discipline_requires_warning' in request.form,
+                'SETTINGS_BACKUP_INTERVAL_HOURS': int(request.form.get('settings_backup_interval_hours') or current_app.config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12)),
+                'SETTINGS_BACKUP_RETENTION': int(request.form.get('settings_backup_retention') or current_app.config.get('SETTINGS_BACKUP_RETENTION', 10)),
+                'DATA_BACKUP_DIRNAME': request.form.get('data_backup_dirname', current_app.config.get('DATA_BACKUP_DIRNAME', 'data_backups')).strip(),
+                'DATA_BACKUP_RETENTION_DAYS': int(request.form.get('data_backup_retention_days') or current_app.config.get('DATA_BACKUP_RETENTION_DAYS', 60)),
+                'THEME_DEFAULT': request.form.get('theme_default', current_app.config.get('THEME_DEFAULT', 'system')),
+                'INLINE_HELP_ENABLED': 'inline_help_enabled' in request.form,
+                'HIGH_CONTRAST_DEFAULT': 'high_contrast_default' in request.form,
+                'FONT_SCALE_PERCENT': int(request.form.get('font_scale_percent') or current_app.config.get('FONT_SCALE_PERCENT', 100)),
+                'DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED': 'dj_status_overnight_screensaver_enabled' in request.form,
+                'ARCHIVIST_DB_PATH': request.form.get('archivist_db_path', current_app.config.get('ARCHIVIST_DB_PATH', '')).strip(),
+                'ARCHIVIST_UPLOAD_DIR': request.form.get('archivist_upload_dir', current_app.config.get('ARCHIVIST_UPLOAD_DIR', '')).strip(),
+                'PSA_LIBRARY_PATH': request.form.get('psa_library_path', current_app.config.get('PSA_LIBRARY_PATH', '')).strip(),
+                'IMAGING_LIBRARY_PATH': request.form.get('imaging_library_path', current_app.config.get('IMAGING_LIBRARY_PATH', '')).strip(),
+                'DATA_ROOT': _clean_optional(request.form.get('data_root', '').strip()),
+                'NAS_MUSIC_ROOT': _clean_optional(request.form.get('music_library_path', '').strip()),
+                'RADIODJ_API_BASE_URL': _clean_optional(request.form.get('radiodj_api_base_url', '').strip()),
+                'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
             }
-            return;
-        }
-        if (!filteredTracks.length) {
-            trackTableBody.innerHTML = '<tr><td colspan="6" class="text-muted">No items match the current filter.</td></tr>';
-            selectionSummary.textContent = `0 of ${baseTracks.length} items shown`;
-            return;
-        }
-        selectionSummary.textContent = filteredTracks.length === baseTracks.length
-            ? `${filteredTracks.length} items shown`
-            : `${filteredTracks.length} of ${baseTracks.length} items shown`;
-        sortedTracks.forEach((track, idx) => {
-            const row = document.createElement('tr');
-            row.className = `track-row ${track.path === state.selectedItem?.path ? 'table-primary' : ''}`;
-            row.innerHTML = `
-                <td><input class="form-check-input track-select" type="checkbox" ${state.selectedPaths.has(track.path) ? 'checked' : ''} aria-label="Select ${track.title || 'track'}"></td>
-                <td>${track.artist || '-'}</td>
-                <td>${track.album || '-'}</td>
-                <td>${track.title || '-'}</td>
-                <td>${track.year || '-'}</td>
-                <td>${track.genre || '-'}</td>
-            `;
-            row.querySelector('.track-select').addEventListener('click', event => {
-                event.stopPropagation();
-                if (event.currentTarget.checked) state.selectedPaths.add(track.path);
-                else state.selectedPaths.delete(track.path);
-                updateBulkState();
-            });
-            row.addEventListener('click', () => {
-                state.selectedItem = track;
-                updateMetadataForm(track);
-                renderTracks();
-            });
-            trackTableBody.appendChild(row);
 
-            const col = document.createElement('div');
-            col.className = 'col-12';
-            if (state.view === 'grid') {
-                col.className = 'col-md-6';
-            }
-            const card = document.createElement('div');
-            card.className = `grid-card ${track.path === state.selectedItem?.path ? 'active' : ''}`;
-            card.innerHTML = `
-                <div class="fw-semibold">${track.title || '-'}</div>
-                <div class="text-muted small">${track.artist || 'Unknown Artist'} · ${track.album || 'Unknown Album'}</div>
-                <div class="small mt-1">Year: ${track.year || '—'} · Genre: ${track.genre || '—'}</div>
-            `;
-            card.addEventListener('click', () => {
-                state.selectedItem = track;
-                updateMetadataForm(track);
-                renderTracks();
-            });
-            col.appendChild(card);
-            gridView.appendChild(col);
-        });
-        selectAll.checked = sortedTracks.length > 0 && sortedTracks.every(track => state.selectedPaths.has(track.path));
-        selectAll.dataset.visiblePaths = JSON.stringify(sortedTracks.map(track => track.path));
-        updateBulkState();
-    };
+            update_user_config(updated_settings)
+            recording_periods_raw = request.form.get("recording_periods", "")
+            recording_periods = [line.strip() for line in recording_periods_raw.splitlines() if line.strip()]
+            current_period = request.form.get("current_recording_period") or None
+            save_recording_periods(periods=recording_periods, current=current_period)
+            # Re-register OAuth providers with new credentials without restart
+            try:
+                init_oauth(current_app)
+            except Exception as exc:  # noqa: BLE001
+                logger.error(f"Failed to reinitialize OAuth after settings update: {exc}")
 
-    const matchesSearch = (blob) => {
-        if (!state.searchTerm) {
-            return true;
-        }
-        const haystack = normalizeText(blob);
-        const terms = state.searchTerm.split(/\s+/).filter(Boolean);
-        return terms.every(term => {
-            if (!term.includes('*') && !term.includes('?')) return haystack.includes(term);
-            const escaped = term.replace(/[.+^${}()|[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
-            return new RegExp(escaped, 'i').test(haystack);
-        });
-    };
+            flash("Settings updated successfully!", "success")
+            return redirect(url_for('main.shows'))
 
-    const getFilteredArtists = () => state.artists.filter(artist => {
-        const blob = state.artistSearch.get(artist.name) || '';
-        return matchesSearch(blob);
-    });
+        except Exception as e:
+            logger.error(f"An error occurred while updating settings: {e}")
+            flash(f"An error occurred while updating settings: {e}", "danger")
+            return redirect(url_for('main.settings'))
 
-    const getFilteredGenres = () => state.genres.filter(genre => {
-        const blob = state.genreSearch.get(genre.name) || '';
-        return matchesSearch(blob);
-    });
+    config = current_app.config
+    settings_data = {
+        'memory_status': get_memory_status(),
+        'admin_username': config['ADMIN_USERNAME'],
+        'admin_password': config['ADMIN_PASSWORD'],
+        'bind_host': config.get('BIND_HOST', '127.0.0.1'),
+        'bind_port': config.get('BIND_PORT', 5000),
+        'stream_url': config['STREAM_URL'],
+        'admin_url_prefix': config.get('ADMIN_URL_PREFIX', ''),
+        'output_folder': config['OUTPUT_FOLDER'],
+        'default_start_date': config['DEFAULT_START_DATE'],
+        'default_end_date': config['DEFAULT_END_DATE'],
+        'auto_create_show_folders': config['AUTO_CREATE_SHOW_FOLDERS'],
+        'station_name': config.get('STATION_NAME', ''),
+        'station_slogan': config.get('STATION_SLOGAN', ''),
+        'station_background': config.get('STATION_BACKGROUND', ''),
+        'schedule_timezone': normalize_timezone_name(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
+        'schedule_timezone_options': UTC_OFFSET_TIMEZONE_OPTIONS,
+        'schedule_timezone_label': timezone_label(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
+        'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
+        'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
+        'alerts_enabled': config.get('ALERTS_ENABLED', False),
+        'alerts_dry_run': config.get('ALERTS_DRY_RUN', True),
+        'alerts_discord_webhook': config.get('ALERTS_DISCORD_WEBHOOK', ''),
+        'alerts_email_enabled': config.get('ALERTS_EMAIL_ENABLED', False),
+        'alerts_email_to': config.get('ALERTS_EMAIL_TO', ''),
+        'alerts_email_from': config.get('ALERTS_EMAIL_FROM', ''),
+        'alerts_smtp_server': config.get('ALERTS_SMTP_SERVER', ''),
+        'alerts_smtp_port': config.get('ALERTS_SMTP_PORT', 587),
+        'alerts_smtp_username': config.get('ALERTS_SMTP_USERNAME', ''),
+        'alerts_smtp_password': config.get('ALERTS_SMTP_PASSWORD', ''),
+        'alert_dead_air_threshold_minutes': config.get('ALERT_DEAD_AIR_THRESHOLD_MINUTES', 5),
+        'alert_stream_down_threshold_minutes': config.get('ALERT_STREAM_DOWN_THRESHOLD_MINUTES', 1),
+        'alert_repeat_minutes': config.get('ALERT_REPEAT_MINUTES', 15),
+        'icecast_status_url': _clean_optional(config.get('ICECAST_STATUS_URL', '')) or '',
+        'icecast_listclients_url': _clean_optional(config.get('ICECAST_LISTCLIENTS_URL', '')) or '',
+        'icecast_username': _clean_optional(config.get('ICECAST_USERNAME', '')) or '',
+        'icecast_password': _clean_optional(config.get('ICECAST_PASSWORD', '')) or '',
+        'icecast_mount': _clean_optional(config.get('ICECAST_MOUNT', '')) or '',
+        'icecast_analytics_interval_minutes': config.get('ICECAST_ANALYTICS_INTERVAL_MINUTES', 5),
+        'icecast_ignored_ips': ", ".join(config.get('ICECAST_IGNORED_IPS', [])),
+        'data_root': _clean_optional(config.get('DATA_ROOT', '')) or '',
+        'music_library_path': _clean_optional(config.get('NAS_MUSIC_ROOT', '')) or '',
+        'radiodj_api_base_url': _clean_optional(config.get('RADIODJ_API_BASE_URL', '')) or '',
+        'radiodj_api_password': _clean_optional(config.get('RADIODJ_API_PASSWORD', '')) or '',
+        'self_heal_enabled': config.get('SELF_HEAL_ENABLED', True),
+        'stream_down_restart_threshold': config.get('STREAM_DOWN_RESTART_THRESHOLD', 3),
+        'stream_probe_timeout_seconds': config.get('STREAM_PROBE_TIMEOUT_SECONDS', 25),
+        'barix_auto_restart_enabled': config.get('BARIX_AUTO_RESTART_ENABLED', False),
+        'barix_ip': _clean_optional(config.get('BARIX_IP', '')) or '',
+        'barix_restart_url': _clean_optional(config.get('BARIX_RESTART_URL', '')) or '',
+        'barix_max_restarts_per_window': config.get('BARIX_MAX_RESTARTS_PER_WINDOW', 3),
+        'barix_restart_window_minutes': config.get('BARIX_RESTART_WINDOW_MINUTES', 20),
+        'musicbrainz_user_agent': _clean_optional(config.get('MUSICBRAINZ_USER_AGENT', '')) or '',
+        'rate_limit_enabled': config.get('RATE_LIMIT_ENABLED', True),
+        'rate_limit_requests': config.get('RATE_LIMIT_REQUESTS', 120),
+        'rate_limit_window_seconds': config.get('RATE_LIMIT_WINDOW_SECONDS', 60),
+        'rate_limit_trusted_ips': ", ".join(config.get('RATE_LIMIT_TRUSTED_IPS', [])),
+        'oauth_client_id': _clean_optional(config.get('OAUTH_CLIENT_ID', '')) or '',
+        'oauth_client_secret': _clean_optional(config.get('OAUTH_CLIENT_SECRET', '')) or '',
+        'oauth_allowed_domain': _clean_optional(config.get('OAUTH_ALLOWED_DOMAIN', '')) or '',
+        'discord_oauth_client_id': _clean_optional(config.get('DISCORD_OAUTH_CLIENT_ID', '')) or '',
+        'discord_oauth_client_secret': _clean_optional(config.get('DISCORD_OAUTH_CLIENT_SECRET', '')) or '',
+        'discord_allowed_guild_id': _clean_optional(config.get('DISCORD_ALLOWED_GUILD_ID', '')) or '',
+        'oauth_only': config.get('OAUTH_ONLY', False),
+        'custom_roles': ", ".join(config.get('CUSTOM_ROLES', [])),
+        'settings_backup_interval_hours': config.get('SETTINGS_BACKUP_INTERVAL_HOURS', 12),
+        'settings_backup_retention': config.get('SETTINGS_BACKUP_RETENTION', 10),
+        'data_backup_dirname': config.get('DATA_BACKUP_DIRNAME', 'data_backups'),
+        'data_backup_retention_days': config.get('DATA_BACKUP_RETENTION_DAYS', 60),
+        'theme_default': config.get('THEME_DEFAULT', 'system'),
+        'inline_help_enabled': config.get('INLINE_HELP_ENABLED', True),
+        'high_contrast_default': config.get('HIGH_CONTRAST_DEFAULT', False),
+        'font_scale_percent': config.get('FONT_SCALE_PERCENT', 100),
+        'dj_status_overnight_screensaver_enabled': config.get('DJ_STATUS_OVERNIGHT_SCREENSAVER_ENABLED', True),
+        'archivist_db_path': config.get('ARCHIVIST_DB_PATH', ''),
+        'archivist_upload_dir': config.get('ARCHIVIST_UPLOAD_DIR', ''),
+        'psa_library_path': config.get('PSA_LIBRARY_PATH', ''),
+        'imaging_library_path': config.get('IMAGING_LIBRARY_PATH', ''),
+        'pause_shows_recording': config.get('PAUSE_SHOWS_RECORDING', False),
+        'recording_periods': load_recording_periods().get("periods", []),
+        'current_recording_period': current_recording_period(),
+    }
 
-    const renderArtists = () => {
-        artistList.innerHTML = '';
-        const filteredArtists = getFilteredArtists();
-        if (!filteredArtists.length) {
-            artistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
-        }
-        if (state.selectedArtist && !filteredArtists.find(artist => artist.name === state.selectedArtist)) {
-            state.selectedArtist = null;
-            state.selectedAlbum = null;
-            state.tracks = [];
-            renderTracks();
-        }
-        filteredArtists.forEach(artist => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = artist.name;
-            btn.textContent = artist.name;
-            btn.addEventListener('click', () => {
-                state.selectedArtist = artist.name;
-                state.selectedAlbum = null;
-                setActiveListItem(artistList, artist.name);
-                renderAlbums();
-                state.tracks = artist.albums.flatMap(album => album.tracks);
-                renderTracks();
-            });
-            artistList.appendChild(btn);
-        });
-    };
+    logger.info(f'Rendering settings page.')
+    return render_template('settings.html', **settings_data)
 
-    const renderAlbums = () => {
-        albumList.innerHTML = '';
-        const artist = state.artists.find(a => a.name === state.selectedArtist);
-        if (!artist) {
-            albumList.innerHTML = '<div class="text-muted small">Select an artist to view albums.</div>';
-            return;
-        }
-        const albumSearchMap = state.albumSearch.get(artist.name) || new Map();
-        const filteredAlbums = (artist.albums || []).filter(album => {
-            if (!state.searchTerm) {
-                return true;
-            }
-            return matchesSearch(albumSearchMap.get(album.name) || '');
-        });
-        if (!filteredAlbums.length) {
-            albumList.innerHTML = '<div class="text-muted small">No albums match the current search.</div>';
-            return;
-        }
-        filteredAlbums.forEach(album => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = album.name;
-            btn.innerHTML = `<div class="fw-semibold">${album.name}</div><div class="small text-muted">${album.year || 'Year n/a'} · ${album.genre || 'Genre n/a'}</div>`;
-            btn.addEventListener('click', () => {
-                state.selectedAlbum = album.name;
-                setActiveListItem(albumList, album.name);
-                state.tracks = album.tracks;
-                renderTracks();
-            });
-            albumList.appendChild(btn);
-        });
-    };
 
-    const renderGenres = () => {
-        genreList.innerHTML = '';
-        const filteredGenres = getFilteredGenres();
-        if (!filteredGenres.length) {
-            genreList.innerHTML = '<div class="text-muted small">No genres match the current search.</div>';
-        }
-        if (state.selectedGenre && !filteredGenres.find(genre => genre.name === state.selectedGenre)) {
-            state.selectedGenre = null;
-            state.selectedGenreArtist = null;
-            state.tracks = [];
-            renderTracks();
-        }
-        filteredGenres.forEach(genre => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = genre.name;
-            btn.textContent = genre.name;
-            btn.addEventListener('click', () => {
-                state.selectedGenre = genre.name;
-                state.selectedGenreArtist = null;
-                setActiveListItem(genreList, genre.name);
-                renderGenreArtists();
-                state.tracks = genre.tracks || [];
-                renderTracks();
-            });
-            genreList.appendChild(btn);
-        });
-    };
+@main_bp.route('/settings/logs')
+@admin_required
+def view_system_log():
+    logs_dir = current_app.config.get("LOGS_DIR") or os.path.join(current_app.instance_path, "logs")
+    log_path = os.path.join(logs_dir, "ShowRecorder.log")
+    entries = []
+    error = None
+    try:
+        log_dir = os.path.dirname(log_path)
+        if log_dir:
+            os.makedirs(log_dir, exist_ok=True)
+        if not os.path.exists(log_path):
+            # ensure the log file exists so the viewer can open it without raising
+            open(log_path, 'a', encoding='utf-8').close()
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as fh:
+            raw_lines = deque(fh, maxlen=800)
+        for line in raw_lines:
+            level = 'info'
+            if ' - ERROR - ' in line:
+                level = 'error'
+            elif ' - WARNING - ' in line:
+                level = 'warning'
+            entries.append({'text': line.rstrip('\n'), 'level': level})
+    except Exception as exc:  # noqa: BLE001
+        error = str(exc)
+    return render_template('log_file.html', log_entries=entries, log_error=error, log_path=log_path)
 
-    const renderGenreArtists = () => {
-        genreArtistList.innerHTML = '';
-        const genre = state.genres.find(g => g.name === state.selectedGenre);
-        if (!genre) {
-            genreArtistList.innerHTML = '<div class="text-muted small">Select a genre to view artists.</div>';
-            return;
-        }
-        const artistSearchMap = state.genreArtistSearch.get(genre.name) || new Map();
-        const artists = (genre.artists || []).filter(name => {
-            if (!state.searchTerm) {
-                return true;
-            }
-            return matchesSearch(artistSearchMap.get(name) || '');
-        });
-        if (!artists.length) {
-            genreArtistList.innerHTML = '<div class="text-muted small">No artists match the current search.</div>';
-            return;
-        }
-        if (state.selectedGenreArtist && !artists.includes(state.selectedGenreArtist)) {
-            state.selectedGenreArtist = null;
-            state.tracks = genre.tracks || [];
-            renderTracks();
-        }
-        artists.forEach(name => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = name;
-            btn.textContent = name;
-            btn.addEventListener('click', () => {
-                state.selectedGenreArtist = name;
-                setActiveListItem(genreArtistList, name);
-                state.tracks = (genre.tracks || []).filter(track => track.artist === name);
-                renderTracks();
-            });
-            genreArtistList.appendChild(btn);
-        });
-    };
 
-    const renderPsaCategories = () => {
-        psaCategoryList.innerHTML = '';
-        state.psa.forEach(category => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = category.category;
-            btn.textContent = category.category;
-            btn.addEventListener('click', () => {
-                state.selectedCategory = category.category;
-                setActiveListItem(psaCategoryList, category.category);
-                renderPsaItems();
-            });
-            psaCategoryList.appendChild(btn);
-        });
-    };
+@main_bp.route('/settings/export', methods=['GET'])
+@admin_required
+def export_settings():
+    """Export current settings as JSON for backup/transfer."""
+    payload = {key: current_app.config.get(key) for key in ALLOWED_SETTINGS_KEYS}
+    return current_app.response_class(
+        json.dumps(payload, indent=2),
+        mimetype='application/json',
+        headers={'Content-Disposition': 'attachment; filename="rams-settings.json"'}
+    )
 
-    const renderPsaItems = () => {
-        psaItemList.innerHTML = '';
-        const category = state.psa.find(c => c.category === state.selectedCategory);
-        if (!category) {
-            psaItemList.innerHTML = '<div class="text-muted small">Select a collection to see items.</div>';
-            state.tracks = [];
-            renderTracks();
-            return;
-        }
-        category.items.forEach(item => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'list-group-item list-group-item-action';
-            btn.dataset.value = item.path;
-            btn.textContent = item.title;
-            btn.addEventListener('click', () => {
-                state.selectedItem = item;
-                updateMetadataForm(item);
-                setActiveListItem(psaItemList, item.path);
-            });
-            psaItemList.appendChild(btn);
-        });
-        state.tracks = category.items.map(item => ({
-            ...item,
-            artist: item.artist || category.category,
-            album: item.album || item.folder || category.category
-        }));
-        renderTracks();
-    };
 
-    const renderMusicLists = () => {
-        document.getElementById('artistBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'artist');
-        document.getElementById('genreBrowser').classList.toggle('d-none', state.musicBrowseMode !== 'genre');
-        if (state.musicBrowseMode === 'artist') {
-            renderArtists();
-            renderAlbums();
-        } else {
-            renderGenres();
-            renderGenreArtists();
-        }
-    };
+@main_bp.route('/settings/import', methods=['POST'])
+@admin_required
+def import_settings():
+    """Import settings from an uploaded JSON file."""
+    file = request.files.get('settings_file')
+    if not file or file.filename == '':
+        flash('Please choose a settings JSON file to import.', 'warning')
+        return redirect(url_for('main.settings'))
 
-    const setBrowseMode = (browseMode) => {
-        state.musicBrowseMode = browseMode;
-        state.selectedArtist = null;
-        state.selectedAlbum = null;
-        state.selectedGenre = null;
-        state.selectedGenreArtist = null;
-        state.tracks = [];
-        renderMusicLists();
-        renderTracks();
-    };
+    try:
+        data = json.load(file)
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Failed to parse settings JSON: {exc}")
+        flash('Could not read the uploaded settings file. Please check the JSON.', 'danger')
+        return redirect(url_for('main.settings'))
 
-    const setMode = (mode) => {
-        state.mode = mode;
-        musicControls.classList.toggle('d-none', mode !== 'music');
-        document.getElementById('musicBrowser').classList.toggle('d-none', mode !== 'music');
-        document.getElementById('psaBrowser').classList.toggle('d-none', mode !== 'psa');
-        trackFilterGroup.classList.toggle('d-none', mode !== 'music');
-        if (mode === 'music') {
-            state.selectedCategory = null;
-            state.tracks = [];
-            renderMusicLists();
-            renderTracks();
-        } else {
-            state.selectedArtist = null;
-            state.selectedAlbum = null;
-            state.selectedGenre = null;
-            state.selectedGenreArtist = null;
-            state.tracks = [];
-            renderPsaCategories();
-            renderPsaItems();
-        }
-    };
+    filtered = {k: _clean_optional(v) if k in {
+        'OAUTH_CLIENT_ID', 'OAUTH_CLIENT_SECRET', 'OAUTH_ALLOWED_DOMAIN',
+        'DISCORD_OAUTH_CLIENT_ID', 'DISCORD_OAUTH_CLIENT_SECRET', 'DISCORD_ALLOWED_GUILD_ID',
+        'TEMPEST_API_KEY', 'ALERTS_DISCORD_WEBHOOK', 'ALERTS_EMAIL_TO', 'ALERTS_EMAIL_FROM',
+        'ALERTS_SMTP_SERVER', 'ALERTS_SMTP_USERNAME', 'ALERTS_SMTP_PASSWORD', 'STATION_BACKGROUND',
+        'ICECAST_STATUS_URL', 'ICECAST_LISTCLIENTS_URL', 'ICECAST_USERNAME', 'ICECAST_PASSWORD', 'ICECAST_MOUNT', 'MUSICBRAINZ_USER_AGENT',
+        'DATA_ROOT', 'NAS_MUSIC_ROOT', 'RADIODJ_API_BASE_URL', 'RADIODJ_API_PASSWORD'
+    } else v for k, v in data.items() if k in ALLOWED_SETTINGS_KEYS}
 
-    document.querySelectorAll('#libraryTabs .nav-link').forEach(tab => {
-        tab.addEventListener('click', () => {
-            document.querySelectorAll('#libraryTabs .nav-link').forEach(btn => btn.classList.remove('active'));
-            tab.classList.add('active');
-            setMode(tab.dataset.mode);
-        });
-    });
+    if not filtered:
+        flash('No recognized settings were found in the uploaded file.', 'warning')
+        return redirect(url_for('main.settings'))
 
-    document.querySelectorAll('#browseModeToggle .btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#browseModeToggle .btn').forEach(toggle => toggle.classList.remove('active'));
-            btn.classList.add('active');
-            setBrowseMode(btn.dataset.browse);
-        });
-    });
+    try:
+        update_user_config(filtered)
+        try:
+            init_oauth(current_app)
+        except Exception as exc:  # noqa: BLE001
+            logger.error(f"Failed to reinitialize OAuth after settings import: {exc}")
+        flash('Settings imported successfully.', 'success')
+    except Exception as exc:  # noqa: BLE001
+        logger.error(f"Failed to import settings: {exc}")
+        flash('Import failed. Please try again with a valid settings file.', 'danger')
 
-    librarySearch.addEventListener('input', debounce(() => {
-        state.searchTerm = normalizeText(librarySearch.value);
-        renderMusicLists();
-        showAllMatchingTracks();
-    }, 250));
+    return redirect(url_for('main.settings'))
 
-    const yearFilter = document.getElementById('yearFilter');
-    const genreFilter = document.getElementById('genreFilter');
-    const years = [...new Set(allMusicTracks().map(track => String(track.year || '')).filter(Boolean))].sort().reverse();
-    const genres = [...new Set(allMusicTracks().map(track => track.genre).filter(Boolean))].sort((a, b) => a.localeCompare(b));
-    years.forEach(year => yearFilter.add(new Option(year, year)));
-    genres.forEach(genre => genreFilter.add(new Option(genre, genre)));
-    yearFilter.addEventListener('change', () => { state.year = yearFilter.value; showAllMatchingTracks(); });
-    genreFilter.addEventListener('change', () => { state.genre = genreFilter.value; showAllMatchingTracks(); });
-    document.getElementById('explicitFilter').addEventListener('change', event => { state.explicitOnly = event.target.checked; showAllMatchingTracks(); });
 
-    selectAll.addEventListener('change', () => {
-        const visible = JSON.parse(selectAll.dataset.visiblePaths || '[]');
-        visible.forEach(path => selectAll.checked ? state.selectedPaths.add(path) : state.selectedPaths.delete(path));
-        renderTracks();
-    });
+@main_bp.route('/settings/backup-now', methods=['POST'])
+@admin_required
+def backup_settings_now():
+    dest = backup_settings()
+    if dest:
+        flash(f"Settings backed up to {dest}", "success")
+    else:
+        flash("No user_config.json found to back up.", "warning")
+    return redirect(url_for('main.settings'))
 
-    document.getElementById('openDetail').addEventListener('click', () => {
-        if (state.selectedItem?.path) window.location.href = window.ramsUrl(`/music/detail?path=${encodeURIComponent(state.selectedItem.path)}`);
-    });
 
-    document.getElementById('listToggle').addEventListener('click', () => {
-        state.view = 'list';
-        listView.classList.remove('d-none');
-        gridView.classList.add('d-none');
-        document.getElementById('listToggle').classList.add('active');
-        document.getElementById('gridToggle').classList.remove('active');
-    });
+@main_bp.route('/settings/backup-data', methods=['POST'])
+@admin_required
+def backup_data_now():
+    dest = backup_data_snapshot()
+    if dest:
+        flash(f"Data backup written to {dest}", "success")
+    else:
+        flash("Data backup did not run; check logs for details.", "warning")
+    return redirect(url_for('main.settings'))
 
-    document.getElementById('gridToggle').addEventListener('click', () => {
-        state.view = 'grid';
-        listView.classList.add('d-none');
-        gridView.classList.remove('d-none');
-        document.getElementById('gridToggle').classList.add('active');
-        document.getElementById('listToggle').classList.remove('active');
-        renderTracks();
-    });
+@main_bp.route('/update_schedule', methods=['POST'])
+@admin_required
+def update_schedule():
+    """Route to refresh the schedule."""
 
-    document.querySelectorAll('#trackFilter .btn').forEach(btn => {
-        btn.addEventListener('click', () => {
-            document.querySelectorAll('#trackFilter .btn').forEach(filterBtn => filterBtn.classList.remove('active'));
-            btn.classList.add('active');
-            state.trackFilter = btn.dataset.filter || 'all';
-            renderTracks();
-        });
-    });
+    try:
+        refresh_schedule()
+        logger.info("Schedule updated successfully.")
+        flash("Schedule updated successfully!", "success")
+        return redirect(url_for('main.shows'))
+    except Exception as e:
+        logger.error(f"Error updating schedule: {e}")
+        flash(f"Error updating schedule: {e}", "danger")
+        return redirect(url_for('main.shows'))
 
-    document.querySelectorAll('.sort-header').forEach(header => {
-        header.addEventListener('click', () => {
-            const key = header.dataset.sort;
-            if (!key) return;
-            if (state.sortKey === key) {
-                state.sortDir = state.sortDir === 'asc' ? 'desc' : 'asc';
-            } else {
-                state.sortKey = key;
-                state.sortDir = 'asc';
-            }
-            sortLabel.textContent = key.charAt(0).toUpperCase() + key.slice(1);
-            document.querySelectorAll('.sort-indicator').forEach(indicator => indicator.textContent = '');
-            const indicator = document.getElementById(`sort-${key}`);
-            indicator.textContent = state.sortDir === 'asc' ? '▲' : '▼';
-            renderTracks();
-        });
-    });
+@main_bp.route('/show/delete/<int:id>', methods=['POST'])
+@admin_required
+def delete_show(id):
+    """Route to delete a show."""
 
-    document.getElementById('resetMetadata').addEventListener('click', () => {
-        updateMetadataForm(state.selectedItem);
-    });
+    try:
+        show = Show.query.get_or_404(id)
+        db.session.delete(show)
+        db.session.commit()
+        refresh_schedule()
+        logger.info("Show deleted successfully.")
+        flash("Show deleted successfully!", "success")
+        return redirect(url_for('main.shows'))
+    except Exception as e:
+        logger.error(f"Error deleting show: {e}")
+        flash(f"Error deleting show: {e}", "danger")
+        return redirect(url_for('main.shows'))
 
-    Object.values(formFields).forEach(field => {
-        if (!field) return;
-        const eventName = field.type === 'checkbox' ? 'change' : 'input';
-        field.addEventListener(eventName, () => {
-            updateSaveState();
-        });
-    });
+@main_bp.route('/clear_all', methods=['POST'])
+@admin_required
+def clear_all():
+    """Route to clear all shows."""
 
-    saveMetadataBtn.addEventListener('click', async () => {
-        if (!state.selectedItem) return;
-        const current = getFormState();
-        const baseline = formState.baseline || {};
-        if (!current.path) return;
-        const updates = {};
-        ['artist', 'album', 'title', 'year', 'genre', 'explicit'].forEach(key => {
-            if (current[key] !== baseline[key]) {
-                updates[key] = current[key];
-            }
-        });
-        if (!Object.keys(updates).length) {
-            updateSaveState();
-            return;
-        }
-        formState.saving = true;
-        updateSaveState();
-        saveStatus.textContent = 'Saving changes...';
-        saveStatus.classList.remove('text-danger');
-        try {
-            const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ paths: [current.path], updates })
-            });
-            const payload = await res.json();
-            if (!res.ok || payload.status !== 'ok') {
-                throw new Error(payload.message || 'Unable to save changes.');
-            }
-            Object.assign(state.selectedItem, updates);
-            formState.baseline = getFormState();
-            saveStatus.textContent = 'Saved successfully.';
-            saveStatus.classList.remove('text-danger');
-            renderTracks();
-        } catch (error) {
-            saveStatus.textContent = error?.message || 'Unable to save changes.';
-            saveStatus.classList.add('text-danger');
-        } finally {
-            formState.saving = false;
-            updateSaveState();
-            setTimeout(() => {
-                saveStatus.classList.remove('text-danger');
-            }, 2000);
-        }
-    });
+    try:
+        db.session.query(Show).delete()
+        db.session.commit()
+        refresh_schedule()
+        logger.info("All shows have been deleted.")
+        flash("All shows have been deleted.", "info")
+        return redirect(url_for('main.shows'))
+    except Exception as e:
+        logger.error(f"Error deleting shows: {e}")
+        flash(f"Error deleting shows: {e}", "danger")
+        return redirect(url_for('main.shows'))
 
-    const fileAsBase64 = file => new Promise((resolve, reject) => {
-        if (!file) return resolve(null);
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result).split(',')[1]);
-        reader.onerror = reject;
-        reader.readAsDataURL(file);
-    });
+@main_bp.route('/pause', methods=['POST'])
+@admin_required
+def pause():
+    """Pause the recordings until the specified end date or indefinitely."""
 
-    applyBulk.addEventListener('click', async () => {
-        const updates = {};
-        document.querySelectorAll('.bulk-field').forEach(input => {
-            if (input.value.trim()) updates[input.dataset.key] = input.value.trim();
-        });
-        const coverFile = document.getElementById('bulkCover').files[0];
-        if (!Object.keys(updates).length && !coverFile) {
-            document.getElementById('bulkStatus').textContent = 'Enter at least one change.';
-            return;
-        }
-        if (!window.confirm(`Apply these changes to ${state.selectedPaths.size} selected item(s)?`)) return;
-        applyBulk.disabled = true;
-        const status = document.getElementById('bulkStatus');
-        status.textContent = 'Applying changes…';
-        try {
-            const res = await fetch(window.ramsUrl('/api/music/bulk-update'), {
-                method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({paths: [...state.selectedPaths], updates, cover_art: await fileAsBase64(coverFile)})
-            });
-            const payload = await res.json();
-            if (!res.ok || payload.status !== 'ok') throw new Error(payload.message || 'Bulk update failed.');
-            allMusicTracks().filter(track => state.selectedPaths.has(track.path)).forEach(track => Object.assign(track, updates));
-            status.textContent = `Updated ${state.selectedPaths.size} item(s).`;
-            status.classList.remove('text-danger');
-            buildCaches(); renderMusicLists(); renderTracks();
-        } catch (error) {
-            status.textContent = error.message || 'Bulk update failed.';
-            status.classList.add('text-danger');
-        } finally { updateBulkState(); }
-    });
+    try:
+        pause_end_date = request.form.get('pause_end_date')
+        if pause_end_date:
+            pause_end_date = datetime.strptime(pause_end_date, '%Y-%m-%d')
+            pause_shows_until(pause_end_date)
+            update_user_config({"PAUSE_SHOW_END_DATE": pause_end_date.isoformat(), "PAUSE_END_DATE": None})
 
-    const savedList = document.getElementById('savedList');
-    const renderSavedSearches = () => {
-        savedList.innerHTML = savedSearches.length ? '' : '<li><span class="dropdown-item-text text-muted">No saved searches</span></li>';
-        savedSearches.forEach(saved => {
-            const li = document.createElement('li');
-            li.innerHTML = `<div class="dropdown-item d-flex align-items-center gap-2"><button class="btn btn-link p-0 text-start flex-grow-1 saved-open" type="button"></button><button class="btn btn-link text-danger p-0 saved-delete" aria-label="Delete saved search" type="button">×</button></div>`;
-            li.querySelector('.saved-open').textContent = saved.name;
-            li.querySelector('.saved-open').addEventListener('click', () => {
-                librarySearch.value = saved.query || '';
-                const filters = saved.filters || {};
-                yearFilter.value = filters.year || ''; genreFilter.value = filters.genre || '';
-                document.getElementById('explicitFilter').checked = Boolean(filters.explicit);
-                state.searchTerm = normalizeText(librarySearch.value); state.year = yearFilter.value; state.genre = genreFilter.value; state.explicitOnly = Boolean(filters.explicit);
-                renderMusicLists(); showAllMatchingTracks();
-            });
-            li.querySelector('.saved-delete').addEventListener('click', async event => {
-                event.stopPropagation();
-                await fetch(window.ramsUrl(`/api/music/saved-searches?id=${saved.id}`), {method: 'DELETE'});
-                savedSearches = savedSearches.filter(item => item.id !== saved.id); renderSavedSearches();
-            });
-            savedList.appendChild(li);
-        });
-    };
-    const loadSavedSearches = async () => {
-        const res = await fetch(window.ramsUrl('/api/music/saved-searches'));
-        if (res.ok) savedSearches = await res.json();
-        renderSavedSearches();
-    };
-    document.getElementById('saveSearchBtn').addEventListener('click', async () => {
-        const name = window.prompt('Name this search:');
-        if (!name) return;
-        const res = await fetch(window.ramsUrl('/api/music/saved-searches'), {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({name, query: librarySearch.value, filters: {year: state.year, genre: state.genre, explicit: state.explicitOnly}})});
-        if (res.ok) await loadSavedSearches();
-    });
+        update_user_config({"PAUSE_SHOWS_RECORDING": True})
 
-    const maintenanceResults = document.getElementById('maintenanceResults');
-    const showMaintenance = html => { maintenanceResults.innerHTML = html; maintenanceResults.classList.remove('d-none'); };
-    document.getElementById('queuesBtn').addEventListener('click', async () => {
-        showMaintenance('Loading queues…');
-        const res = await fetch(window.ramsUrl('/api/music/scan/library'));
-        const data = await res.json();
-        const metrics = data.metrics || {};
-        const list = (items, label) => `<strong>${label}</strong>: ${items?.length ? items.slice(0, 5).map(item => item.title || item.path).join(', ') : 'None'}`;
-        showMaintenance(`${list(metrics.low_bitrate, 'Low bitrate')}<br>${list(metrics.missing_art, 'Missing art')}<br>${list(metrics.needs_metadata, 'Needs metadata')}<br>${list(metrics.recently_added, 'Recently added')}`);
-    });
-    document.getElementById('scanBtn').addEventListener('click', async () => {
-        showMaintenance('Running duplicate and quality scan…');
-        const res = await fetch(window.ramsUrl('/api/music/scan/library?refresh=1'));
-        const data = await res.json();
-        const metrics = data.metrics || {};
-        showMaintenance(`Scan complete. ${metrics.duplicates?.length || 0} duplicate pair(s), ${metrics.low_bitrate?.length || 0} low-bitrate item(s), ${metrics.missing_art?.length || 0} missing artwork item(s).`);
-    });
+        flash(f"Recordings paused{' until ' + pause_end_date.strftime('%d-%m-%y') if pause_end_date else ' indefinitely'}.", "warning")
+        logger.info(f"Recordings paused{' until ' + pause_end_date.strftime('%d-%m-%y') if pause_end_date else ' indefinitely'}.")
+    except Exception as e:
+        logger.error(f"Error pausing recordings: {e}")
+        flash(f"Error pausing recordings: {e}", "danger")
 
-    buildCaches();
-    renderMusicLists();
-    renderTracks();
-    loadSavedSearches();
-</script>
-</body>
-</html>
+    return redirect(url_for('main.settings'))
+
+@main_bp.route('/resume', methods=['POST'])
+@admin_required
+def resume():
+    """Resume the recordings."""
+
+    try:
+        update_user_config({
+            "PAUSE_SHOWS_RECORDING": False,
+            "PAUSE_SHOW_END_DATE": None,
+            "PAUSE_END_DATE": None,
+        })
+        flash("Recordings resumed.", "success")
+        logger.info("Recordings resumed.")
+    except Exception as e:
+        logger.error(f"Error resuming recordings: {e}")
+        flash(f"Error resuming recordings: {e}", "danger")
+  
+    return redirect(url_for('main.settings'))
