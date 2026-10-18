@@ -8,6 +8,7 @@ from app.services.log_export import (
     LogCsvEntry,
     build_recording_base_path,
     recording_csv_path,
+    read_recording_metadata,
     write_recording_metadata,
     write_log_csv,
 )
@@ -141,7 +142,8 @@ def submit_log():
         else:
             window_start = datetime.combine(show_date, time.min)
             window_end = window_start + timedelta(hours=2)
-        write_recording_metadata(recording_path, {
+        metadata = read_recording_metadata(recording_path)
+        metadata.update({
             "schema_version": 1,
             "show_name": show_name,
             "dj": f"{dj_first} {dj_last}".strip(),
@@ -151,6 +153,8 @@ def submit_log():
             "log_file": os.path.basename(csv_path),
             "updated_at": datetime.utcnow().isoformat(),
         })
+        metadata.setdefault("flagged_missed", False)
+        write_recording_metadata(recording_path, metadata)
         logger.info("Log CSV written to %s with %s entries.", csv_path, len(csv_entries))
         flash("Log submitted successfully!", "success")
         logger.info("Log CSV saved with %s entries", len(rows))

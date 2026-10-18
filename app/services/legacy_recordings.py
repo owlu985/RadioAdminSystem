@@ -161,6 +161,7 @@ def write_legacy_sidecar(path: str, *, period: str, show_name: str, dj_names: li
         timestamp = f"{recorded_date}T00:00:00"
     return write_recording_metadata(path, {
         "schema_version": 1,
+        "flagged_missed": False,
         "recording_type": "legacy",
         "legacy_import": True,
         "show_name": show_name.strip(),

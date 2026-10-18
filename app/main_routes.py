@@ -30,6 +30,9 @@ from .utils import (
     show_display_title,
     show_primary_host,
     next_show_occurrence,
+    scheduled_window_for_date,
+    get_config_timezone,
+    localize_datetime,
     active_absence_for_show,
     normalize_timezone_name,
     UTC_OFFSET_TIMEZONE_OPTIONS,
@@ -50,6 +53,7 @@ from .models import (
     ArchivistEntry,
     ArchivistRipResult,
     LogSheet,
+    ShowRun,
     DJHandoffNote,
     Plugin,
     MarathonEvent,
@@ -86,6 +90,7 @@ from app.services.library.dj_library import (
 )
 from app.services.library.media_library import decode_media_token, encode_media_token
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
+from app.services.airing_audit import build_audit, evidence_identity, recording_family, key as airing_key
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
     ignore_legacy_recording,
@@ -254,6 +259,7 @@ class RecordingEntry:
     period_label: str
     is_legacy: bool
     pdf_log_path: str
+    flagged_missed: bool = False
 
 
 def _parse_recording_label(filename: str) -> str | None:
@@ -431,6 +437,7 @@ def _build_recording_entry(
         period_label=_period_label_for_path(full, base_root, period_map).encode("utf-8", "replace").decode("utf-8"),
         is_legacy=bool(metadata.get("legacy_import")),
         pdf_log_path=pdf_log_path if os.path.isfile(pdf_log_path) else "",
+        flagged_missed=metadata.get("flagged_missed") is True,
     )
 
 
@@ -438,6 +445,7 @@ def _collect_recordings(
     show: str | None = None,
     dj: str | None = None,
     period: str | None = None,
+    include_missed: bool = False,
 ) -> list[RecordingEntry]:
     base_root = _recordings_root()
     periods = load_recording_periods().get("periods", [])
@@ -470,6 +478,8 @@ def _collect_recordings(
                 period_folders=period_folders,
                 root=root,
             )
+            if entry.flagged_missed and not include_missed:
+                continue
             if show_filter and entry.show_key != show_filter:
                 continue
             if dj_filter and entry.dj_key != dj_filter:
@@ -700,6 +710,7 @@ def dj_handoff_notes():
 @main_bp.route("/recordings")
 @permission_required({"logs:view"})
 def recordings_manage():
+    show_missed = request.args.get("show_missed") == "1"
     show_filter = (request.args.get("show") or "").strip() or None
     dj_filter = (request.args.get("dj") or "").strip() or None
     period_param = request.args.get("period") or current_recording_period()
@@ -709,8 +720,8 @@ def recordings_manage():
     periods = periods_payload.get("periods", [])
     if period_param not in periods and period_param != ALL_PERIODS_VALUE:
         period_param = current_recording_period()
-    entries = _collect_recordings(show=show_filter, dj=dj_filter, period=period_param)
-    available_entries = _collect_recordings(period=period_param)
+    entries = _collect_recordings(show=show_filter, dj=dj_filter, period=period_param, include_missed=show_missed)
+    available_entries = _collect_recordings(period=period_param, include_missed=show_missed)
     shows = sorted({entry.show_name for entry in available_entries})
     djs = sorted({entry.dj_name for entry in available_entries})
     total_entries = len(entries)
@@ -722,6 +733,7 @@ def recordings_manage():
     return render_template(
         "recordings_manage.html",
         recordings=page_entries,
+        show_missed=show_missed,
         shows=shows,
         djs=djs,
         selected_show=show_filter or "",
@@ -735,6 +747,71 @@ def recordings_manage():
         periods=periods,
         all_periods_value=ALL_PERIODS_VALUE,
     )
+
+
+@main_bp.route("/shows/audit")
+@permission_required({"logs:view"})
+def airing_audit():
+    now = datetime.now(get_config_timezone()).replace(tzinfo=None)
+    try:
+        week = date.fromisoformat(request.args.get("week", now.date().isoformat()))
+    except ValueError:
+        abort(400, "Invalid week date")
+    week -= timedelta(days=week.weekday())
+    if week < date.min + timedelta(days=7) or week > date.max - timedelta(days=14):
+        abort(400, "Week is out of range")
+    report = build_audit(_recordings_root(), _collect_recordings(include_missed=True), week, now=now)
+    return render_template("airing_audit.html", **report, week=week,
+                           previous=week-timedelta(days=7), following=week+timedelta(days=7))
+
+
+@main_bp.post("/recordings/missed/<path:token>")
+@permission_required({"logs:edit"})
+def recording_missed(token):
+    full = _resolve_recording_path(token)
+    if not full or not full.lower().endswith((".mp3", ".wav", ".m4a", ".aac")):
+        abort(404)
+    value = request.form.get("flagged_missed")
+    if value not in {"0", "1"}:
+        abort(400)
+    now = datetime.now(get_config_timezone()).replace(tzinfo=None)
+    rec = next((entry for entry in _collect_recordings(include_missed=True) if os.path.normcase(entry.full_path) == os.path.normcase(full)), None)
+    if not rec:
+        abort(404)
+    identity = evidence_identity(full, fallback_show=rec.show_name)
+    if not identity or identity[1] > now.date():
+        abort(400, "A past airing date is required before marking a recording.")
+    flagged = value == "1"
+    # Apply to the full recovery family and other evidence for the same airing.
+    paths = {full}
+    for entry in _collect_recordings(include_missed=True):
+        if (recording_family(entry.full_path) == recording_family(full)
+                or evidence_identity(entry.full_path, fallback_show=entry.show_name) == identity):
+            paths.add(entry.full_path)
+    for directory, _, files in os.walk(_recordings_root()):
+        for filename in files:
+            if filename.lower().endswith(".csv"):
+                path = os.path.join(directory, filename)
+                try:
+                    rows = read_log_csv(path)
+                except (OSError, UnicodeError, ValueError, csv.Error):
+                    continue
+                if any((airing_key(row.show_name), row.show_date) == (identity[0], identity[1].isoformat()) for row in rows):
+                    paths.add(path)
+    for path in paths:
+        metadata = read_recording_metadata(path)
+        metadata.setdefault("show_name", rec.show_name)
+        metadata.setdefault("show_date", identity[1].isoformat())
+        metadata.setdefault("dj", rec.dj_name)
+        metadata["flagged_missed"] = flagged
+        metadata["missed_updated_at"] = datetime.utcnow().isoformat()
+        write_recording_metadata(path, metadata)
+    for run in ShowRun.query.all():
+        if (airing_key(run.show_name), localize_datetime(run.start_time).date()) == identity:
+            run.flagged_missed = flagged
+    db.session.commit()
+    flash("Show marked as Missed." if flagged else "Missed status cleared.", "success")
+    return redirect(url_for("main.recordings_view", token=token))
 
 
 @main_bp.route("/recordings/legacy-import", methods=["GET", "POST"])
@@ -891,6 +968,7 @@ def recordings_view(token: str):
         token=token,
         compliance=compliance,
         peak_listeners=peak_listeners,
+        flagged_missed=metadata.get("flagged_missed") is True,
     )
 
 
@@ -981,7 +1059,8 @@ def recordings_download():
                 )
             )
     else:
-        entries = _collect_recordings(show=show_filter, dj=dj_filter, period=period_param)
+        entries = _collect_recordings(show=show_filter, dj=dj_filter, period=period_param,
+                                      include_missed=request.values.get("show_missed") == "1")
     if not entries:
         flash("No recordings found for that filter.", "warning")
         return redirect(url_for(
@@ -1936,7 +2015,18 @@ def dj_absence_submit():
                         flash("All fields except replacement/notes are required.", "danger")
                         return redirect(url_for("main.dj_absence_submit"))
 
-                occurrence = next_show_occurrence(show_obj)
+                airing_date = (request.form.get("airing_date") or "").strip()
+                if airing_date:
+                        try:
+                                occurrence = scheduled_window_for_date(show_obj, date.fromisoformat(airing_date))
+                        except ValueError:
+                                occurrence = None
+                        now = datetime.now(get_config_timezone()).replace(tzinfo=None)
+                        if not occurrence or occurrence[0] < now:
+                                flash("Choose a future scheduled airing date within this show's date range.", "danger")
+                                return redirect(url_for("main.dj_absence_submit"))
+                else:
+                        occurrence = next_show_occurrence(show_obj, include_uncovered_absence=True)
                 if not occurrence:
                         flash("Could not determine the next scheduled slot for this show.", "danger")
                         return redirect(url_for("main.dj_absence_submit"))

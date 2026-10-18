@@ -64,7 +64,11 @@
                 <div class="col-md-3 d-flex gap-2">
                     <button class="btn btn-primary" type="submit">Apply filters</button>
                     <a class="btn btn-outline-secondary" href="{{ url_for('main.recordings_manage') }}">Clear</a>
-                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by) }}">Download all</a>
+                    <a class="btn btn-outline-success" href="{{ url_for('main.recordings_download', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, show_missed='1' if show_missed else '0') }}">Download all</a>
+                </div>
+                <div class="col-md-3 form-check ms-2">
+                    <input class="form-check-input" type="checkbox" id="showMissed" name="show_missed" value="1" {% if show_missed %}checked{% endif %}>
+                    <label class="form-check-label" for="showMissed">Show Missed Shows</label>
                 </div>
                 <input type="hidden" name="page" value="1">
             </form>
@@ -83,6 +87,7 @@
                         <input type="hidden" name="show" value="{{ selected_show }}">
                         <input type="hidden" name="dj" value="{{ selected_dj }}">
                         <input type="hidden" name="period" value="{{ selected_period }}">
+                        <input type="hidden" name="show_missed" value="{{ '1' if show_missed else '0' }}">
                         <input type="hidden" name="group_by" value="{{ selected_group_by }}">
                         <table class="table table-hover mb-0">
                         <thead>
@@ -107,7 +112,7 @@
                                     <td>
                                         <input class="form-check-input recording-checkbox" type="checkbox" name="tokens" value="{{ rec.token }}" aria-label="Select recording {{ rec.filename }}">
                                     </td>
-                                    <td>{{ rec.show_name }}</td>
+                                    <td>{{ rec.show_name }} {% if rec.flagged_missed %}<span class="badge text-bg-danger">Missed</span>{% endif %}</td>
                                     <td>{{ rec.dj_name }}</td>
                                     <td>{{ rec.period_label }}</td>
                                     <td>{{ rec.filename }}</td>
@@ -151,15 +156,15 @@
                         <nav aria-label="Recordings pagination">
                             <ul class="pagination pagination-sm mb-0">
                                 <li class="page-item {% if current_page <= 1 %}disabled{% endif %}">
-                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=current_page-1) }}">Previous</a>
+                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, show_missed='1' if show_missed else '0', page=current_page-1) }}">Previous</a>
                                 </li>
                                 {% for page_number in range(1, total_pages + 1) %}
                                     <li class="page-item {% if page_number == current_page %}active{% endif %}">
-                                        <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=page_number) }}">{{ page_number }}</a>
+                                        <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, show_missed='1' if show_missed else '0', page=page_number) }}">{{ page_number }}</a>
                                     </li>
                                 {% endfor %}
                                 <li class="page-item {% if current_page >= total_pages %}disabled{% endif %}">
-                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, page=current_page+1) }}">Next</a>
+                                    <a class="page-link" href="{{ url_for('main.recordings_manage', show=selected_show, dj=selected_dj, period=selected_period, group_by=selected_group_by, show_missed='1' if show_missed else '0', page=current_page+1) }}">Next</a>
                                 </li>
                             </ul>
                         </nav>

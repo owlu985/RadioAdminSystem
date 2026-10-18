@@ -1,0 +1,185 @@
+from datetime import date, datetime, time, timedelta
+from pathlib import Path
+
+import pytest
+
+from app.main_routes import _collect_recordings
+from app.models import DJ, DJAbsence, LogSheet, ShowRun, db
+from app.services.airing_audit import build_audit
+from app.services.log_export import LogCsvEntry, read_recording_metadata, write_log_csv, write_recording_metadata
+from app.services.library.media_library import encode_media_token
+from test_dj_recording_portal import portal_app, _show
+
+
+def login(client, role="admin"):
+    with client.session_transaction() as session:
+        session["authenticated"] = True
+        session["role"] = role
+
+
+def recording(root, day, suffix="", *, missed=False, hosts=None):
+    path = root / f"Friday_Night_Radio_{day:%m-%d-%y}_RAWDATA{suffix}.mp3"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"audio")
+    write_recording_metadata(str(path), {"show_name": "Friday Night Radio", "show_date": day.isoformat(),
+                                         "dj_names": hosts or ["Alex Smith"], "flagged_missed": missed})
+    return path
+
+
+def log(root, day, *, missed=False):
+    path = root / f"Friday_Night_Radio_{day:%m-%d-%y}_RAWDATA.csv"
+    path.parent.mkdir(parents=True, exist_ok=True)
+    write_log_csv(csv_path=str(path), entries=[LogCsvEntry(day.isoformat(), "Friday Night Radio", "Alex Smith", "10:30", "music", "Song", "Artist", "")])
+    if missed:
+        metadata = read_recording_metadata(str(path))
+        metadata["flagged_missed"] = True
+        write_recording_metadata(str(path), metadata)
+    return path
+
+
+def report(app, root, week=date(2026, 9, 7)):
+    with app.app_context():
+        return build_audit(str(root), _collect_recordings(include_missed=True), week, now=datetime(2026, 10, 1))
+
+
+def test_audit_deduplicates_recordings_logs_and_parts_and_excludes_missed(portal_app):
+    app, root = portal_app
+    with app.app_context():
+        db.session.add_all([_show("Friday Night Radio"), DJ(first_name="Alex", last_name="Smith"), DJ(first_name="No", last_name="Shows")])
+        db.session.commit()
+    first = date(2026, 9, 4)
+    recording(root, first)
+    recording(root, first, "_part01")
+    log(root, first)
+    recording(root, first + timedelta(days=7), "_part01", hosts=["Alex Smith", "Pat Jones"])
+    recording(root, first + timedelta(days=14), "_part01")
+    recording(root, first + timedelta(days=14), "_part02")
+    recording(root, first + timedelta(days=21), missed=True)
+    log(root, first + timedelta(days=21))
+    # A future upload cannot inflate totals.
+    recording(root, date(2027, 1, 1))
+    result = report(app, root)
+    assert result["total"] == 2
+    assert dict(result["dj_totals"]) == {"Alex Smith": 2, "No Shows": 0, "Pat Jones": 1}
+    row = result["calendar"][0]
+    assert row["total"] == 2
+    assert row["cells"][4]["status"] == "Aired"
+    # Multiple orphaned parts can still be supported by a submitted log.
+    log(root, first + timedelta(days=14))
+    assert report(app, root)["total"] == 3
+
+
+def test_log_only_and_legacy_log_rows_count_once_but_missed_run_vetoes(portal_app):
+    app, root = portal_app
+    day = date(2026, 9, 11)
+    log(root, day)
+    with app.app_context():
+        db.session.add(LogSheet(show_name="Friday Night Radio", dj_first_name="Alex", dj_last_name="Smith", show_date=day))
+        db.session.commit()
+    assert report(app, root)["total"] == 1
+    with app.app_context():
+        app.config["TIMEZONE"] = "UTC"
+        db.session.add(ShowRun(show_name="Friday Night Radio", dj_first_name="Alex", dj_last_name="Smith", start_time=datetime(2026, 9, 11, 16), flagged_missed=True))
+        db.session.commit()
+    assert report(app, root)["total"] == 0
+
+
+def test_calendar_red_for_missing_evidence_and_gray_for_future(portal_app):
+    app, root = portal_app
+    with app.app_context():
+        db.session.add(_show("Friday Night Radio"))
+        db.session.commit()
+    result = report(app, root)
+    assert result["calendar"][0]["cells"][4]["status"] == "No evidence"
+    assert report(app, root, date(2026, 10, 5))["calendar"][0]["cells"][4]["status"] == "Upcoming"
+
+
+def test_filename_date_fallback_does_not_use_mtime(portal_app):
+    app, root = portal_app
+    path = recording(root, date(2026, 9, 11))
+    path.with_suffix(".json").unlink()
+    unknown = root / "undated.mp3"
+    unknown.write_bytes(b"audio")
+    result = report(app, root)
+    assert result["total"] == 1
+    assert result["skipped"] == 1
+
+
+def test_missed_control_filters_lists_exports_and_can_be_reversed(portal_app):
+    app, root = portal_app
+    path = recording(root, date(2026, 9, 11))
+    part = recording(root, date(2026, 9, 11), "_part01")
+    log(root, date(2026, 9, 11))
+    token = encode_media_token(str(path))
+    client = app.test_client()
+    login(client, "viewer")
+    assert client.post(f"/recordings/missed/{token}", data={"flagged_missed": "1"}).status_code == 403
+    login(client)
+    assert client.post(f"/recordings/missed/{token}", data={"flagged_missed": "1"}).status_code == 302
+    assert read_recording_metadata(str(path))["flagged_missed"] is True
+    assert read_recording_metadata(str(part))["flagged_missed"] is True
+    assert path.name.encode() not in client.get("/recordings?period=__all__").data
+    assert path.name.encode() in client.get("/recordings?period=__all__&show_missed=1").data
+    assert b"Missed show" in client.get(f"/recordings/view/{token}").data
+    assert report(app, root)["total"] == 0
+    assert client.get("/recordings/download?period=__all__").status_code == 302
+    assert client.get("/recordings/download?period=__all__&show_missed=1").status_code == 200
+    assert client.post(f"/recordings/missed/{token}", data={"flagged_missed": "0"}).status_code == 302
+    assert report(app, root)["total"] == 1
+    assert path.name.encode() in client.get("/recordings?period=__all__").data
+
+
+def test_audit_page_and_week_validation(portal_app):
+    app, _ = portal_app
+    client = app.test_client()
+    assert client.get("/shows/audit").status_code == 403
+    login(client)
+    response = client.get("/shows/audit?week=2026-09-11")
+    assert response.status_code == 200
+    assert b'2026-09-07' in response.data
+    for week in ("bad", "0001-01-01", "9999-12-31"):
+        assert client.get(f"/shows/audit?week={week}").status_code == 400
+
+
+def test_absence_specific_date_overnight_and_invalid_dates(portal_app, monkeypatch):
+    app, _ = portal_app
+    monkeypatch.setattr("app.main_routes.refresh_schedule", lambda: None)
+    future = date.today() + timedelta(days=21)
+    future += timedelta(days=(4-future.weekday()) % 7)
+    with app.app_context():
+        show = _show("Friday Night Radio")
+        show.start_date, show.end_date = future - timedelta(days=30), future + timedelta(days=30)
+        show.start_time, show.end_time = time(23), time(1)
+        dj = DJ(first_name="Alex", last_name="Smith")
+        db.session.add_all([show, dj])
+        db.session.commit()
+        payload = {"dj_id": dj.id, "show_id": show.id, "airing_date": future.isoformat()}
+    client = app.test_client()
+    assert client.post("/dj/absence", data=payload).status_code == 302
+    with app.app_context():
+        absence = DJAbsence.query.one()
+        assert absence.start_time == datetime.combine(future, time(23))
+        assert absence.end_time == datetime.combine(future + timedelta(days=1), time(1))
+    for invalid in ("bad", (future+timedelta(days=1)).isoformat(), (future+timedelta(days=70)).isoformat(), "2020-01-03"):
+        client.post("/dj/absence", data={**payload, "airing_date": invalid})
+    with app.app_context():
+        assert DJAbsence.query.count() == 1
+    monkeypatch.setattr("app.main_routes.next_show_occurrence", lambda *args, **kwargs: (datetime.combine(future, time(23)), datetime.combine(future+timedelta(days=1), time(1))))
+    client.post("/dj/absence", data={**payload, "airing_date": ""})
+    with app.app_context():
+        assert DJAbsence.query.count() == 2
+
+
+def test_shared_navigation_loads_bootstrap_once_before_page_scripts(portal_app):
+    app, _ = portal_app
+    client = app.test_client()
+    login(client)
+    for route in ("/shows", "/recordings", "/shows/audit", "/dj/absence"):
+        response = client.get(route)
+        assert response.status_code == 200
+        assert response.data.count(b'/dist/js/bootstrap.bundle.min.js') == 1
+    templates = Path(__file__).parents[1] / "app/templates"
+    for path in templates.glob("*.html"):
+        source = path.read_text(encoding="utf-8")
+        if "include '_nav.html'" in source:
+            assert '/dist/js/bootstrap.bundle.min.js' not in source, path.name

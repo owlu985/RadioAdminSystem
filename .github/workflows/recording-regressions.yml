@@ -31,3 +31,4 @@ jobs:
           tests/test_legacy_recordings.py
           tests/test_media_library_unicode.py
           tests/test_recording_metadata.py
+          tests/test_airing_audit.py

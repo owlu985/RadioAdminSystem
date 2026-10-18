@@ -10,7 +10,7 @@
 {% include '_nav.html' %}
     <div class="container mt-4">
         <h2>Submit DJ Absence</h2>
-        <p class="text-muted">Select your show; the system will use the next scheduled slot for timing automatically.</p>
+        <p class="text-muted">Select your show and an airing date, or leave the date blank for its soonest scheduled airing.</p>
     <form method="post" class="row g-3">
         <div class="col-md-6">
             <label class="form-label">DJ</label>
@@ -26,6 +26,11 @@
             <label class="form-label">Show</label>
             <select name="show_id" id="show_id" class="form-select" required></select>
             <input type="hidden" name="show_name" id="show_name">
+        </div>
+        <div class="col-md-6">
+            <label class="form-label" for="airing_date">Airing date (optional)</label>
+            <input class="form-control" type="date" id="airing_date" name="airing_date">
+            <div class="form-text">Choose the date the show starts, including for overnight shows.</div>
         </div>
         <div class="col-md-6">
             <label class="form-label">Replacement (optional)</label>
