@@ -84,7 +84,7 @@ from app.services.library.dj_library import (
     match_text_playlist,
     match_youtube_playlist,
 )
-from app.services.library.media_library import decode_media_token
+from app.services.library.media_library import decode_media_token, encode_media_token
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
@@ -417,18 +417,18 @@ def _build_recording_entry(
     pdf_log_path = os.path.splitext(full)[0] + ".pdf"
     has_log = os.path.isfile(log_path)
     return RecordingEntry(
-        show_name=show_name,
-        dj_name=dj_name,
+        show_name=show_name.encode("utf-8", "replace").decode("utf-8"),
+        dj_name=dj_name.encode("utf-8", "replace").decode("utf-8"),
         show_key=_normalize_key(show_name),
         dj_key=_normalize_key(dj_name),
-        filename=filename,
+        filename=filename.encode("utf-8", "replace").decode("utf-8"),
         full_path=full,
         log_csv_path=log_path,
         has_log=has_log,
-        token=base64.urlsafe_b64encode(full.encode("utf-8")).decode("utf-8"),
+        token=encode_media_token(full),
         size_bytes=stat.st_size,
         modified_at=datetime.fromtimestamp(stat.st_mtime),
-        period_label=_period_label_for_path(full, base_root, period_map),
+        period_label=_period_label_for_path(full, base_root, period_map).encode("utf-8", "replace").decode("utf-8"),
         is_legacy=bool(metadata.get("legacy_import")),
         pdf_log_path=pdf_log_path if os.path.isfile(pdf_log_path) else "",
     )
@@ -481,7 +481,7 @@ def _collect_recordings(
 
 def _resolve_recording_path(token: str) -> str | None:
     try:
-        decoded = base64.urlsafe_b64decode(token.encode("utf-8")).decode("utf-8")
+        decoded = decode_media_token(token)
     except Exception:
         return None
     full = os.path.normcase(os.path.abspath(os.path.normpath(decoded)))
@@ -512,9 +512,21 @@ def _portal_show_keys(dj: DJ) -> set[str]:
     }
 
 
+def _portal_can_access_entry(dj: DJ, entry: RecordingEntry, allowed_shows: set[str]) -> bool:
+    if entry.is_legacy:
+        # Legacy imports have host metadata but no corresponding schedule rows.
+        # Match individual hosts exactly, including recordings with co-hosts.
+        dj_key = _normalize_key(f"{dj.first_name} {dj.last_name}")
+        return dj_key in {_normalize_key(name) for name in split_dj_names(entry.dj_name)}
+    return entry.show_key in allowed_shows
+
+
 def _portal_entries(access, *, show=None, period=None) -> list[RecordingEntry]:
     allowed = _portal_show_keys(access.dj)
-    return [entry for entry in _collect_recordings(show=show, period=period) if entry.show_key in allowed]
+    return [
+        entry for entry in _collect_recordings(show=show, period=period)
+        if _portal_can_access_entry(access.dj, entry, allowed)
+    ]
 
 
 def _portal_entry(access, token: str) -> RecordingEntry | None:
@@ -530,7 +542,7 @@ def _portal_entry(access, token: str) -> RecordingEntry | None:
         period_folders=set(period_map),
         root=_recordings_root(),
     )
-    return entry if entry.show_key in _portal_show_keys(access.dj) else None
+    return entry if _portal_can_access_entry(access.dj, entry, _portal_show_keys(access.dj)) else None
 
 
 def _require_portal_access():
@@ -781,7 +793,7 @@ def legacy_recordings_import():
     start = (page - 1) * LEGACY_IMPORT_PAGE_SIZE
     rows = []
     for suggestion in suggestions[start:start + LEGACY_IMPORT_PAGE_SIZE]:
-        rows.append((suggestion, base64.urlsafe_b64encode(suggestion.path.encode()).decode()))
+        rows.append((suggestion, encode_media_token(suggestion.path)))
     return render_template("legacy_recordings_import.html", rows=rows, periods=periods,
                            selected_period=selected_period, page=page, total_pages=total_pages,
                            total=len(suggestions))
@@ -1087,7 +1099,7 @@ def dj_recordings_audio(token: str):
     entry = _portal_entry(access, token)
     if not entry:
         abort(404)
-    return _portal_response(send_file(entry.full_path, conditional=True))
+    return _portal_response(send_file(entry.full_path, conditional=True, download_name=entry.filename))
 
 
 @main_bp.route("/dj-recordings/view/<path:token>")

@@ -1,10 +1,16 @@
 from datetime import datetime, timedelta
+import base64
+import io
+import os
+import zipfile
 
 import pytest
 
 from app import create_app
 from app.models import DJ, DJRecordingAccessCode, Show, db
 from app.services.dj_recording_access import create_access_code
+from app.services.legacy_recordings import write_legacy_sidecar
+from app.services.library.media_library import encode_media_token
 
 
 class TestConfig:
@@ -30,7 +36,7 @@ def portal_app(tmp_path, monkeypatch):
     monkeypatch.setattr("app.main_routes._recordings_root", lambda: str(recordings))
     monkeypatch.setattr(
         "app.main_routes.load_recording_periods",
-        lambda: {"periods": ["Fall 2026"], "current_period": "Fall 2026"},
+        lambda: {"periods": ["Fall 2026", "Spring 2026"], "current": "Fall 2026"},
     )
     monkeypatch.setattr("app.main_routes.current_recording_period", lambda: "Fall 2026")
     with app.app_context():
@@ -162,3 +168,122 @@ def test_manager_can_create_indefinite_code_and_revoke_it(portal_app):
     assert revoked.status_code == 200
     with app.app_context():
         assert db.session.get(DJRecordingAccessCode, code_id).revoked_at is not None
+
+
+@pytest.mark.parametrize("has_schedule", [False, True])
+def test_legacy_recordings_use_individual_host_metadata_for_all_portal_access(portal_app, has_schedule):
+    app, recordings = portal_app
+    with app.app_context():
+        dj = DJ(first_name="Alex", last_name="Smith")
+        if has_schedule:
+            dj.shows = [_show("Current Show")]
+        db.session.add(dj)
+        db.session.commit()
+        _, code = create_access_code(dj.id)
+
+    folder = recordings / "Spring 2026" / "Old_Folder"
+    folder.mkdir(parents=True)
+    own = folder / "legacy.mp3"
+    other = folder / "other.mp3"
+    partial = folder / "partial.mp3"
+    for path, hosts in ((own, ["Pat Jones", " alex smith "]),
+                        (other, ["Other DJ"]), (partial, ["Alex Smithson"])):
+        path.write_bytes(b"legacy audio")
+        write_legacy_sidecar(str(path), period="Spring 2026", show_name="Current Show",
+                             dj_names=hosts, recorded_date="2026-03-01")
+
+    client = app.test_client()
+    client.post("/dj-recordings", data={"code": code})
+    for period in ("Spring 2026", "__all__"):
+        response = client.get("/dj-recordings/archive", query_string={"period": period})
+        assert response.status_code == 200
+        assert b"legacy.mp3" in response.data
+        assert b"other.mp3" not in response.data
+        assert b"partial.mp3" not in response.data
+    assert b"legacy.mp3" not in client.get("/dj-recordings/archive").data
+
+    for path, status in ((own, 200), (other, 404), (partial, 404)):
+        token = encode_media_token(str(path))
+        assert client.get(f"/dj-recordings/audio/{token}").status_code == status
+        assert client.get(f"/dj-recordings/view/{token}").status_code == status
+        assert client.post("/dj-recordings/download", data={
+            "tokens": token, "single": "1", "copyright_acknowledged": "1",
+        }).status_code == status
+
+    response = client.post("/dj-recordings/download", data={
+        "period": "Spring 2026", "copyright_acknowledged": "1",
+    })
+    assert response.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(response.data)) as archive:
+        assert archive.namelist() == ["Current_Show/legacy.mp3"]
+
+
+def test_all_periods_renders_surrogate_filename_and_preserves_path(portal_app, monkeypatch):
+    from app import main_routes
+
+    app, recordings = portal_app
+    _, code, own, _ = _seed(app, recordings)
+    filename = "old_\udcfe\udcff.mp3"
+    full = os.path.join(str(own.parent), filename)
+    original_stat = os.stat
+    original_isfile = os.path.isfile
+    monkeypatch.setattr(main_routes.os, "walk", lambda root: [(str(own.parent), [], [filename])])
+    monkeypatch.setattr(main_routes.os, "stat", lambda path, *a, **kw:
+                        original_stat(own) if path == full else original_stat(path, *a, **kw))
+    monkeypatch.setattr(main_routes.os.path, "isfile", lambda path:
+                        True if os.path.normcase(path) == os.path.normcase(full) else original_isfile(path))
+    client = app.test_client()
+    client.post("/dj-recordings", data={"code": code})
+    response = client.get("/dj-recordings/archive?period=__all__")
+    assert response.status_code == 200
+    assert b"old_??.mp3" in response.data
+    entry = main_routes._collect_recordings(period="__all__")[0]
+    assert entry.full_path == full
+    assert main_routes._resolve_recording_path(entry.token) == os.path.normcase(os.path.abspath(full))
+    assert client.get(f"/dj-recordings/view/{entry.token}").status_code == 200
+
+
+def test_recording_tokens_keep_old_links_and_root_validation(portal_app, tmp_path):
+    from app.main_routes import _resolve_recording_path
+
+    app, recordings = portal_app
+    _, _, own, _ = _seed(app, recordings)
+    outside = tmp_path / "outside.mp3"
+    outside.write_bytes(b"private")
+    old_token = base64.urlsafe_b64encode(str(own).encode()).decode()
+    assert _resolve_recording_path(old_token) == os.path.normcase(os.path.abspath(own))
+    assert _resolve_recording_path(encode_media_token(str(outside))) is None
+    assert _resolve_recording_path("invalid token") is None
+
+
+@pytest.mark.skipif(os.name != "posix", reason="POSIX permits non-UTF-8 filename bytes")
+def test_non_utf8_recording_can_be_listed_streamed_and_downloaded(portal_app):
+    from app.main_routes import _collect_recordings, _resolve_recording_path
+
+    app, recordings = portal_app
+    _, code, own, _ = _seed(app, recordings)
+    raw_path = os.fsencode(own.parent) + b"/legacy_\xfe\xff.mp3"
+    with open(raw_path, "wb") as audio:
+        audio.write(b"old audio")
+    client = app.test_client()
+    client.post("/dj-recordings", data={"code": code})
+    response = client.get("/dj-recordings/archive?period=__all__")
+    assert response.status_code == 200
+    assert b"legacy_??.mp3" in response.data
+    entry = next(item for item in _collect_recordings(period="__all__")
+                 if os.fsencode(item.full_path) == raw_path)
+    assert os.fsencode(_resolve_recording_path(entry.token)) == raw_path
+    streamed = client.get(f"/dj-recordings/audio/{entry.token}")
+    assert streamed.status_code == 200
+    assert streamed.data == b"old audio"
+    downloaded = client.post("/dj-recordings/download", data={
+        "tokens": entry.token, "single": "1", "copyright_acknowledged": "1",
+    })
+    assert downloaded.status_code == 200
+    assert downloaded.data == b"old audio"
+    zipped = client.post("/dj-recordings/download", data={
+        "tokens": entry.token, "copyright_acknowledged": "1",
+    })
+    assert zipped.status_code == 200
+    with zipfile.ZipFile(io.BytesIO(zipped.data)) as archive:
+        assert archive.read("Friday_Night_Radio/legacy_??.mp3") == b"old audio"
