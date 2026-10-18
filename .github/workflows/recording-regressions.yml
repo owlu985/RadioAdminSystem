@@ -1,0 +1,33 @@
+name: Recording regressions
+
+on:
+  pull_request:
+    paths:
+      - "app/**"
+      - "tests/**"
+      - "requirements.txt"
+      - ".github/workflows/recording-regressions.yml"
+  push:
+    branches:
+      - "fix/dj-legacy-recordings-archive"
+
+jobs:
+  recordings:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install test dependencies
+        run: |
+          # Apache's deployment module is not needed by the Flask test client.
+          sed '/^mod_wsgi==/d' requirements.txt > /tmp/rams-test-requirements.txt
+          python -m pip install -r /tmp/rams-test-requirements.txt pytest
+      - name: Test recordings and portal access
+        run: >-
+          python -m pytest -q
+          tests/test_dj_recording_portal.py
+          tests/test_legacy_recordings.py
+          tests/test_media_library_unicode.py
+          tests/test_recording_metadata.py
