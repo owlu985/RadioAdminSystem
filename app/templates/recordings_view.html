@@ -25,6 +25,13 @@
         </div>
     </div>
 
+    {% if flagged_missed %}<div class="alert alert-danger"><strong>Missed show</strong> — excluded from airing totals and hidden from the recordings list by default.</div>{% endif %}
+    {% if can('logs:edit') %}
+    <form method="post" action="{{ url_for('main.recording_missed', token=token) }}" class="mb-4">
+        <input type="hidden" name="flagged_missed" value="{{ '0' if flagged_missed else '1' }}">
+        <button class="btn btn-outline-danger" type="submit">{{ 'Clear Missed status' if flagged_missed else 'Mark as Missed (DJ did not show up)' }}</button>
+    </form>
+    {% endif %}
     <div class="row g-3 mb-4">
         <div class="col-lg-8">
             <div class="alert {{ 'alert-success' if compliance.compliant else 'alert-danger' }} mb-0 h-100">

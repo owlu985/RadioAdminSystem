@@ -10,7 +10,7 @@ from app.services.detection import probe_and_record
 from app.services.recording_periods import recordings_period_root
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
-from app.services.log_export import recording_csv_path, write_recording_metadata
+from app.services.log_export import recording_csv_path, write_recording_metadata, read_recording_metadata
 from app.services.barix import restart_instreamer
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
@@ -399,7 +399,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             sidecar_start = started_at
             sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
             try:
-                write_recording_metadata(output_file, {
+                metadata = read_recording_metadata(output_file)
+                metadata.update({
                     "schema_version": 1,
                     "show_name": show_name or label or "Unscheduled Show",
                     "dj": ", ".join(hosts or []),
@@ -409,6 +410,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                     "log_file": os.path.basename(recording_csv_path(output_file)),
                     "updated_at": datetime.utcnow().isoformat(),
                 })
+                metadata.setdefault("flagged_missed", False)
+                write_recording_metadata(output_file, metadata)
             except OSError as exc:
                 logger.warning("Unable to write recording metadata sidecar for %s: %s", output_file, exc)
             key = None
