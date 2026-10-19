@@ -8,6 +8,7 @@ import re
 from app.models import DJ, LogSheet, Show, ShowRun
 from app.services.legacy_recordings import split_dj_names
 from app.services.log_export import read_log_csv, read_recording_metadata
+from app.services.missed_airings import load_missed_statuses
 from app.utils import get_config_timezone, localize_datetime, scheduled_window_for_date
 
 
@@ -44,7 +45,8 @@ def metadata_hosts(metadata, fallback=""):
     return {name.strip() for name in hosts if isinstance(name, str) and name.strip()}
 
 
-def build_audit(root, recordings, week, *, now=None, period=None, active_period=None):
+def build_audit(root, recordings, week, *, now=None, period=None, active_period=None,
+                missed_statuses=None):
     now = now or datetime.now(get_config_timezone()).replace(tzinfo=None)
     evidence = {}
     missed = set()
@@ -108,6 +110,14 @@ def build_audit(root, recordings, week, *, now=None, period=None, active_period=
             {f"{log.dj_first_name} {log.dj_last_name}".strip()}, "Digital log")
     for run in ShowRun.query.filter_by(flagged_missed=True).all():
         missed.add((key(run.show_name), localize_datetime(run.start_time).date()))
+
+    # An explicit clear must also override old sidecars or automatic run flags.
+    statuses = load_missed_statuses(root) if missed_statuses is None else missed_statuses
+    for identity, flagged in statuses.items():
+        if flagged:
+            missed.add(identity)
+        else:
+            missed.discard(identity)
 
     aired = {identity: row for identity, row in evidence.items() if identity not in missed}
     show_totals = defaultdict(int)
