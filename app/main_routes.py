@@ -752,6 +752,12 @@ def recordings_manage():
 @main_bp.route("/shows/audit")
 @permission_required({"logs:view"})
 def airing_audit():
+    periods_payload = load_recording_periods()
+    periods = periods_payload["periods"]
+    active_period = periods_payload["current"]
+    selected_period = request.args.get("period") or active_period
+    if selected_period not in periods:
+        selected_period = active_period
     now = datetime.now(get_config_timezone()).replace(tzinfo=None)
     try:
         week = date.fromisoformat(request.args.get("week", now.date().isoformat()))
@@ -760,8 +766,11 @@ def airing_audit():
     week -= timedelta(days=week.weekday())
     if week < date.min + timedelta(days=7) or week > date.max - timedelta(days=14):
         abort(400, "Week is out of range")
-    report = build_audit(_recordings_root(), _collect_recordings(include_missed=True), week, now=now)
+    period_root = os.path.join(_recordings_root(), period_folder_name(selected_period))
+    report = build_audit(period_root, _collect_recordings(period=selected_period, include_missed=True),
+                         week, now=now, period=selected_period, active_period=active_period)
     return render_template("airing_audit.html", **report, week=week,
+                           periods=periods, selected_period=selected_period,
                            previous=week-timedelta(days=7), following=week+timedelta(days=7))
 
 

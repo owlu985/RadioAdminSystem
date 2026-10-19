@@ -44,7 +44,7 @@ def metadata_hosts(metadata, fallback=""):
     return {name.strip() for name in hosts if isinstance(name, str) and name.strip()}
 
 
-def build_audit(root, recordings, week, *, now=None):
+def build_audit(root, recordings, week, *, now=None, period=None, active_period=None):
     now = now or datetime.now(get_config_timezone()).replace(tzinfo=None)
     evidence = {}
     missed = set()
@@ -97,7 +97,13 @@ def build_audit(root, recordings, week, *, now=None):
                     missed.add(identity)
                 add(identity, row.show_name, metadata_hosts({}, row.dj), "Digital log")
 
+    unassigned_logs = 0
     for log in LogSheet.query.all():
+        # Legacy database rows have no period column. Never import another
+        # period's logs by guessing from a show name or the current DJ roster.
+        if period is not None and (key(log.show_name), log.show_date) not in evidence:
+            unassigned_logs += 1
+            continue
         add((key(log.show_name), log.show_date), log.show_name,
             {f"{log.dj_first_name} {log.dj_last_name}".strip()}, "Digital log")
     for run in ShowRun.query.filter_by(flagged_missed=True).all():
@@ -105,7 +111,12 @@ def build_audit(root, recordings, week, *, now=None):
 
     aired = {identity: row for identity, row in evidence.items() if identity not in missed}
     show_totals = defaultdict(int)
-    dj_totals = {key(f"{dj.first_name} {dj.last_name}"): [f"{dj.first_name} {dj.last_name}", 0] for dj in DJ.query.all()}
+    dj_totals = {
+        key(f"{dj.first_name} {dj.last_name}"): [f"{dj.first_name} {dj.last_name}", 0]
+        for dj in DJ.query.all()
+        if period is None or period in dj.period_list
+        or (period == active_period and not dj.period_list and not dj.is_archived)
+    }
     for (show, _), row in aired.items():
         show_totals[show] += 1
         for name in {key(name): name for name in row["hosts"]}.values():
@@ -114,8 +125,21 @@ def build_audit(root, recordings, week, *, now=None):
     days = [week + timedelta(days=i) for i in range(7)]
     calendar = []
     known = set()
+    period_show_dates = defaultdict(set)
+    for show_key, airing_date in evidence:
+        period_show_dates[show_key].add(airing_date)
     for show in Show.query.order_by(Show.show_name, Show.start_time).all():
         title = show.show_name or f"{show.host_first_name} {show.host_last_name}"
+        if period is not None:
+            # Archived periods use their own files, including log-only shows.
+            # Keep currently scheduled, not-yet-recorded shows in the active
+            # period so missing airings still appear in its calendar.
+            current_schedule = (period == active_period
+                                and show.start_date <= now.date() <= show.end_date)
+            evidence_schedule = any(show.start_date <= day <= show.end_date
+                                    for day in period_show_dates[key(title)])
+            if not evidence_schedule and not current_schedule:
+                continue
         known.add(key(title))
         cells = []
         for day in days:
@@ -145,4 +169,4 @@ def build_audit(root, recordings, week, *, now=None):
                           "sources": ", ".join(sorted(row["sources"])) if row else ""})
         calendar.append({"name": name, "total": show_totals[show_key], "cells": cells})
     return {"days": days, "calendar": calendar, "dj_totals": sorted(dj_totals.values(), key=lambda row: row[0].casefold()),
-            "total": len(aired), "skipped": skipped}
+            "total": len(aired), "skipped": skipped, "unassigned_logs": unassigned_logs}
