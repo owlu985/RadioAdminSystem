@@ -38,7 +38,7 @@ from .utils import (
     UTC_OFFSET_TIMEZONE_OPTIONS,
     timezone_label,
 )
-from datetime import datetime, time, timedelta, date
+from datetime import datetime, time, timedelta, date, timezone
 from .models import (
     db,
     Show,
@@ -91,6 +91,7 @@ from app.services.library.dj_library import (
 from app.services.library.media_library import decode_media_token, encode_media_token
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
 from app.services.airing_audit import build_audit, evidence_identity, recording_family, key as airing_key
+from app.services.missed_airings import load_missed_statuses, read_missed_status, write_missed_status
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
     ignore_legacy_recording,
@@ -410,6 +411,7 @@ def _build_recording_entry(
     period_map: dict[str, str],
     period_folders: set[str],
     root: str,
+    missed_statuses: dict | None = None,
 ) -> RecordingEntry:
     filename = os.path.basename(full)
     show_name, dj_name = _extract_recording_names(
@@ -420,6 +422,9 @@ def _build_recording_entry(
     stat = os.stat(full)
     log_path = recording_csv_path(full)
     metadata = read_recording_metadata(full)
+    identity = evidence_identity(full, metadata, fallback_show=show_name)
+    override = (missed_statuses.get(identity) if missed_statuses is not None
+                else read_missed_status(base_root, identity))
     pdf_log_path = os.path.splitext(full)[0] + ".pdf"
     has_log = os.path.isfile(log_path)
     return RecordingEntry(
@@ -437,7 +442,7 @@ def _build_recording_entry(
         period_label=_period_label_for_path(full, base_root, period_map).encode("utf-8", "replace").decode("utf-8"),
         is_legacy=bool(metadata.get("legacy_import")),
         pdf_log_path=pdf_log_path if os.path.isfile(pdf_log_path) else "",
-        flagged_missed=metadata.get("flagged_missed") is True,
+        flagged_missed=override if override is not None else metadata.get("flagged_missed") is True,
     )
 
 
@@ -460,6 +465,7 @@ def _collect_recordings(
     dj_filter = _normalize_key(dj)
 
     entries: list[RecordingEntry] = []
+    missed_statuses = load_missed_statuses(base_root)
     for current_root, _, files in os.walk(root):
         for filename in files:
             if not filename.lower().endswith((".mp3", ".wav", ".m4a", ".aac")):
@@ -477,6 +483,7 @@ def _collect_recordings(
                 period_map=period_map,
                 period_folders=period_folders,
                 root=root,
+                missed_statuses=missed_statuses,
             )
             if entry.flagged_missed and not include_missed:
                 continue
@@ -768,7 +775,8 @@ def airing_audit():
         abort(400, "Week is out of range")
     period_root = os.path.join(_recordings_root(), period_folder_name(selected_period))
     report = build_audit(period_root, _collect_recordings(period=selected_period, include_missed=True),
-                         week, now=now, period=selected_period, active_period=active_period)
+                         week, now=now, period=selected_period, active_period=active_period,
+                         missed_statuses=load_missed_statuses(_recordings_root()))
     return render_template("airing_audit.html", **report, week=week,
                            periods=periods, selected_period=selected_period,
                            previous=week-timedelta(days=7), following=week+timedelta(days=7))
@@ -784,30 +792,25 @@ def recording_missed(token):
     if value not in {"0", "1"}:
         abort(400)
     now = datetime.now(get_config_timezone()).replace(tzinfo=None)
-    rec = next((entry for entry in _collect_recordings(include_missed=True) if os.path.normcase(entry.full_path) == os.path.normcase(full)), None)
-    if not rec:
-        abort(404)
+    base_root = _recordings_root()
+    period_map = _period_folder_map(load_recording_periods().get("periods", []))
+    rec = _build_recording_entry(full=full, base_root=base_root, period_map=period_map,
+                                 period_folders=set(period_map), root=base_root)
     identity = evidence_identity(full, fallback_show=rec.show_name)
     if not identity or identity[1] > now.date():
         abort(400, "A past airing date is required before marking a recording.")
     flagged = value == "1"
-    # Apply to the full recovery family and other evidence for the same airing.
-    paths = {full}
-    for entry in _collect_recordings(include_missed=True):
-        if (recording_family(entry.full_path) == recording_family(full)
-                or evidence_identity(entry.full_path, fallback_show=entry.show_name) == identity):
-            paths.add(entry.full_path)
-    for directory, _, files in os.walk(_recordings_root()):
-        for filename in files:
-            if filename.lower().endswith(".csv"):
-                path = os.path.join(directory, filename)
-                try:
-                    rows = read_log_csv(path)
-                except (OSError, UnicodeError, ValueError, csv.Error):
-                    continue
-                if any((airing_key(row.show_name), row.show_date) == (identity[0], identity[1].isoformat()) for row in rows):
-                    paths.add(path)
-    for path in paths:
+    # Touch only this directory's recovery family. Copies or separately named
+    # logs elsewhere inherit the shared override when listed or audited.
+    family = os.path.normcase(recording_family(full))
+    paths = {os.path.splitext(full)[0]: full}
+    with os.scandir(os.path.dirname(full)) as entries:
+        for entry in entries:
+            if (entry.name.lower().endswith((".mp3", ".wav", ".m4a", ".aac", ".csv"))
+                    and os.path.normcase(recording_family(entry.path)) == family
+                    and entry.is_file()):
+                paths[os.path.splitext(entry.path)[0]] = entry.path
+    for path in paths.values():
         metadata = read_recording_metadata(path)
         metadata.setdefault("show_name", rec.show_name)
         metadata.setdefault("show_date", identity[1].isoformat())
@@ -815,10 +818,19 @@ def recording_missed(token):
         metadata["flagged_missed"] = flagged
         metadata["missed_updated_at"] = datetime.utcnow().isoformat()
         write_recording_metadata(path, metadata)
-    for run in ShowRun.query.all():
+    write_missed_status(base_root, identity, flagged)
+    # The existing start-time index bounds the query to one station-local day.
+    day_start = datetime.combine(identity[1], time.min).replace(tzinfo=get_config_timezone())
+    day_end = datetime.combine(identity[1] + timedelta(days=1), time.min).replace(tzinfo=get_config_timezone())
+    for run in ShowRun.query.filter(
+        ShowRun.start_time >= day_start.astimezone(timezone.utc).replace(tzinfo=None),
+        ShowRun.start_time < day_end.astimezone(timezone.utc).replace(tzinfo=None),
+    ).all():
         if (airing_key(run.show_name), localize_datetime(run.start_time).date()) == identity:
             run.flagged_missed = flagged
     db.session.commit()
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"flagged_missed": flagged})
     flash("Show marked as Missed." if flagged else "Missed status cleared.", "success")
     return redirect(url_for("main.recordings_view", token=token))
 
@@ -941,6 +953,8 @@ def recordings_view(token: str):
     entries = read_log_csv(csv_path) if os.path.isfile(csv_path) else []
     recording_name = os.path.basename(full)
     metadata = read_recording_metadata(full)
+    fallback_show = (_parse_recording_label(recording_name) or "").replace("_", " ")
+    missed_override = read_missed_status(_recordings_root(), evidence_identity(full, metadata, fallback_show))
     window_start = window_end = None
     try:
         window_start = datetime.fromisoformat(metadata["show_start"])
@@ -977,7 +991,7 @@ def recordings_view(token: str):
         token=token,
         compliance=compliance,
         peak_listeners=peak_listeners,
-        flagged_missed=metadata.get("flagged_missed") is True,
+        flagged_missed=missed_override if missed_override is not None else metadata.get("flagged_missed") is True,
     )
 
 

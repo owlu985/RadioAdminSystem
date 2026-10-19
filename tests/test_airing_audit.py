@@ -232,3 +232,98 @@ def test_period_audit_excludes_other_period_shows_and_unscoped_database_logs(por
                              now=datetime(2026, 10, 18), period="Fall 2026", active_period="Fall 2026")
         assert [row["name"] for row in result["calendar"]] == ["Fall No Evidence"]
         assert result["total"] == 0
+
+
+def test_missed_save_does_not_scan_archive_read_logs_or_reload_analytics(portal_app, monkeypatch):
+    from sqlalchemy import event
+    app, root = portal_app
+    path = recording(root / "Fall 2026" / "selected", date(2026, 9, 11))
+    part = recording(path.parent, date(2026, 9, 11), "_part02")
+    log(path.parent, date(2026, 9, 11))
+    token = encode_media_token(str(path))
+    client = app.test_client()
+    login(client)
+    def forbidden(*args, **kwargs):
+        raise AssertionError("Missed saves must not scan the archive, read CSVs, or reload analytics")
+    monkeypatch.setattr("app.main_routes._collect_recordings", forbidden)
+    monkeypatch.setattr("app.main_routes.os.walk", forbidden)
+    monkeypatch.setattr("app.main_routes.read_log_csv", forbidden)
+    monkeypatch.setattr("app.main_routes.peak_listeners_for_show", forbidden)
+    statements = []
+    with app.app_context():
+        engine = db.engine
+    def capture(conn, cursor, statement, parameters, context, executemany):
+        if "FROM show_run" in statement:
+            statements.append(statement)
+    event.listen(engine, "before_cursor_execute", capture)
+    try:
+        response = client.post(f"/recordings/missed/{token}", data={"flagged_missed": "1"},
+                               headers={"Accept": "application/json"})
+    finally:
+        event.remove(engine, "before_cursor_execute", capture)
+    assert response.status_code == 200
+    assert response.get_json() == {"flagged_missed": True}
+    assert read_recording_metadata(str(part))["flagged_missed"] is True
+    assert statements and all("WHERE" in sql and "start_time >=" in sql and "start_time <" in sql for sql in statements)
+
+
+def test_missed_override_keeps_other_copies_and_logs_consistent_without_rewriting_them(portal_app):
+    from app.services.missed_airings import load_missed_statuses
+    app, root = portal_app
+    day = date(2026, 9, 11)
+    selected = recording(root / "Fall 2026" / "one", day)
+    copy = recording(root / "Fall 2026" / "two", day)
+    log_path = log(root / "Fall 2026" / "three", day)
+    other = recording(root / "Fall 2026" / "two", date(2026, 9, 18))
+    token = encode_media_token(str(selected))
+    client = app.test_client()
+    login(client)
+    for value in ("1", "0"):
+        response = client.post(f"/recordings/missed/{token}", data={"flagged_missed": value},
+                               headers={"Accept": "application/json"})
+        assert response.status_code == 200
+        with app.app_context():
+            entries = _collect_recordings(period="Fall 2026", include_missed=True)
+            copied = next(entry for entry in entries if entry.full_path == str(copy))
+            assert copied.flagged_missed is (value == "1")
+            report = build_audit(str(root / "Fall 2026"), entries, date(2026, 9, 7),
+                                 now=datetime(2026, 10, 19), period="Fall 2026", active_period="Fall 2026",
+                                 missed_statuses=load_missed_statuses(str(root)))
+            assert report["total"] == (1 if value == "1" else 2)
+        detail = client.get(f"/recordings/view/{encode_media_token(str(copy))}")
+        assert detail.status_code == 200
+        assert (b'id="missedStatusAlert" class="alert alert-danger" hidden' in detail.data) is (value == "0")
+        # Independent copies and separately named CSV evidence need no rewrite.
+        assert read_recording_metadata(str(copy))["flagged_missed"] is False
+        assert read_recording_metadata(str(log_path)) == {}
+        assert read_recording_metadata(str(other))["flagged_missed"] is False
+
+
+def test_explicit_clear_overrides_old_missed_flags_and_only_updates_matching_local_day(portal_app):
+    from app.services.missed_airings import load_missed_statuses
+    app, root = portal_app
+    selected = recording(root / "Fall 2026" / "one", date(2026, 9, 11), missed=True)
+    recording(root / "Fall 2026" / "two", date(2026, 9, 11), missed=True)
+    log(root / "Fall 2026" / "three", date(2026, 9, 11), missed=True)
+    with app.app_context():
+        app.config["SCHEDULE_TIMEZONE"] = "America/New_York"
+        # UTC midnight on Sept 12 still belongs to the Sept 11 local airing.
+        matching = ShowRun(show_name="Friday Night Radio", dj_first_name="Alex", dj_last_name="Smith",
+                           start_time=datetime(2026, 9, 12, 1), flagged_missed=True)
+        unrelated = ShowRun(show_name="Friday Night Radio", dj_first_name="Alex", dj_last_name="Smith",
+                            start_time=datetime(2026, 9, 12, 5), flagged_missed=True)
+        db.session.add_all([matching, unrelated])
+        db.session.commit()
+        ids = matching.id, unrelated.id
+    client = app.test_client()
+    login(client)
+    response = client.post(f"/recordings/missed/{encode_media_token(str(selected))}",
+                           data={"flagged_missed": "0"}, headers={"Accept": "application/json"})
+    assert response.status_code == 200
+    with app.app_context():
+        assert db.session.get(ShowRun, ids[0]).flagged_missed is False
+        assert db.session.get(ShowRun, ids[1]).flagged_missed is True
+        entries = _collect_recordings(period="Fall 2026", include_missed=True)
+        result = build_audit(str(root / "Fall 2026"), entries, date(2026, 9, 7),
+                             now=datetime(2026, 10, 19), missed_statuses=load_missed_statuses(str(root)))
+        assert result["total"] == 1

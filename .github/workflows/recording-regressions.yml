@@ -32,3 +32,5 @@ jobs:
           tests/test_media_library_unicode.py
           tests/test_recording_metadata.py
           tests/test_airing_audit.py
+      - name: Test missed-show save interaction
+        run: node --test tests/test_missed_show_ui.cjs
