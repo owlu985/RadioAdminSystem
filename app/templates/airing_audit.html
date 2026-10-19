@@ -6,27 +6,36 @@
 {% include '_nav.html' %}
 <main class="container-fluid px-4 py-3">
     <h1 class="h3">Airing Audit</h1>
-    <p><strong>{{ total }}</strong> airings across all periods, through today. A recording or submitted digital log counts once per show and airing date. Missed shows are excluded.</p>
+    <form method="get" class="d-flex flex-wrap align-items-center gap-2 mb-3">
+        <label for="period" class="fw-semibold">Period</label>
+        <select id="period" name="period" class="form-select w-auto" onchange="this.form.submit()">
+            {% for period in periods %}<option value="{{ period }}" {% if period == selected_period %}selected{% endif %}>{{ period }}</option>{% endfor %}
+        </select>
+        <button class="btn btn-outline-primary" type="submit">Switch period</button>
+    </form>
+    <p><strong>{{ total }}</strong> airings in <strong>{{ selected_period }}</strong>, through today. A recording or submitted digital log counts once per show and airing date. Missed shows are excluded.</p>
     <p class="text-muted">Full recordings take precedence over recovery parts. A single orphaned part counts; multiple orphaned parts require a log. Counts credit hosts named in the evidence. Red means Missed or no evidence found, and does not establish that a DJ was absent. Historical schedules reflect the schedule currently saved.</p>
     {% if skipped %}<div class="alert alert-warning">{{ skipped }} recording or log file(s) could not be dated or read and were excluded.</div>{% endif %}
+    {% if unassigned_logs %}<p class="text-muted small">Legacy database logs without a period are included only when matched to a recording or CSV log in this period.</p>{% endif %}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
-        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', week=previous.isoformat()) }}">Previous week</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', week=previous.isoformat(), period=selected_period) }}">Previous week</a>
         <form method="get" class="d-flex align-items-center gap-2">
+            <input type="hidden" name="period" value="{{ selected_period }}">
             <label for="week">Week of</label><input class="form-control" type="date" id="week" name="week" value="{{ week }}" required>
             <button class="btn btn-primary">Go</button>
         </form>
-        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', week=following.isoformat()) }}">Next week</a>
-        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit') }}">This week</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', week=following.isoformat(), period=selected_period) }}">Next week</a>
+        <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', period=selected_period) }}">This week</a>
     </div>
     <div class="table-responsive mb-4"><table class="table table-bordered align-middle">
         <caption>Weekly show calendar: green = aired, red = missed or no evidence, gray = upcoming.</caption>
-        <thead><tr><th scope="col">Show</th><th scope="col">All-time airings</th>{% for day in days %}<th scope="col">{{ day.strftime('%a %m/%d') }}</th>{% endfor %}</tr></thead>
+        <thead><tr><th scope="col">Show</th><th scope="col">Period airings</th>{% for day in days %}<th scope="col">{{ day.strftime('%a %m/%d') }}</th>{% endfor %}</tr></thead>
         <tbody>{% for row in calendar %}<tr><th scope="row">{{ row.name }}</th><td>{{ row.total }}</td>
             {% for cell in row.cells %}<td class="{{ 'table-success' if cell.status == 'Aired' else 'table-danger' if cell.status in ['Missed', 'No evidence'] else 'table-secondary' if cell.status == 'Upcoming' else '' }}">
                 {% if cell.status != 'Unscheduled' %}{{ cell.status }}{% if cell.sources %}<small class="d-block">{{ cell.sources }}</small>{% endif %}{% else %}<span aria-label="Not scheduled">—</span>{% endif %}
             </td>{% endfor %}</tr>{% else %}<tr><td colspan="9">No shows found.</td></tr>{% endfor %}</tbody>
     </table></div>
-    <h2 class="h4">DJ totals across all periods</h2>
+    <h2 class="h4">DJ totals — {{ selected_period }}</h2>
     <div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">DJ</th><th scope="col">Shows completed</th></tr></thead>
     <tbody>{% for name, count in dj_totals %}<tr><td>{{ name }}</td><td>{{ count }}</td></tr>{% else %}<tr><td colspan="2">No DJs found.</td></tr>{% endfor %}</tbody></table></div>
 </main>

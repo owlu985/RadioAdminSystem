@@ -183,3 +183,52 @@ def test_shared_navigation_loads_bootstrap_once_before_page_scripts(portal_app):
         source = path.read_text(encoding="utf-8")
         if "include '_nav.html'" in source:
             assert '/dist/js/bootstrap.bundle.min.js' not in source, path.name
+
+
+def test_audit_defaults_to_active_period_and_preserves_period_in_week_links(portal_app):
+    app, root = portal_app
+    recording(root / "Fall 2026", date(2026, 9, 11))
+    recording(root / "Spring 2026", date(2026, 3, 6))
+    log(root / "Spring 2026", date(2026, 3, 13))
+    client = app.test_client()
+    login(client)
+    response = client.get("/shows/audit?week=2026-09-07")
+    assert response.status_code == 200
+    assert b'<option value="Fall 2026" selected>' in response.data
+    assert b'<strong>1</strong> airings in' in response.data
+    response = client.get("/shows/audit?period=Spring+2026&week=2026-03-02")
+    assert b'<option value="Spring 2026" selected>' in response.data
+    assert b'<strong>2</strong> airings in' in response.data
+    assert b'week=2026-02-23&amp;period=Spring+2026' in response.data
+    assert b'week=2026-03-09&amp;period=Spring+2026' in response.data
+    assert b'name="period" value="Spring 2026"' in response.data
+    for invalid in ("__all__", "../outside"):
+        response = client.get("/shows/audit", query_string={"period": invalid})
+        assert b'<option value="Fall 2026" selected>' in response.data
+        assert b'<strong>1</strong> airings in' in response.data
+
+
+def test_period_audit_excludes_other_period_shows_and_unscoped_database_logs(portal_app):
+    app, root = portal_app
+    path = recording(root / "Spring 2026", date(2026, 3, 6))
+    write_recording_metadata(str(path), {"show_name": "Spring Only", "show_date": "2026-03-06", "dj": "Spring Host"})
+    with app.app_context():
+        spring = _show("Spring Only", "Spring", "Host")
+        spring.end_date = date(2026, 5, 31)
+        fall = _show("Fall No Evidence", "Fall", "Host")
+        fall.start_date = date(2026, 9, 1)
+        dj = DJ(first_name="Spring", last_name="Host")
+        dj.period_list = ["Spring 2026"]
+        db.session.add_all([spring, fall, dj, LogSheet(show_name="Unrelated Database Show", dj_first_name="Other", dj_last_name="Host", show_date=date(2026, 3, 13))])
+        db.session.commit()
+        entries = _collect_recordings(period="Spring 2026", include_missed=True)
+        result = build_audit(str(root / "Spring 2026"), entries, date(2026, 3, 2),
+                             now=datetime(2026, 10, 18), period="Spring 2026", active_period="Fall 2026")
+        assert [row["name"] for row in result["calendar"]] == ["Spring Only"]
+        assert dict(result["dj_totals"]) == {"Spring Host": 1}
+        assert result["total"] == 1
+        assert result["unassigned_logs"] == 1
+        result = build_audit(str(root / "Fall 2026"), [], date(2026, 10, 12),
+                             now=datetime(2026, 10, 18), period="Fall 2026", active_period="Fall 2026")
+        assert [row["name"] for row in result["calendar"]] == ["Fall No Evidence"]
+        assert result["total"] == 0
