@@ -62,6 +62,17 @@ class Config:
     TEMPEST_UNITS_TEMP = "f"
     TEMPEST_UNITS_WIND = "mph"
 
+    NWS_ALERTS_ENABLED = True
+    NWS_USER_AGENT = "RAMS-WLMC/1.0 (https://github.com/owlu985/RadioAdminSystem)"
+    NWS_ALERT_COUNTIES = ["VTC025", "NHC005"]
+    NWS_RELEVANT_ZONES = ["VTZ014", "VTZ015", "VTZ037", "VTZ038", "NHZ011", "NHZ024"]
+    NWS_ALERT_POLL_SECONDS = 60
+    NWS_ALERT_STALE_SECONDS = 180
+    STUDIO_MONITOR_INTERVAL_SECONDS = 30
+    MONITOR_STORAGE_MOUNT = None  # Set to the NAS mount path to verify it remains mounted.
+    MONITOR_STORAGE_MIN_FREE_BYTES = 512 * 1024 * 1024
+    BARIX_RESTART_COOLDOWN_SECONDS = 90
+
     # Accessibility / display
     HIGH_CONTRAST_DEFAULT = False
     FONT_SCALE_PERCENT = 100

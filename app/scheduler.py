@@ -11,7 +11,6 @@ from app.services.recording_periods import recordings_period_root
 from app.services.radiodj_client import import_news_or_calendar
 from app.services.health import record_failure
 from app.services.log_export import recording_csv_path, write_recording_metadata, read_recording_metadata
-from app.services.barix import restart_instreamer
 from app.services.settings_backup import backup_settings, backup_data_snapshot
 from app.services.stream_monitor import record_icecast_stat
 from app.services import api_cache
@@ -119,6 +118,7 @@ def init_scheduler(app):
             logger.info("Scheduler initialized and started.")
             refresh_schedule()
             schedule_stream_probe()
+            schedule_studio_monitor()
             schedule_nas_watch()
             schedule_news_rotation()
             schedule_icecast_analytics()
@@ -496,14 +496,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                 logger.warning("Recorder self-heal is disabled; not restarting the stream source.")
                 break
 
-            restart_result = restart_instreamer(reason="recording_stream_failure")
-            record_failure(
-                "barix_auto_heal",
-                reason=f"Recording restart: {restart_result.status}: {restart_result.message}",
-                restarted=restart_result.should_count_restart,
-            )
-            if restart_result.accepted:
-                record_failure("recorder", reason="barix_restart_triggered_during_record", restarted=True)
+            # The scheduled decoded stream probe owns Barix recovery. A local
+            # recorder/storage fault must not independently reboot the encoder.
             segment += 1
             time.sleep(3)
             remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
@@ -1119,3 +1113,22 @@ def run_transcode_cache_cleanup_job():
                 continue
     if removed:
         logger.info("Removed %s expired transcode cache file(s).", removed)
+
+
+def schedule_studio_monitor():
+    if flask_app is None:
+        return
+    scheduler.add_job(run_studio_monitor_job, "interval",
+                      seconds=max(30, int(flask_app.config.get("STUDIO_MONITOR_INTERVAL_SECONDS", 30))),
+                      id="studio_monitor_job", replace_existing=True,
+                      next_run_time=datetime.now(get_config_timezone()), **_job_options())
+
+
+def run_studio_monitor_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        from app.services.studio_monitor import run_studio_checks
+        from app.services.weather_alerts import refresh_weather_alerts
+        run_studio_checks()
+        refresh_weather_alerts()

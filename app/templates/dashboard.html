@@ -26,6 +26,8 @@
         </div>
     </div>
 
+    <div id="barixNotice" class="alert alert-danger" role="alert" hidden>Barix Error, Restart needed</div>
+
     <div class="card mb-3">
         <div class="card-header">On Air Status</div>
         <div class="card-body">
@@ -139,7 +141,8 @@
         try {
             const res = await fetch(window.ramsUrl('/api/stream/status'));
             const data = await res.json();
-            document.getElementById('streamUp').textContent = data.stream_up ? 'Up' : 'Down';
+            document.getElementById('streamUp').textContent = data.stream_up === true ? 'Up' : data.stream_up === false ? 'Down' : 'Unknown';
+            document.getElementById('barixNotice').hidden = !(data.alerts || []).some(a => a.code === '12');
             if (data.listeners !== undefined) {
                 document.getElementById('listeners').textContent = data.listeners;
             } else {

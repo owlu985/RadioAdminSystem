@@ -3,6 +3,7 @@ from flask import Flask
 from app.models import JobHealth, db
 from app.services.barix import BarixRestartResult
 from app.services import detection
+from app.services.runtime_state import locked_state
 
 
 class _TestConfig:
@@ -53,6 +54,9 @@ def test_probe_at_restart_threshold_records_restart_result(monkeypatch):
     app = _app()
     app.config["SELF_HEAL_ENABLED"] = True
     with app.app_context():
+        with locked_state('stream') as state:
+            state.clear()
+            state['consecutive_failures'] = 2
         db.session.add(JobHealth(name="stream_probe", failure_count=3, restart_count=0))
         db.session.commit()
         monkeypatch.setattr(detection, "probe_stream", lambda _url: None)
