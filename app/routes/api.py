@@ -8,6 +8,7 @@ import os
 import json
 import base64
 import io
+from types import SimpleNamespace
 from typing import Optional
 from urllib.parse import urlparse, quote_from_bytes
 from app.models import (
@@ -560,6 +561,22 @@ def _get_cached_radiodj_nowplaying(*, push_icecast: bool = False, write_log: boo
             _RADIODJ_NOWPLAYING_CACHE["error_until"] = now_ts + 30
             return cached_payload  # type: ignore[return-value]
 
+        raw = payload.get('CurrentTrack') if isinstance(payload.get('CurrentTrack'), dict) else payload
+        raw = {str(k).lower(): v for k, v in raw.items()}
+        item = {
+            'title': _strip_p_tag(raw.get('title')), 'artist': _strip_p_tag(raw.get('artist')),
+            'album': _strip_p_tag(raw.get('album')), 'started_at': raw.get('dateplayed'),
+            'elapsed': raw.get('elapsed'), 'duration': raw.get('duration'),
+            'is_music': str(raw.get('tracktype') or 'music').lower() == 'music',
+        }
+        previous = _RADIODJ_NOWPLAYING_CACHE.get('current_item') or {}
+        try:
+            if (float(item.get('elapsed') or 0) > float(previous.get('elapsed') or 0)
+                    or _track_fingerprint(item) != _track_fingerprint(previous)):
+                _RADIODJ_NOWPLAYING_CACHE['progress_at'] = now_ts
+        except (TypeError, ValueError):
+            pass
+        _RADIODJ_NOWPLAYING_CACHE.update(current_item=item, source_success_at=now_ts)
         track = _extract_radiodj_track(payload)
         if not track:
             # RadioDJ reports commercials, PSAs, and imaging through the same
@@ -693,6 +710,8 @@ def now_playing():
                 "window": {
                     "start_time": start_dt.strftime("%H:%M"),
                     "end_time": end_dt.strftime("%H:%M"),
+                    "start_at": start_dt.replace(tzinfo=get_config_timezone()).isoformat(),
+                    "end_at": end_dt.replace(tzinfo=get_config_timezone()).isoformat(),
                 },
                 "absence": {
                     "status": next_absence.status,
@@ -734,6 +753,8 @@ def now_playing():
             "window": {
                 "start_time": start_dt.strftime("%H:%M"),
                 "end_time": end_dt.strftime("%H:%M"),
+                "start_at": start_dt.replace(tzinfo=get_config_timezone()).isoformat(),
+                "end_at": end_dt.replace(tzinfo=get_config_timezone()).isoformat(),
             },
             "absence": {
                 "status": next_absence.status,
@@ -806,6 +827,7 @@ def recent_tracks():
             "album": album or None,
             "cover_url": cover_url,
             "played_at": datetime_iso_local(entry.timestamp),
+            "play_id": entry.id,
         })
     return jsonify({"status": "ok", "tracks": payload})
 
@@ -1461,7 +1483,7 @@ def weather_tempest():
     def _fmt_time(value):
         if isinstance(value, (int, float)):
             try:
-                return datetime.fromtimestamp(value).strftime("%I:%M %p").lstrip("0")
+                return datetime.fromtimestamp(value, get_config_timezone()).strftime("%I:%M %p").lstrip("0")
             except Exception:
                 return str(value)
         if isinstance(value, str):
@@ -1471,7 +1493,7 @@ def weather_tempest():
     def _fmt_day(value):
         if isinstance(value, (int, float)):
             try:
-                return datetime.fromtimestamp(value).strftime("%a")
+                return datetime.fromtimestamp(value, get_config_timezone()).strftime("%a")
             except Exception:
                 return str(value)
         if isinstance(value, str):
@@ -1536,6 +1558,9 @@ def weather_tempest():
             }
         )
 
+    def first_value(item, *keys):
+        return next((item[k] for k in keys if item.get(k) is not None), None)
+
     daily = (
         forecast_root.get("daily")
         or forecast_root.get("daily_forecast")
@@ -1547,15 +1572,15 @@ def weather_tempest():
         next_days.append(
             {
                 "day": _fmt_day(item.get("day_start_local") or item.get("day") or item.get("start_time")),
-                "high": item.get("air_temp_high") or item.get("high_temperature"),
-                "low": item.get("air_temp_low") or item.get("low_temperature"),
+                "high": first_value(item, "air_temp_high", "high_temperature"),
+                "low": first_value(item, "air_temp_low", "low_temperature"),
                 "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
                 "icon": item.get("icon") or item.get("icon_code"),
             }
         )
 
     current_block = {
-        "temp": current.get("air_temperature") or current.get("temperature"),
+        "temp": first_value(current, "air_temperature", "temperature"),
         "condition": current.get("conditions") or current.get("icon") or current.get("weather"),
         "icon": current.get("icon") or current.get("icon_code"),
     }
@@ -1570,14 +1595,10 @@ def weather_tempest():
 
 @api_bp.route("/stream/status")
 def stream_status():
-    url = current_app.config["STREAM_URL"]
-    status = {"stream_up": False, "probe": None}
-    try:
-        resp = requests.get(url, stream=True, timeout=3)
-        status["stream_up"] = resp.status_code < 500
-    except Exception:
-        status["stream_up"] = False
-
+    from app.services.studio_monitor import monitor_snapshot
+    status = monitor_snapshot()
+    status['probe'] = None
+    url = current_app.config['STREAM_URL']
     probe = StreamProbe.query.order_by(StreamProbe.created_at.desc()).first()
     probe_is_stale = probe is None or (datetime.utcnow() - probe.created_at) > timedelta(minutes=10)
     allow_inline_probe = request.args.get("refresh") in {"1", "true", "yes"}
@@ -2225,3 +2246,38 @@ def playback_set_now_playing():
     _touch_playback_session(playback)
     db.session.commit()
     return jsonify({"status": "ok", "now_playing": _serialize_now_playing(now_playing)})
+
+
+@api_bp.route('/studio/status')
+def studio_status():
+    from app.services.studio_monitor import monitor_snapshot
+    from app.services.weather_alerts import weather_alert_snapshot
+    monitor = monitor_snapshot()
+    base = now_playing().get_json()
+    schedule_now = datetime.now(get_config_timezone())
+    next_show = base.get('next_show')
+    if next_show:
+        start_at = next_show.get('window', {}).get('start_at')
+        if not start_at or datetime.fromisoformat(start_at).date() != schedule_now.date():
+            base['next_show'] = None
+    if base.get('status') != 'on_air':
+        _get_cached_radiodj_nowplaying(push_icecast=True, write_log=True)
+        rdj = monitor['radiodj']
+        fresh = (time.time() - rdj.get('checked_at', 0) < 90 and rdj.get('handshake_ok')
+                 and time.time() - _RADIODJ_NOWPLAYING_CACHE.get('source_success_at', 0) < 25)
+        progressing = time.time() - _RADIODJ_NOWPLAYING_CACHE.get('progress_at', 0) < 25
+        active = bool(fresh and rdj.get('autodj') is True and rdj.get('playing') is not False
+                      and (rdj.get('playing') is True or progressing))
+        base.update(status='automation' if active else 'unknown', track=None, history=[])
+        if active:
+            item = dict(_RADIODJ_NOWPLAYING_CACHE.get('current_item') or {})
+            if item.get('is_music'):
+                item['cover_url'] = _cover_url_for_track(item.get('title'), item.get('artist'))
+            base['track'] = item
+            recent = recent_tracks().get_json()['tracks']
+            # Drop only the latest matching play, retaining legitimate older repeats.
+            if item.get('is_music') and recent and _same_song(item, SimpleNamespace(**recent[0])):
+                recent = recent[1:]
+            base['history'] = recent[:2]
+    return jsonify(now=base, monitor=monitor, nws=weather_alert_snapshot(),
+                   timezone=get_config_timezone_name())

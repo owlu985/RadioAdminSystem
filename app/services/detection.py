@@ -3,7 +3,6 @@ from pathlib import Path
 from tempfile import NamedTemporaryFile
 from typing import Optional
 import math
-import time
 import subprocess
 
 import ffmpeg
@@ -16,6 +15,7 @@ from app.services.show_run_service import get_or_create_active_run
 from app.services.alerts import process_probe_alerts
 from app.services.health import record_failure
 from app.services.barix import BarixRestartResult, restart_instreamer
+from app.services.studio_monitor import check_stream_http, record_stream_check
 from app.utils import get_current_show, show_display_title, show_primary_host
 
 logger = init_logger()
@@ -67,15 +67,14 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
         samples = audio.get_array_of_samples()
 
         if not samples:
-            return DetectionResult(0, 1.0, 0, "dead_air", "empty_audio")
+            return DetectionResult(0, 0, 0, "unknown", "empty_audio")
 
-        rms = math.sqrt(sum(sample * sample for sample in samples) / len(samples))
-        avg_db = 20 * math.log10(rms) if rms > 0 else -100
+        avg_db = max(-100.0, audio.dBFS)
 
         chunk_ms = config.get("SILENCE_CHUNK_MS", 500)
         chunks = make_chunks(audio, chunk_ms)
 
-        chunk_dbs = [chunk.dBFS for chunk in chunks]
+        chunk_dbs = [max(-100.0, chunk.dBFS) for chunk in chunks]
         silence_chunks = sum(1 for level in chunk_dbs if level <= config.get("DEAD_AIR_DB", -72))
         automation_chunks = sum(
             1
@@ -145,6 +144,10 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
         logger.debug("Using test sample audio for probe: %s", sample)
         return analyze_audio(str(sample), config)
 
+    http_ok, _reason = check_stream_http(stream_url)
+    if not http_ok:
+        return None
+
     tmp = NamedTemporaryFile(suffix=".mp3", delete=False)
     tmp_path = tmp.name
     tmp.close()  # On Windows, keep the path but close the handle so ffmpeg can write
@@ -186,7 +189,12 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
             logger.error("FFmpeg probe error: %s", detail)
             result = None
         else:
-            result = analyze_audio(tmp_path, config)
+            from pydub import AudioSegment
+            audio = AudioSegment.from_file(tmp_path)
+            if len(audio) >= min(2000, duration * 500):
+                result = analyze_audio(tmp_path, config)
+                if result.classification == "unknown":
+                    result = None
 
     except subprocess.TimeoutExpired:
         logger.error("FFmpeg probe timed out after %s seconds for %s", max(probe_timeout, duration + 5, 10), stream_url)
@@ -214,44 +222,14 @@ def probe_and_record():
         return probe_stream(stream_url)
 
     result = _attempt_probe()
-    stream_up = result is not None
-
-    if result is None and current_app.config.get("SELF_HEAL_ENABLED", True):
-        record_failure("stream_probe", reason="probe_failed", restarted=True)
-        time.sleep(1)
-        result = _attempt_probe()
-        stream_up = result is not None
-
-    if (
-        result is None
-        and current_app.config.get("SELF_HEAL_ENABLED", True)
-        and current_app.config.get("BARIX_AUTO_RESTART_ENABLED", False)
-    ):
-        restart_threshold = int(current_app.config.get("STREAM_DOWN_RESTART_THRESHOLD", 3))
-        from app.models import JobHealth
-
-        job = JobHealth.query.filter_by(name="stream_probe").first()
-        failures = int(job.failure_count or 0) if job else 0
-
-        if failures >= restart_threshold:
-            restart_result = restart_instreamer(reason=f"probe_failures={failures}")
-            _record_barix_restart_result(restart_result, reason_prefix="Stream probe restart")
-            if restart_result.accepted:
-                record_failure("stream_probe", reason="barix_restart_triggered", restarted=True)
-                # CRITICAL: Reset failure count after successful restart
-                if job:
-                    job.failure_count = 0
-                    db.session.commit()
-                return  # ← EARLY RETURN - don't record "probe_failed_final"
-        else:
-            record_failure(
-                "barix_auto_heal",
-                reason=f"Stream probe failed; waiting for restart threshold ({failures}/{restart_threshold})",
-                restarted=False,
-            )
-
-    if result is None:
+    stream_up = result is not None and result.classification != "unknown"
+    if not stream_up:
+        result = None
         record_failure("stream_probe", reason="probe_failed_final", restarted=False)
+    outcome = record_stream_check(result, restart=restart_instreamer)
+    if outcome is not None:
+        _record_barix_restart_result(outcome, reason_prefix="Stream probe restart")
+    if result is None:
         process_probe_alerts(False, None)
         return
 

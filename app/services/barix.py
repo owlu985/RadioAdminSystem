@@ -9,14 +9,10 @@ import requests
 from flask import current_app
 
 from app.logger import init_logger
+from app.services.runtime_state import locked_state, read_state
+import time
 
 logger = init_logger()
-
-_state = {
-    "restart_attempts": [],
-    "locked_out_until": None,
-}
-
 
 @dataclass(frozen=True)
 class BarixRestartResult:
@@ -39,8 +35,7 @@ def _utcnow() -> datetime:
 
 
 def is_locked_out() -> bool:
-    until = _state.get("locked_out_until")
-    return bool(until and until > _utcnow())
+    return read_state('barix-restarts').get('locked_out_until', 0) > time.time()
 
 
 def _redact_url(url: str) -> str:
@@ -55,7 +50,7 @@ def _redact_url(url: str) -> str:
     return urlunsplit((parsed.scheme, host, parsed.path, "", ""))
 
 
-def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> BarixRestartResult:
+def _restart_decision(reason: Optional[str] = None, *, force: bool = False, state: dict) -> BarixRestartResult:
     """Attempt to restart a Barix InStreamer via its HTTP API.
 
     Supports either a direct restart URL or IP/credentials based URL building.
@@ -74,8 +69,8 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
 
     window_minutes = int(cfg.get("BARIX_RESTART_WINDOW_MINUTES", 20))
     max_restarts = int(cfg.get("BARIX_MAX_RESTARTS_PER_WINDOW", 3))
-    if not force and is_locked_out():
-        locked_out_until = _state.get("locked_out_until")
+    if not force and state.get("locked_out_until") and state["locked_out_until"] > _utcnow():
+        locked_out_until = state.get("locked_out_until")
         logger.error("Barix auto-heal lockout active until %s", locked_out_until)
         return BarixRestartResult(
             attempted=False,
@@ -86,10 +81,10 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
         )
 
     cutoff = _utcnow() - timedelta(minutes=window_minutes)
-    _state["restart_attempts"] = [t for t in _state["restart_attempts"] if t >= cutoff]
-    if not force and len(_state["restart_attempts"]) >= max_restarts:
+    state["restart_attempts"] = [t for t in state["restart_attempts"] if t >= cutoff]
+    if not force and len(state["restart_attempts"]) >= max_restarts:
         locked_out_until = _utcnow() + timedelta(minutes=window_minutes)
-        _state["locked_out_until"] = locked_out_until
+        state["locked_out_until"] = locked_out_until
         logger.error("Barix Down, auto-heal locked out; manual intervention required.")
         return BarixRestartResult(
             attempted=False,
@@ -119,9 +114,9 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
 
     safe_url = _redact_url(restart_url)
     try:
-        _state["restart_attempts"].append(_utcnow())
+        state["restart_attempts"].append(_utcnow())
         resp = requests.get(restart_url, timeout=8)
-        if resp.status_code < 400:
+        if 200 <= resp.status_code < 300:
             logger.warning("Triggered Barix restart (%s): %s", reason or "no_reason", safe_url)
             return BarixRestartResult(
                 attempted=True,
@@ -146,3 +141,20 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
             status="request_failed",
             message=f"Barix restart request failed: {exc}",
         )
+
+
+def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> BarixRestartResult:
+    # Reboots and restart-window limits survive process restarts and are shared
+    # by the scheduler, recorders and manual dashboard handler.
+    with locked_state('barix-restarts') as persisted:
+        state = {
+            'restart_attempts': [datetime.utcfromtimestamp(t) for t in persisted.get('restart_attempts', [])],
+            'locked_out_until': datetime.utcfromtimestamp(persisted['locked_out_until']) if persisted.get('locked_out_until') else None,
+        }
+        outcome = _restart_decision(reason, force=force, state=state)
+        def ts(value):
+            from datetime import timezone
+            return value.replace(tzinfo=timezone.utc).timestamp()
+        persisted.update(restart_attempts=[ts(t) for t in state['restart_attempts']],
+                         locked_out_until=ts(state['locked_out_until']) if state['locked_out_until'] else 0)
+        return outcome

@@ -40,10 +40,9 @@ class RadioDJClient:
     def __init__(self):
         self.base_url = self._normalize_base_url(current_app.config.get("RADIODJ_API_BASE_URL"))
         self.api_password = current_app.config.get("RADIODJ_API_PASSWORD") or current_app.config.get("RADIODJ_API_KEY")
-        self.import_folder = Path(current_app.config.get("RADIODJ_IMPORT_FOLDER"))
-        self.import_folder.mkdir(parents=True, exist_ok=True)
-        nas_root = Path(current_app.config.get("NAS_ROOT"))
-        nas_root.mkdir(parents=True, exist_ok=True)
+        root = Path(current_app.config.get("DATA_ROOT") or current_app.instance_path)
+        self.import_folder = Path(current_app.config.get("RADIODJ_IMPORT_FOLDER") or root / "radiodj_imports")
+        # Read-only monitoring must not recreate a missing NAS mount directory.
 
     @property
     def enabled(self) -> bool:
@@ -390,6 +389,7 @@ class RadioDJClient:
         if not path.exists():
             raise FileNotFoundError(source_path)
 
+        self.import_folder.mkdir(parents=True, exist_ok=True)
         target = self.import_folder / (target_name or path.name)
         shutil.copy(path, target)
         logger.info("Imported %s into RadioDJ import folder", target)
