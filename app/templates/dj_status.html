@@ -4,7 +4,10 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WLMC Studio Status</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css', v='original-theme-1') }}">
+    <style>
+        body { --station-background: url({{ station_background|default('')|tojson }}); }
+    </style>
 </head>
 <body data-timezone="{{ app_timezone }}" data-screensaver="{{ dj_status_overnight_screensaver_enabled|default(false)|tojson }}">
 <div class="stage">
