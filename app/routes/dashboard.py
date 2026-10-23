@@ -11,6 +11,7 @@ from app.services.health import get_health_snapshot
 from app.services.barix import restart_instreamer
 from app.services.health import record_failure
 from app.services.stream_monitor import fetch_icecast_listeners
+from app.services.probe_review import effective_run_missed
 from app.utils import format_show_window, get_current_show, get_config_timezone_name
 
 logger = init_logger()
@@ -58,6 +59,7 @@ def dashboard():
         'dashboard.html',
         current_show=current_show,
         current_run=current_run,
+        current_run_flagged=effective_run_missed(current_run) if current_run else False,
         window=window,
         absences=absences,
         health=health,

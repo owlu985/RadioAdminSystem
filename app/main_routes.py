@@ -92,6 +92,8 @@ from app.services.library.media_library import decode_media_token, encode_media_
 from app.services.log_export import build_docx, read_log_csv, read_recording_metadata, recording_csv_path, write_recording_metadata
 from app.services.airing_audit import build_audit, evidence_identity, recording_family, key as airing_key
 from app.services.missed_airings import load_missed_statuses, read_missed_status, write_missed_status
+from app.services.missed_airings import clear_probe_status, load_probe_clearances, probe_status_cleared
+from app.services.probe_review import run_airing_identity, flagged_runs_for_airing
 from app.services.legacy_recordings import (
     discover_legacy_recordings,
     ignore_legacy_recording,
@@ -779,7 +781,8 @@ def airing_audit():
                          week, now=now, period=selected_period, active_period=active_period,
                          missed_statuses=load_missed_statuses(_recordings_root()),
                          period_start=date.fromisoformat(period_dates["start"]) if period_dates else None,
-                         period_end=date.fromisoformat(period_dates["end"]) if period_dates else None)
+                         period_end=date.fromisoformat(period_dates["end"]) if period_dates else None,
+                         probe_clearances=load_probe_clearances(_recordings_root()))
     return render_template("airing_audit.html", **report, week=week,
                            periods=periods, selected_period=selected_period,
                            period_dates=period_dates,
@@ -805,6 +808,27 @@ def audit_period_dates():
     save_recording_periods(periods=payload["periods"], current=payload["current"], date_ranges=ranges)
     flash("Audit period dates saved.", "success")
     return redirect(url_for("main.airing_audit", period=period))
+
+
+@main_bp.post("/shows/audit/clear-probe-missed/<int:run_id>")
+@permission_required({"logs:edit"})
+def clear_probe_missed(run_id):
+    run = db.session.get(ShowRun, run_id)
+    if not run:
+        abort(404)
+    identity = run_airing_identity(run)
+    root = _recordings_root()
+    clear_probe_status(root, identity)
+    for matching_run in flagged_runs_for_airing(identity):
+        matching_run.flagged_missed = False
+    db.session.commit()
+    if request.accept_mimetypes.best == "application/json":
+        return jsonify({"cleared": True})
+    flash("Automated Missed flag cleared for this airing. Manual Missed decisions are unchanged.", "success")
+    token = request.form.get("recording_token")
+    if token and _resolve_recording_path(token):
+        return redirect(url_for("main.recordings_view", token=token))
+    return redirect(url_for("main.airing_audit", period=request.form.get("period"), week=identity[1].isoformat()))
 
 
 @main_bp.post("/recordings/missed/<path:token>")
@@ -980,6 +1004,10 @@ def recordings_view(token: str):
     metadata = read_recording_metadata(full)
     fallback_show = (_parse_recording_label(recording_name) or "").replace("_", " ")
     missed_override = read_missed_status(_recordings_root(), evidence_identity(full, metadata, fallback_show))
+    identity = evidence_identity(full, metadata, fallback_show)
+    automated_runs = []
+    if identity and missed_override is None and not probe_status_cleared(_recordings_root(), identity):
+        automated_runs = flagged_runs_for_airing(identity)
     window_start = window_end = None
     try:
         window_start = datetime.fromisoformat(metadata["show_start"])
@@ -1017,6 +1045,7 @@ def recordings_view(token: str):
         compliance=compliance,
         peak_listeners=peak_listeners,
         flagged_missed=missed_override if missed_override is not None else metadata.get("flagged_missed") is True,
+        automated_missed_run=automated_runs[0] if automated_runs and missed_override is not False else None,
     )
 
 

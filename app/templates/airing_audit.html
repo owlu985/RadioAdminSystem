@@ -45,6 +45,7 @@
             {% for cell in row.cells %}<td class="{{ 'table-' ~ cell.color if cell.color else '' }}">
                 {% if cell.code != '—' %}<strong>{{ cell.code }}</strong> · {{ cell.status }}{% if cell.sources %}<small class="d-block">{{ cell.sources }}</small>{% endif %}
                 {% if cell.details or cell.token %}<details><summary class="small">Proof / reason</summary>{% for detail in cell.details %}<p class="small mb-1">{{ detail }}</p>{% endfor %}{% if cell.token %}<a class="small" href="{{ url_for('main.recordings_view', token=cell.token) }}">View recording / correct Missed status</a>{% endif %}</details>{% endif %}
+                {% if cell.probe_run_id and can('logs:edit') %}<form method="post" action="{{ url_for('main.clear_probe_missed', run_id=cell.probe_run_id) }}" class="probe-clear-form mt-2"><input type="hidden" name="period" value="{{ selected_period }}"><button class="btn btn-sm btn-outline-danger">Clear automated Missed flag</button><span class="small d-block" role="status" aria-live="polite"></span></form>{% endif %}
                 {% else %}<span aria-label="{{ cell.status }}">—</span>{% endif %}
             </td>{% endfor %}</tr>{% else %}<tr><td colspan="9">No shows found.</td></tr>{% endfor %}</tbody>
     </table></div>
@@ -52,5 +53,6 @@
     <div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">DJ</th><th scope="col">Actual / possible</th></tr></thead>
     <tbody>{% for name, count in dj_totals %}<tr><td>{{ name }}</td><td>{{ count }}/{{ dj_possible[name] if dj_possible[name] is not none else '—' }}</td></tr>{% else %}<tr><td colspan="2">No DJs found.</td></tr>{% endfor %}</tbody></table></div>
 </main>
+<script src="{{ url_for('static', filename='js/probe_clear.js') }}"></script>
 {% include '_footer.html' %}
 </body></html>
