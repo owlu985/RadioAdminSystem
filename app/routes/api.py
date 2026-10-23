@@ -271,6 +271,7 @@ def _normalize_plan_payload(payload: dict | None) -> dict | None:
 
 
 def _serialize_show_run(run: ShowRun) -> dict:
+    from app.services.probe_review import effective_run_missed
     return {
         "id": run.id,
         "show_name": run.show_name,
@@ -282,7 +283,7 @@ def _serialize_show_run(run: ShowRun) -> dict:
         "avg_db": run.avg_db,
         "silence_ratio": run.silence_ratio,
         "automation_ratio": run.automation_ratio,
-        "flagged_missed": run.flagged_missed,
+        "flagged_missed": effective_run_missed(run),
     }
 
 

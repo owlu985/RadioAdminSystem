@@ -33,6 +33,7 @@ jobs:
           tests/test_recording_metadata.py
           tests/test_airing_audit.py
           tests/test_airing_occurrences.py
+          tests/test_probe_review.py
           tests/test_scheduler_recovery.py
       - name: Test missed-show save interaction
-        run: node --test tests/test_missed_show_ui.cjs
+        run: node --test tests/test_missed_show_ui.cjs tests/test_probe_clear_ui.cjs

@@ -8,12 +8,12 @@ from app.models import DJ, DJAbsence, LogSheet, Show, ShowRun
 from app.services.airing_audit import evidence_identity, key, metadata_hosts, recording_family
 from app.services.airing_dates import log_airing_date, airing_date_for_start
 from app.services.log_export import read_log_csv, read_recording_metadata
-from app.services.missed_airings import load_missed_statuses
+from app.services.missed_airings import load_missed_statuses, load_probe_clearances
 from app.utils import get_config_timezone, localize_datetime, scheduled_window_for_date
 
 
 def build_report(root, recordings, week, *, now=None, period=None, active_period=None,
-                 missed_statuses=None, period_start=None, period_end=None):
+                 missed_statuses=None, period_start=None, period_end=None, probe_clearances=None):
     now = now or datetime.now(get_config_timezone()).replace(tzinfo=None)
     shows = Show.query.order_by(Show.show_name, Show.start_time).all()
     def title(show):
@@ -101,9 +101,14 @@ def build_report(root, recordings, week, *, now=None, period=None, active_period
             unassigned_logs += 1
             continue
         add(identity, log.show_name, {f"{log.dj_first_name} {log.dj_last_name}".strip()}, "Digital log")
+    cleared_probes = load_probe_clearances(root) if probe_clearances is None else probe_clearances
+    probe_runs = {}
     for run in ShowRun.query.filter_by(flagged_missed=True).all():
         local_start = localize_datetime(run.start_time).replace(tzinfo=None)
-        missed.add((key(run.show_name), airing_date_for_start(by_name[key(run.show_name)], local_start)))
+        identity = key(run.show_name), airing_date_for_start(by_name[key(run.show_name)], local_start)
+        if identity not in cleared_probes:
+            probe_runs[identity] = run.id
+            missed.add(identity)
     statuses = load_missed_statuses(root) if missed_statuses is None else missed_statuses
     for identity, flagged in statuses.items():
         identity = identity if identity in observed or identity in evidence else normalize(identity)
@@ -190,7 +195,7 @@ def build_report(root, recordings, week, *, now=None, period=None, active_period
         elif notices:
             status, code = ("Aired — absence pending", "A/P") if identity in aired else ("Absence pending", "P")
         elif identity in missed:
-            status, code = "Missed — no notice", "M"
+            status, code = ("Missed — automated probe flag", "M") if identity in probe_runs and statuses.get(identity) is not True else ("Missed — no notice", "M")
         elif identity in aired:
             status, code = "Aired", "A"
         elif window or identity in observed:
@@ -202,7 +207,10 @@ def build_report(root, recordings, week, *, now=None, period=None, active_period
             details.append(f"{notice.dj_name}: {notice.notes or 'No reason recorded'}" + (f"; substitute: {notice.replacement_name}" if notice.replacement_name else ""))
         if identity in missed and row:
             details.append("Evidence exists, but this airing is flagged Missed; clear the flag if it aired.")
+        if identity in cleared_probes:
+            details.append("Automated Missed flag was manually cleared for this airing.")
         return {"status": status, "code": code, "sources": ", ".join(sorted(row["sources"])) if row else "",
+                "probe_run_id": probe_runs.get(identity) if identity in missed and statuses.get(identity) is not True else None,
                 "details": details, "token": row.get("token") if row else None,
                 "color": "success" if identity in aired else "warning" if notices else "danger" if code in {"M", "?"} else "secondary" if code == "U" else ""}
 

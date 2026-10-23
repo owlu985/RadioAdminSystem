@@ -39,7 +39,7 @@
                 <p class="card-text mb-1"><strong>Window:</strong> {{ window.start_time }} - {{ window.end_time }}</p>
                 {% if current_run %}
                     <p class="card-text mb-0"><strong>Run started:</strong> {{ current_run.start_time }}</p>
-                    {% if current_run.flagged_missed %}
+                    {% if current_run_flagged %}
                         <span class="badge bg-warning text-dark">Flagged (automation/dead-air)</span>
                     {% endif %}
                 {% endif %}

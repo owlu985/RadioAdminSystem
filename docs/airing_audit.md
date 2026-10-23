@@ -51,6 +51,23 @@ do not excuse an airing. Pending requests are shown separately. A missed substit
 airing stays excluded even if cover was arranged. An absence reason is shown only
 on the authenticated management/audit pages.
 
+## Clear a false automated Missed flag
+
+The audit and recording detail show a **Clear automated Missed flag** action for
+database/probe flags. It requires `logs:edit` and works from the audit even when
+there is no recording. It clears flags on matching show runs, including recovery
+runs after midnight, and stores an airing-specific dismissal. Later probe flags
+for that same airing are ignored by the audit; other airings are unaffected.
+Manual Missed decisions remain in force and use the existing manual Clear action.
+Raw probe samples and the detection algorithm are unchanged.
+
+The save updates its button without scanning the archive or reloading analytics.
+Refresh the report when ready to recalculate displayed totals. Clearing a flag
+does not assert that a show aired: recording or log evidence is still required.
+
+The dashboard and show-run API also honor the dismissal, even if the probe writes
+the raw database flag again. Classification/probe history remains available.
+
 ## Retrospective absence entry
 
 Use Absence Queue -> Add Absence. Choose the DJ, show, airing start date, optional
