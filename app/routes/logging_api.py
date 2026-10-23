@@ -2,7 +2,8 @@ from datetime import datetime, date, time, timedelta
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import DJ, Show, ShowRun
-from app.utils import get_current_show, show_display_title, show_primary_host
+from app.utils import get_current_show, show_display_title, show_primary_host, localize_datetime, get_config_timezone
+from app.services.airing_dates import log_airing_date, airing_date_for_start
 from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.services.log_export import (
     LogCsvEntry,
@@ -39,7 +40,7 @@ def submit_log():
         show_name = request.form.get("show_name", "").strip()
         dj_first = request.form.get("dj_first_name", "").strip()
         dj_last = request.form.get("dj_last_name", "").strip()
-        show_date_raw = request.form.get("show_date") or date.today().isoformat()
+        show_date_raw = request.form.get("show_date") or datetime.now(get_config_timezone()).date().isoformat()
         selected_run = ShowRun.query.get(show_run_id) if show_run_id else None
         if show_run_id and not selected_run:
             flash("Selected airing could not be found. Please try again.", "danger")
@@ -68,13 +69,18 @@ def submit_log():
             return redirect(url_for("logs.submit_log"))
 
         if selected_run:
-            show_date = selected_run.start_time.date()
+            local_start = localize_datetime(selected_run.start_time).replace(tzinfo=None)
+            show_date = airing_date_for_start([show_obj] if show_obj else [], local_start)
         else:
             try:
                 show_date = datetime.strptime(show_date_raw, "%Y-%m-%d").date()
             except ValueError:
                 flash("Invalid show date.", "danger")
                 return redirect(url_for("logs.submit_log"))
+
+        if show_obj:
+            clocks = [request.form.get(f"time_{idx}", "").strip() for idx in request.form.getlist("row_index")]
+            show_date = log_airing_date([show_obj], show_date, clocks)
 
         if not selected_run:
             current_show = get_current_show()
@@ -132,8 +138,8 @@ def submit_log():
         csv_path = recording_csv_path(recording_path)
         write_log_csv(csv_path=csv_path, entries=csv_entries)
         if selected_run:
-            window_start = selected_run.start_time
-            window_end = selected_run.end_time or (selected_run.start_time + timedelta(hours=2))
+            window_start = localize_datetime(selected_run.start_time).replace(tzinfo=None)
+            window_end = localize_datetime(selected_run.end_time).replace(tzinfo=None) if selected_run.end_time else window_start + timedelta(hours=2)
         elif show_obj:
             window_start = datetime.combine(show_date, show_obj.start_time)
             window_end = datetime.combine(show_date, show_obj.end_time)
@@ -148,6 +154,9 @@ def submit_log():
             "show_name": show_name,
             "dj": f"{dj_first} {dj_last}".strip(),
             "show_date": show_date.isoformat(),
+            "airing_date": show_date.isoformat(),
+            "show_id": show_obj.id if show_obj else None,
+            "show_run_id": selected_run.id if selected_run else None,
             "show_start": window_start.isoformat(),
             "show_end": window_end.isoformat(),
             "log_file": os.path.basename(csv_path),
@@ -191,14 +200,18 @@ def submit_log():
             "show_name": run.show_name,
             "dj_first_name": run.dj_first_name,
             "dj_last_name": run.dj_last_name,
-            "start_time": run.start_time.isoformat(),
-            "start_label": run.start_time.strftime("%Y-%m-%d %H:%M"),
+            "start_time": localize_datetime(run.start_time).isoformat(),
+            "start_label": localize_datetime(run.start_time).strftime("%Y-%m-%d %H:%M"),
+            "airing_date": airing_date_for_start(
+                [show for show in shows if show_display_title(show) == run.show_name],
+                localize_datetime(run.start_time).replace(tzinfo=None),
+            ).isoformat(),
         }
         for run in show_runs
     ]
     return render_template(
         "logs_submit.html",
-        now=datetime.utcnow(),
+        now=datetime.now(get_config_timezone()),
         djs=dj_payload,
         shows=show_payload,
         show_runs=show_run_payload,

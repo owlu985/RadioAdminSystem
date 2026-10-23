@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import os
+from datetime import date
 from typing import Iterable
 
 from flask import current_app
@@ -37,7 +38,21 @@ def _normalize_periods(payload: dict | None) -> dict:
     if current not in periods:
         periods.insert(0, current)
 
-    return {"current": current, "periods": periods}
+    normalized = {"current": current, "periods": periods}
+    ranges = {}
+    raw_ranges = payload.get("date_ranges", {}) if isinstance(payload, dict) else {}
+    for name, dates in (raw_ranges if isinstance(raw_ranges, dict) else {}).items():
+        if name not in periods or not isinstance(dates, dict):
+            continue
+        try:
+            start, end = date.fromisoformat(dates["start"]), date.fromisoformat(dates["end"])
+            if start <= end:
+                ranges[name] = {"start": start.isoformat(), "end": end.isoformat()}
+        except (ValueError, TypeError, KeyError):
+            continue
+    if ranges:
+        normalized["date_ranges"] = ranges
+    return normalized
 
 
 def load_recording_periods() -> dict:
@@ -52,8 +67,9 @@ def load_recording_periods() -> dict:
     return _normalize_periods(payload)
 
 
-def save_recording_periods(*, periods: Iterable[str], current: str | None = None) -> dict:
-    payload = {"periods": list(periods), "current": current}
+def save_recording_periods(*, periods: Iterable[str], current: str | None = None, date_ranges=None) -> dict:
+    payload = {"periods": list(periods), "current": current,
+               "date_ranges": load_recording_periods().get("date_ranges", {}) if date_ranges is None else date_ranges}
     normalized = _normalize_periods(payload)
     path = _periods_path()
     os.makedirs(os.path.dirname(path), exist_ok=True)

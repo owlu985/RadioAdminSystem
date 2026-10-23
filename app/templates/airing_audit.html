@@ -14,7 +14,18 @@
         <button class="btn btn-outline-primary" type="submit">Switch period</button>
     </form>
     <p><strong>{{ total }}</strong> airings in <strong>{{ selected_period }}</strong>, through today. A recording or submitted digital log counts once per show and airing date. Missed shows are excluded.</p>
-    <p class="text-muted">Full recordings take precedence over recovery parts. A single orphaned part counts; multiple orphaned parts require a log. Counts credit hosts named in the evidence. Red means Missed or no evidence found, and does not establish that a DJ was absent. Historical schedules reflect the schedule currently saved.</p>
+    <p class="text-muted">Totals are actual airings / possible airings so far: only finished scheduled slots count toward the denominator, including recorded absences. A recording family counts once; an empty original can be supported by nonempty recovery parts. Multiple parts without any original still require a log. Substitute DJs receive the attendance credit. Historical schedules reflect the schedule currently saved; — means a schedule is unavailable for a reliable denominator.</p>
+    <p><strong>Codes:</strong> A = aired · E = recorded absence · E/A = absent DJ, co-host aired · S = substitute aired · E/S = substitute arranged, airing unconfirmed · M = Missed with no notice · P = absence awaiting approval · ? = no evidence, attendance unknown · U = upcoming.</p>
+    {% if inferred_period %}<p class="text-warning">Period dates are not set. Possible airings use each show's saved date range through today; set period dates below to limit the denominator to this period.</p>{% else %}<p class="text-muted">Period dates: {{ period_dates.start }} to {{ period_dates.end }}.</p>{% endif %}
+    {% if can('settings:edit') %}<details class="mb-3"><summary>Set dates for {{ selected_period }}</summary>
+        <form method="post" action="{{ url_for('main.audit_period_dates') }}" class="d-flex flex-wrap gap-2 align-items-end mt-2">
+            <input type="hidden" name="period" value="{{ selected_period }}">
+            <label>Start<input class="form-control" type="date" name="start" value="{{ period_dates.get('start', '') }}" required></label>
+            <label>End<input class="form-control" type="date" name="end" value="{{ period_dates.get('end', '') }}" required></label>
+            <button class="btn btn-outline-primary">Save period dates</button>
+        </form>
+    </details>{% endif %}
+    {% if repaired_logs %}<p class="text-info">{{ repaired_logs }} log date(s) matched back to the show's airing start date. Original log files were preserved.</p>{% endif %}
     {% if skipped %}<div class="alert alert-warning">{{ skipped }} recording or log file(s) could not be dated or read and were excluded.</div>{% endif %}
     {% if unassigned_logs %}<p class="text-muted small">Legacy database logs without a period are included only when matched to a recording or CSV log in this period.</p>{% endif %}
     <div class="d-flex flex-wrap align-items-center gap-2 mb-3">
@@ -28,16 +39,18 @@
         <a class="btn btn-outline-secondary" href="{{ url_for('main.airing_audit', period=selected_period) }}">This week</a>
     </div>
     <div class="table-responsive mb-4"><table class="table table-bordered align-middle">
-        <caption>Weekly show calendar: green = aired, red = missed or no evidence, gray = upcoming.</caption>
-        <thead><tr><th scope="col">Show</th><th scope="col">Period airings</th>{% for day in days %}<th scope="col">{{ day.strftime('%a %m/%d') }}</th>{% endfor %}</tr></thead>
-        <tbody>{% for row in calendar %}<tr><th scope="row">{{ row.name }}</th><td>{{ row.total }}</td>
-            {% for cell in row.cells %}<td class="{{ 'table-success' if cell.status == 'Aired' else 'table-danger' if cell.status in ['Missed', 'No evidence'] else 'table-secondary' if cell.status == 'Upcoming' else '' }}">
-                {% if cell.status != 'Unscheduled' %}{{ cell.status }}{% if cell.sources %}<small class="d-block">{{ cell.sources }}</small>{% endif %}{% else %}<span aria-label="Not scheduled">—</span>{% endif %}
+        <caption>Green = aired; amber = recorded/pending absence; red = Missed or missing evidence; gray = upcoming. Expand Proof / reason for evidence and explanations.</caption>
+        <thead><tr><th scope="col">Show</th><th scope="col">Actual / possible</th>{% for day in days %}<th scope="col">{{ day.strftime('%a %m/%d') }}</th>{% endfor %}</tr></thead>
+        <tbody>{% for row in calendar %}<tr><th scope="row">{{ row.name }}</th><td>{{ row.total }}/{{ row.possible if row.possible is not none else '—' }}</td>
+            {% for cell in row.cells %}<td class="{{ 'table-' ~ cell.color if cell.color else '' }}">
+                {% if cell.code != '—' %}<strong>{{ cell.code }}</strong> · {{ cell.status }}{% if cell.sources %}<small class="d-block">{{ cell.sources }}</small>{% endif %}
+                {% if cell.details or cell.token %}<details><summary class="small">Proof / reason</summary>{% for detail in cell.details %}<p class="small mb-1">{{ detail }}</p>{% endfor %}{% if cell.token %}<a class="small" href="{{ url_for('main.recordings_view', token=cell.token) }}">View recording / correct Missed status</a>{% endif %}</details>{% endif %}
+                {% else %}<span aria-label="{{ cell.status }}">—</span>{% endif %}
             </td>{% endfor %}</tr>{% else %}<tr><td colspan="9">No shows found.</td></tr>{% endfor %}</tbody>
     </table></div>
     <h2 class="h4">DJ totals — {{ selected_period }}</h2>
-    <div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">DJ</th><th scope="col">Shows completed</th></tr></thead>
-    <tbody>{% for name, count in dj_totals %}<tr><td>{{ name }}</td><td>{{ count }}</td></tr>{% else %}<tr><td colspan="2">No DJs found.</td></tr>{% endfor %}</tbody></table></div>
+    <div class="table-responsive"><table class="table table-striped"><thead><tr><th scope="col">DJ</th><th scope="col">Actual / possible</th></tr></thead>
+    <tbody>{% for name, count in dj_totals %}<tr><td>{{ name }}</td><td>{{ count }}/{{ dj_possible[name] if dj_possible[name] is not none else '—' }}</td></tr>{% else %}<tr><td colspan="2">No DJs found.</td></tr>{% endfor %}</tbody></table></div>
 </main>
 {% include '_footer.html' %}
 </body></html>

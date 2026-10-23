@@ -42,8 +42,9 @@
                 <input type="hidden" name="show_name" id="show_name">
             </div>
             <div class="col-md-3">
-                <label class="form-label">Show Date</label>
+                <label class="form-label">Airing start date</label>
                 <input type="date" class="form-control" name="show_date" id="show_date" value="{{ now.date() }}" required>
+                <div class="form-text">For late-night shows, use the date the show started, even when submitting after midnight. Select an airing below when available.</div>
             </div>
             <div class="col-md-3">
                 <label class="form-label">Airing (optional)</label>
@@ -239,7 +240,9 @@
         }
         showRunDisplay.value = formatShowRun(run);
         showRunInput.value = run.id;
-        if (run.start_time) {
+        if (run.airing_date) {
+            showDateInput.value = run.airing_date;
+        } else if (run.start_time) {
             showDateInput.value = run.start_time.split('T')[0];
         }
         const matchingDj = djs.find(dj => (
