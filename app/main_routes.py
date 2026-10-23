@@ -774,12 +774,37 @@ def airing_audit():
     if week < date.min + timedelta(days=7) or week > date.max - timedelta(days=14):
         abort(400, "Week is out of range")
     period_root = os.path.join(_recordings_root(), period_folder_name(selected_period))
+    period_dates = periods_payload.get("date_ranges", {}).get(selected_period, {})
     report = build_audit(period_root, _collect_recordings(period=selected_period, include_missed=True),
                          week, now=now, period=selected_period, active_period=active_period,
-                         missed_statuses=load_missed_statuses(_recordings_root()))
+                         missed_statuses=load_missed_statuses(_recordings_root()),
+                         period_start=date.fromisoformat(period_dates["start"]) if period_dates else None,
+                         period_end=date.fromisoformat(period_dates["end"]) if period_dates else None)
     return render_template("airing_audit.html", **report, week=week,
                            periods=periods, selected_period=selected_period,
+                           period_dates=period_dates,
                            previous=week-timedelta(days=7), following=week+timedelta(days=7))
+
+
+@main_bp.post("/shows/audit/period-dates")
+@permission_required({"settings:edit"})
+def audit_period_dates():
+    payload = load_recording_periods()
+    period = request.form.get("period")
+    if period not in payload["periods"]:
+        abort(400, "Choose a known recording period.")
+    try:
+        start = date.fromisoformat(request.form.get("start", ""))
+        end = date.fromisoformat(request.form.get("end", ""))
+        if end < start:
+            raise ValueError
+    except ValueError:
+        abort(400, "Choose valid period dates, with the end on or after the start.")
+    ranges = payload.get("date_ranges", {})
+    ranges[period] = {"start": start.isoformat(), "end": end.isoformat()}
+    save_recording_periods(periods=payload["periods"], current=payload["current"], date_ranges=ranges)
+    flash("Audit period dates saved.", "success")
+    return redirect(url_for("main.airing_audit", period=period))
 
 
 @main_bp.post("/recordings/missed/<path:token>")
@@ -2109,17 +2134,33 @@ def manage_absences():
                         show_id = request.form.get("show_id", type=int)
                         replacement_id = request.form.get("replacement_id", type=int)
                         status_choice = request.form.get("status") or "approved"
-                        notes = request.form.get("notes") or None
+                        notes = (request.form.get("reason") or request.form.get("notes") or "").strip() or None
                         show_obj = Show.query.get(show_id) if show_id else None
                         dj_obj = DJ.query.get(dj_id) if dj_id else None
                         if not show_obj or not dj_obj:
                                 flash("Select both a DJ and show to add an absence.", "danger")
                                 return redirect(url_for("main.manage_absences"))
-                        occurrence = next_show_occurrence(show_obj, include_uncovered_absence=True)
+                        airing_date = (request.form.get("airing_date") or "").strip()
+                        if airing_date:
+                                try:
+                                        occurrence = scheduled_window_for_date(show_obj, date.fromisoformat(airing_date))
+                                except ValueError:
+                                        occurrence = None
+                                if not occurrence:
+                                        flash("Choose a date on which this show runs, within its scheduled date range.", "danger")
+                                        return redirect(url_for("main.manage_absences"))
+                                if not notes:
+                                        flash("Enter a reason for this absence.", "danger")
+                                        return redirect(url_for("main.manage_absences"))
+                        else:
+                                occurrence = next_show_occurrence(show_obj, include_uncovered_absence=True)
                         if not occurrence:
                                 flash("Could not determine the next scheduled slot for this show.", "danger")
                                 return redirect(url_for("main.manage_absences"))
                         replacement_name = None
+                        if DJAbsence.query.filter_by(show_id=show_obj.id, dj_name=f"{dj_obj.first_name} {dj_obj.last_name}".strip(), start_time=occurrence[0]).first():
+                                flash("An absence already exists for this DJ and airing. Edit the existing entry.", "warning")
+                                return redirect(url_for("main.manage_absences", status="all"))
                         if replacement_id:
                                 rep_obj = DJ.query.get(replacement_id)
                                 if rep_obj:
@@ -2137,7 +2178,7 @@ def manage_absences():
                         db.session.add(absence)
                         db.session.commit()
                         if absence.status == "approved" and not (absence.replacement_name or "").strip() and absence.show_id:
-                                now = datetime.utcnow()
+                                now = datetime.now(get_config_timezone()).replace(tzinfo=None)
                                 if absence.start_time <= now < absence.end_time:
                                         stop_active_show_recording(show_name=absence.show_name, reason="approved_absence")
                                         try:
@@ -2146,7 +2187,8 @@ def manage_absences():
                                                         client.set_autodj(True)
                                         except Exception as exc:  # noqa: BLE001
                                                 logger.warning("Failed to enable AutoDJ for approved absence %s: %s", absence.id, exc)
-                        refresh_schedule()
+                        if absence.end_time > datetime.now(get_config_timezone()).replace(tzinfo=None):
+                                refresh_schedule()
                         flash("Absence added.", "success")
                         return redirect(url_for("main.manage_absences"))
 
@@ -2154,20 +2196,40 @@ def manage_absences():
                 status_choice = request.form.get("status") or "approved"
                 replacement_id = request.form.get("replacement_id", type=int)
                 absence = DJAbsence.query.get_or_404(abs_id)
+                previous_end = absence.end_time
+
+                if "airing_date" in request.form:
+                        show_obj = absence.show
+                        try:
+                                occurrence = scheduled_window_for_date(show_obj, date.fromisoformat(request.form["airing_date"])) if show_obj else None
+                        except ValueError:
+                                occurrence = None
+                        if not occurrence:
+                                flash("Choose a valid scheduled airing date.", "danger")
+                                return redirect(url_for("main.manage_absences", status="all"))
+                        duplicate = DJAbsence.query.filter_by(show_id=absence.show_id, dj_name=absence.dj_name, start_time=occurrence[0]).filter(DJAbsence.id != absence.id).first()
+                        if duplicate:
+                                flash("An absence already exists for this DJ and airing.", "danger")
+                                return redirect(url_for("main.manage_absences", status="all"))
+                        absence.start_time, absence.end_time = occurrence
+                if "notes" in request.form:
+                        if not request.form["notes"].strip():
+                                flash("Enter a reason for this absence.", "danger")
+                                return redirect(url_for("main.manage_absences", status="all"))
+                        absence.notes = request.form["notes"].strip()
 
                 if status_choice in {"pending", "approved", "rejected", "resolved"}:
                         absence.status = status_choice
 
-                if replacement_id:
+                if request.form.get("replacement_clear"):
+                        absence.replacement_name = None
+                elif replacement_id:
                         sub = DJ.query.get(replacement_id)
                         if sub:
                                 absence.replacement_name = f"{sub.first_name or ''} {sub.last_name or ''}".strip()
-                elif request.form.get("replacement_clear"):
-                        absence.replacement_name = None
-
                 db.session.commit()
                 if absence.status == "approved" and not (absence.replacement_name or "").strip() and absence.show_id:
-                        now = datetime.utcnow()
+                        now = datetime.now(get_config_timezone()).replace(tzinfo=None)
                         if absence.start_time <= now < absence.end_time:
                                 stop_active_show_recording(show_name=absence.show_name, reason="approved_absence")
                                 try:
@@ -2176,7 +2238,8 @@ def manage_absences():
                                                 client.set_autodj(True)
                                 except Exception as exc:  # noqa: BLE001
                                         logger.warning("Failed to enable AutoDJ for approved absence %s: %s", absence.id, exc)
-                refresh_schedule()
+                if max(previous_end, absence.end_time) > datetime.now(get_config_timezone()).replace(tzinfo=None):
+                        refresh_schedule()
                 flash("Absence updated.", "success")
                 return redirect(url_for("main.manage_absences"))
 

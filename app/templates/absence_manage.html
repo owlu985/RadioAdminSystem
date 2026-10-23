@@ -36,7 +36,7 @@
     <table class="table table-striped align-middle">
         <thead>
         <tr>
-            <th>DJ</th><th>Show</th><th>Start</th><th>End</th><th>Replacement</th><th>Status</th><th>Notes</th><th>Actions</th>
+            <th>DJ</th><th>Show</th><th>Start</th><th>End</th><th>Replacement</th><th>Status</th><th>Reason</th><th>Actions</th>
         </tr>
         </thead>
         <tbody>
@@ -44,8 +44,8 @@
             <tr>
                 <td>{{ a.dj_name }}</td>
                 <td>{{ a.show_name }}</td>
-                <td>{{ a.start_time|datetime_local }} {{ app_timezone }}</td>
-                <td>{{ a.end_time|datetime_local }} {{ app_timezone }}</td>
+                <td>{{ a.start_time.strftime('%Y-%m-%d %H:%M') }} {{ app_timezone }}</td>
+                <td>{{ a.end_time.strftime('%Y-%m-%d %H:%M') }} {{ app_timezone }}</td>
                 <td>{{ a.replacement_name or '' }}</td>
                 <td>{{ a.status }}</td>
                 <td>{{ a.notes or '' }}</td>
@@ -53,6 +53,8 @@
                     <form method="post" class="row g-2 align-items-center">
                         <input type="hidden" name="action" value="update">
                         <input type="hidden" name="absence_id" value="{{ a.id }}">
+                        {% if a.show %}<div class="col-12"><label class="form-label small">Airing start date<input class="form-control form-control-sm" type="date" name="airing_date" value="{{ a.start_time.date() }}" min="{{ a.show.start_date }}" max="{{ a.show.end_date }}" required></label></div>{% endif %}
+                        <div class="col-12"><label class="form-label small">Reason<textarea class="form-control form-control-sm" name="notes" rows="2" required>{{ a.notes or '' }}</textarea></label></div>
                         <div class="col-lg-5 col-md-6">
                             <select name="status" class="form-select form-select-sm">
                                 {% for key,label in [('pending','Pending'),('approved','Approved'),('rejected','Rejected'),('resolved','Resolved')] %}
@@ -108,7 +110,7 @@
                         <select class="form-select" id="addAbsenceShow" name="show_id" required>
                             <option value="">Select a show</option>
                             {% for show in shows %}
-                                <option value="{{ show.id }}">{{ show.show_name or (show.host_first_name ~ ' ' ~ show.host_last_name).strip() }}</option>
+                                <option value="{{ show.id }}">{{ show.show_name or (show.host_first_name ~ ' ' ~ show.host_last_name).strip() }} — {{ show.days_of_week }} {{ show.start_time }}–{{ show.end_time }}</option>
                             {% endfor %}
                         </select>
                     </div>
@@ -122,6 +124,11 @@
                         </select>
                     </div>
                     <div class="mb-3">
+                        <label class="form-label" for="addAbsenceDate">Airing start date</label>
+                        <input class="form-control" id="addAbsenceDate" type="date" name="airing_date" required>
+                        <div class="form-text">Past dates are allowed. Choose a scheduled day within the show's date range. Overnight shows use the date they started.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label" for="addAbsenceStatus">Status</label>
                         <select class="form-select" id="addAbsenceStatus" name="status">
                             <option value="approved">Approved</option>
@@ -131,8 +138,8 @@
                         </select>
                     </div>
                     <div class="mb-0">
-                        <label class="form-label" for="addAbsenceNotes">Notes</label>
-                        <textarea class="form-control" id="addAbsenceNotes" name="notes" rows="3"></textarea>
+                        <label class="form-label" for="addAbsenceNotes">Reason</label>
+                        <textarea class="form-control" id="addAbsenceNotes" name="notes" rows="3" required></textarea>
                     </div>
                 </div>
                 <div class="modal-footer">

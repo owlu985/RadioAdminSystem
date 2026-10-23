@@ -384,7 +384,8 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
             return
 
     recorded_at = _schedule_now()
-    base_output_file = f"{output_file}_{recorded_at.strftime('%m-%d-%y')}_RAWDATA"
+    airing_date = show_occurrence_date or recorded_at.date()
+    base_output_file = f"{output_file}_{airing_date.strftime('%m-%d-%y')}_RAWDATA"
     start_time = recorded_at.strftime('%H-%M-%S')
     try:
         if marathon_event_id:
@@ -404,7 +405,9 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                     "schema_version": 1,
                     "show_name": show_name or label or "Unscheduled Show",
                     "dj": ", ".join(hosts or []),
-                    "show_date": recorded_at.date().isoformat(),
+                    "show_date": airing_date.isoformat(),
+                    "airing_date": airing_date.isoformat(),
+                    "show_id": show_id,
                     "show_start": sidecar_start.isoformat(),
                     "show_end": sidecar_end.isoformat(),
                     "log_file": os.path.basename(recording_csv_path(output_file)),
