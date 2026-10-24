@@ -42,11 +42,11 @@
         </div>
         <div class="col-md-4">
           <label class="form-label">Time window (start)</label>
-          <input class="form-control" name="start_time" placeholder="HH:MM">
+          <input class="form-control" name="start_time" type="time">
         </div>
         <div class="col-md-4">
           <label class="form-label">Time window (end)</label>
-          <input class="form-control" name="end_time" placeholder="HH:MM">
+          <input class="form-control" name="end_time" type="time">
         </div>
         <div class="col-md-6">
           <label class="form-label">RadioDJ Track ID (optional)</label>
@@ -95,7 +95,7 @@
               <td>{{ rule.name }}</td>
               <td>{{ rule.match_tag or '—' }}</td>
               <td>{{ rule.days_of_week or '—' }}</td>
-              <td>{{ rule.start_time or '—' }} – {{ rule.end_time or '—' }}</td>
+              <td>{{ rule.start_time|time12 or '—' }} – {{ rule.end_time|time12 or '—' }}</td>
               <td>{{ rule.radiodj_id or '—' }} {{ ' / ' + rule.radiodj_title if rule.radiodj_title else '' }}</td>
               <td>
                 {% if rule.enabled %}

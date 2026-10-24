@@ -37,7 +37,7 @@ function formatTime(isoString) {
     if (!isoString) return '—';
     const parsed = new Date(isoString);
     if (Number.isNaN(parsed.getTime())) return '—';
-    return parsed.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: appTimezone });
+    return parsed.toLocaleTimeString('en-US', { hour12: true, hour: '2-digit', minute: '2-digit', second: '2-digit', timeZone: appTimezone });
 }
 
 function renderNowPlaying(nowPlaying, session) {

@@ -32,7 +32,7 @@
     <div class="card-body" style="max-height:70vh; overflow:auto;">
       {% if log_entries %}
         {% for entry in log_entries %}
-          <div class="log-{{ entry.level }}"><pre>{{ entry.text }}</pre></div>
+          <div class="log-{{ entry.level }}"><pre>{{ entry.text|log_time12 }}</pre></div>
         {% endfor %}
       {% else %}
         <div class="text-muted">No log entries available.</div>

@@ -36,7 +36,7 @@
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <div class="fw-semibold">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</div>
-                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time.strftime('%H:%M') }} - {{ show.end_time.strftime('%H:%M') }} {{ app_timezone }}</small>
+                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time|time12 }} - {{ show.end_time|time12 }} {{ app_timezone }}</small>
                                     </div>
                                 </li>
                             {% endfor %}

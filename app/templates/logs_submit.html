@@ -410,11 +410,12 @@
     });
 
     const logTimezone = {{ app_timezone|tojson }};
+    // Canonical input/storage value; the shared editor renders this with AM/PM.
     const logTimeFormatter = new Intl.DateTimeFormat('en-US', {
         timeZone: logTimezone,
         hour: '2-digit',
         minute: '2-digit',
-        hour12: false,
+        hourCycle: 'h23',
     });
 
     rowsContainer.addEventListener('click', function (e) {
@@ -423,7 +424,7 @@
             persistRows();
         }
         if (e.target.classList.contains('btn-now')) {
-            const input = e.target.closest('.input-group').querySelector('input[type="time"]');
+            const input = e.target.closest('.input-group').querySelector('input[data-time-source], input[type="time"]');
             input.value = logTimeFormatter.format(new Date());
         }
     });
