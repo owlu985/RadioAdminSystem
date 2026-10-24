@@ -30,7 +30,7 @@
             <tr>
                 <td>${e.day.toUpperCase()}</td>
                 <td>${e.title} ${absence}</td>
-                <td>${e.start_time} - ${e.end_time} (${data.timezone})</td>
+                <td>${window.RamsTime.formatClock(e.start_time)} - ${window.RamsTime.formatClock(e.end_time)} (${data.timezone})</td>
                 <td>${e.genre || ''}</td>
                 <td>${e.description || ''}</td>
             </tr>`;

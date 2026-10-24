@@ -2,7 +2,7 @@ from datetime import datetime, date, time, timedelta
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import DJ, Show, ShowRun
-from app.utils import get_current_show, show_display_title, show_primary_host, localize_datetime, get_config_timezone
+from app.utils import get_current_show, show_display_title, show_primary_host, localize_datetime, get_config_timezone, format_time12, format_datetime_local
 from app.services.airing_dates import log_airing_date, airing_date_for_start
 from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.services.log_export import (
@@ -188,7 +188,7 @@ def submit_log():
         {
             "id": s.id,
             "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
-            "schedule": f"{s.days_of_week} {s.start_time}-{s.end_time}",
+            "schedule": f"{s.days_of_week} {format_time12(s.start_time)}-{format_time12(s.end_time)}",
             "hosts": _show_host_ids(s),
         }
         for s in shows
@@ -201,7 +201,7 @@ def submit_log():
             "dj_first_name": run.dj_first_name,
             "dj_last_name": run.dj_last_name,
             "start_time": localize_datetime(run.start_time).isoformat(),
-            "start_label": localize_datetime(run.start_time).strftime("%Y-%m-%d %H:%M"),
+            "start_label": format_datetime_local(run.start_time),
             "airing_date": airing_date_for_start(
                 [show for show in shows if show_display_title(show) == run.show_name],
                 localize_datetime(run.start_time).replace(tzinfo=None),

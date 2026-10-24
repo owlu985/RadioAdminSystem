@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WLMC Studio Status</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css', v='original-theme-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css', v='12-hour-clock-1') }}">
     <style>
         body { --station-background: url({{ station_background|default('')|tojson }}); }
     </style>
@@ -13,7 +13,7 @@
 <div class="stage">
     <header class="topbar">
         <div class="brand"><img id="stationLogo" src="{{ url_for('static', filename='logo.png') }}" alt=""><div><strong>{{ station_name }}</strong><span>{{ station_slogan }}</span></div></div>
-        <div class="clock" id="clock" aria-label="Station clock">--:--:--</div>
+        <div class="clock" id="clock" aria-label="Station clock"><span id="clockDigits">--:--:--</span> <span id="clockPeriod" class="clock-period">AM</span></div>
         <div class="health"><div id="streamState">STREAM · CHECKING</div><div id="audioState">AUDIO · CHECKING</div></div>
     </header>
     <main class="main">
@@ -35,6 +35,6 @@
 </div>
 <div id="screensaver" hidden aria-hidden="true"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
 {% include '_rams_url_helper.html' %}
-<script src="{{ url_for('static', filename='studio-status.js') }}"></script>
+<script src="{{ url_for('static', filename='studio-status.js', v='12-hour-clock-1') }}"></script>
 </body>
 </html>

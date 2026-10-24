@@ -25,6 +25,8 @@ from .utils import (
     update_user_config,
     get_current_show,
     format_show_window,
+    format_time12,
+    parse_clock_time,
     normalize_days_list,
     show_host_names,
     show_display_title,
@@ -1893,7 +1895,7 @@ def bulk_add_shows():
     end_date_obj = datetime.strptime(end_date, "%Y-%m-%d").date()
 
     pattern = re.compile(
-        "^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2})\\s*[-\\u2013\\u2014]\\s*(?P<end>\\d{1,2}:\\d{2})\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU|MON|MONDAY|TUE|TUES|TUESDAY|WED|WEDNESDAY|THU|THUR|THURSDAY|FRI|FRIDAY|SAT|SATURDAY|SUN|SUNDAY)\\s*$",
+        "^\\s*(?P<name>[^/]+?)\\s*/\\s*(?P<start>\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)\\s*[-\\u2013\\u2014]\\s*(?P<end>\\d{1,2}:\\d{2}(?:\\s*[AP]M)?)\\s*/\\s*(?P<day>M|T|W|TH|F|SA|SU|MON|MONDAY|TUE|TUES|TUESDAY|WED|WEDNESDAY|THU|THUR|THURSDAY|FRI|FRIDAY|SAT|SATURDAY|SUN|SUNDAY)\\s*$",
         re.IGNORECASE,
     )
     day_map = {
@@ -1956,8 +1958,8 @@ def bulk_add_shows():
             skipped.append(raw_line)
             continue
         try:
-            start_time_obj = datetime.strptime(match.group("start"), "%H:%M").time()
-            end_time_obj = datetime.strptime(match.group("end"), "%H:%M").time()
+            start_time_obj = parse_clock_time(match.group("start"))
+            end_time_obj = parse_clock_time(match.group("end"))
         except ValueError:
             skipped.append(raw_line)
             continue
@@ -1979,8 +1981,8 @@ def bulk_add_shows():
                 skipped.append(", ".join([show_name, start_val, end_val, day_val]))
                 continue
             try:
-                start_time_obj = datetime.strptime(start_val, "%H:%M").time()
-                end_time_obj = datetime.strptime(end_val, "%H:%M").time()
+                start_time_obj = parse_clock_time(start_val)
+                end_time_obj = parse_clock_time(end_val)
             except ValueError:
                 skipped.append(", ".join([show_name, start_val, end_val, day_val]))
                 continue
@@ -2142,7 +2144,7 @@ def dj_absence_submit():
                 {
                         "id": s.id,
                         "name": s.show_name or f"{s.host_first_name} {s.host_last_name}",
-                        "schedule": f"{s.days_of_week} {s.start_time}-{s.end_time}",
+                        "schedule": f"{s.days_of_week} {format_time12(s.start_time)}-{format_time12(s.end_time)}",
                         "hosts": _show_host_ids(s),
                 }
                 for s in shows

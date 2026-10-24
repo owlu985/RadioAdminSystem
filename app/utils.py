@@ -8,6 +8,7 @@ from .models import Show, DJAbsence
 import threading
 import json
 import os
+import re
 
 config_lock = threading.Lock()
 logger = None
@@ -140,9 +141,49 @@ def localize_datetime(value: datetime | None, tz: ZoneInfo | None = None) -> dat
     return value.astimezone(tz)
 
 
-def format_datetime_local(value: datetime | None, fmt: str = "%Y-%m-%d %H:%M") -> str:
+def parse_clock_time(value: str) -> time:
+    """Accept AM/PM imports as well as existing canonical HH:MM files."""
+    value = value.strip().upper()
+    for pattern in ("%I:%M %p", "%I:%M%p", "%H:%M"):
+        try:
+            return datetime.strptime(value, pattern).time()
+        except ValueError:
+            continue
+    raise ValueError("Enter a clock time such as 1:30 PM")
+
+
+def format_time12(value, seconds: bool = False) -> str:
+    """Format a wall-clock time without changing its timezone or stored value."""
+    if value is None or value == "":
+        return ""
+    if isinstance(value, str):
+        raw = value.strip()
+        for pattern in ("%H:%M", "%H:%M:%S", "%H:%M:%S.%f", "%I:%M %p", "%I:%M:%S %p"):
+            try:
+                value = datetime.strptime(raw, pattern).time()
+                break
+            except ValueError:
+                continue
+        else:
+            return raw
+    return value.strftime("%I:%M:%S %p" if seconds else "%I:%M %p").lstrip("0")
+
+
+def format_datetime_local(value: datetime | None, fmt: str | None = None) -> str:
     localized = localize_datetime(value)
-    return localized.strftime(fmt) if localized else ""
+    if localized is None:
+        return ""
+    return localized.strftime(fmt) if fmt else f"{localized:%Y-%m-%d} {format_time12(localized)}"
+
+
+def format_log_line_time12(value: str) -> str:
+    """Render only the log prefix in 12-hour time; retain raw log files verbatim."""
+    def replace(match):
+        clock = format_time12(match[2], seconds=True)
+        number, period = clock.rsplit(" ", 1)
+        return f"{match[1]}{number}{match[3] or ''} {period}"
+
+    return re.sub(r"^(\[?\d{4}-\d{2}-\d{2}[ T])((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)([.,]\d+)?(?=[\s\]])", replace, value)
 
 
 def format_date_local(value: datetime | None, fmt: str = "%Y-%m-%d") -> str:

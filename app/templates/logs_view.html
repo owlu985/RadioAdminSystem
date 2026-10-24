@@ -34,7 +34,7 @@
         {% for e in entries %}
             <tr>
                 <td>{{ e.log_sheet.show_date if e.log_sheet else '' }}</td>
-                <td>{{ e.entry_time.strftime('%H:%M') if e.entry_time else '' }}</td>
+                <td>{{ e.entry_time|time12 }}</td>
                 <td>{{ e.entry_type }}</td>
                 <td>{{ e.title }}</td>
                 <td>{{ e.artist }}</td>

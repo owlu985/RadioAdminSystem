@@ -10,6 +10,8 @@ import tempfile
 import zipfile
 from typing import Iterable
 
+from app.utils import format_time12
+
 
 @dataclass
 class LogCsvEntry:
@@ -165,7 +167,7 @@ def build_docx(entries: Iterable[LogCsvEntry]) -> bytes:
             show_date=entry.show_date,
             show_name=entry.show_name,
             dj=entry.dj,
-            time=entry.time,
+            time=format_time12(entry.time),
             entry_type=entry.entry_type,
             title=entry.title,
             artist=entry.artist,

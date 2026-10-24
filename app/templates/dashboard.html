@@ -36,9 +36,9 @@
                 <p class="card-text mb-1"><strong>Host:</strong> {{ current_show.host_first_name }} {{ current_show.host_last_name }}</p>
                 <p class="card-text mb-1"><strong>Genre:</strong> {{ current_show.genre or 'N/A' }}</p>
                 <p class="card-text mb-1"><strong>Description:</strong> {{ current_show.description or 'N/A' }}</p>
-                <p class="card-text mb-1"><strong>Window:</strong> {{ window.start_time }} - {{ window.end_time }}</p>
+                <p class="card-text mb-1"><strong>Window:</strong> {{ window.start_time|time12 }} - {{ window.end_time|time12 }}</p>
                 {% if current_run %}
-                    <p class="card-text mb-0"><strong>Run started:</strong> {{ current_run.start_time }}</p>
+                    <p class="card-text mb-0"><strong>Run started:</strong> {{ current_run.start_time|datetime_local }}</p>
                     {% if current_run_flagged %}
                         <span class="badge bg-warning text-dark">Flagged (automation/dead-air)</span>
                     {% endif %}
@@ -125,7 +125,7 @@
             <ul class="mb-0" id="absenceList">
                 {% for a in absences %}
                 <li data-absence="{{ a.dj_name }} {{ a.show_name }} {{ a.replacement_name or '' }} {{ a.status }}">
-                    <strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time }} to {{ a.end_time }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}
+                    <strong>{{ a.dj_name }}</strong> &mdash; {{ a.show_name }} ({{ a.start_time.strftime('%Y-%m-%d') }} {{ a.start_time|time12 }} to {{ a.end_time.strftime('%Y-%m-%d') }} {{ a.end_time|time12 }}) [{{ a.status }}]{% if a.replacement_name %} &middot; Cover: {{ a.replacement_name }}{% endif %}
                 </li>
                 {% endfor %}
             </ul>
@@ -171,7 +171,8 @@
     }
     const dashboardTimezone = {{ app_timezone|tojson }};
     function formatListenerTime(ts) {
-        return new Date(ts).toLocaleTimeString([], {
+        return new Date(ts).toLocaleTimeString('en-US', {
+            hour12: true,
             hour: '2-digit',
             minute: '2-digit',
             timeZone: dashboardTimezone

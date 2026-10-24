@@ -100,7 +100,9 @@
     }
     byId('cover').addEventListener('error', () => {byId('cover').hidden = true;});
     function tick() {
-        byId('clock').textContent = new Intl.DateTimeFormat('en-GB', {timeZone: zone, hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23'}).format(new Date());
+        const clock = new Intl.DateTimeFormat('en-US', {timeZone: zone, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true}).formatToParts(new Date());
+        byId('clockDigits').textContent = clock.filter(part => part.type !== 'dayPeriod').map(part => part.value).join('').trim();
+        byId('clockPeriod').textContent = clock.find(part => part.type === 'dayPeriod').value;
         const seconds = nextStart ? Math.max(0, Math.ceil((nextStart - Date.now()) / 1000)) : 0;
         byId('countdown').textContent = nextStart ? `Starts in ${Math.floor(seconds / 3600) ? Math.floor(seconds / 3600) + ':' : ''}${String(Math.floor(seconds % 3600 / 60)).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}` : '';
         if (latest) renderAlerts();

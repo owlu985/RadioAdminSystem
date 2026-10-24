@@ -58,7 +58,7 @@
             {% for ev in events %}
             <tr>
               <td>{{ ev.name }}</td>
-              <td>{{ ev.start_time }} → {{ ev.end_time }}</td>
+              <td>{{ ev.start_time.strftime('%Y-%m-%d') }} {{ ev.start_time|time12 }} → {{ ev.end_time.strftime('%Y-%m-%d') }} {{ ev.end_time|time12 }}</td>
               <td>{{ ev.chunk_hours }}h</td>
               <td>
                 {% if ev.canceled_at %}

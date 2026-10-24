@@ -7,7 +7,7 @@ from flask import Flask, render_template, request
 from config import Config
 from .models import db, Show
 from app.plugins import load_plugins
-from .utils import init_utils, format_datetime_local, format_date_local, get_config_timezone_name
+from .utils import init_utils, format_datetime_local, format_date_local, format_time12, format_log_line_time12, get_config_timezone_name
 from .config_utils import normalize_optional_config
 from .db_utils import ensure_schema
 from .oauth import init_oauth, oauth
@@ -124,6 +124,8 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
     app.jinja_env.filters["datetime_local"] = format_datetime_local
+    app.jinja_env.filters["time12"] = format_time12
+    app.jinja_env.filters["log_time12"] = format_log_line_time12
     app.jinja_env.filters["date_local"] = format_date_local
     _install_url_prefix_middleware(app)
 
