@@ -1491,16 +1491,6 @@ def weather_tempest():
             return value
         return ""
 
-    def _fmt_day(value):
-        if isinstance(value, (int, float)):
-            try:
-                return datetime.fromtimestamp(value, get_config_timezone()).strftime("%a")
-            except Exception:
-                return str(value)
-        if isinstance(value, str):
-            return value
-        return ""
-
     hourly = (
         forecast_root.get("hourly")
         or forecast_root.get("hourly_forecast")
@@ -1568,22 +1558,45 @@ def weather_tempest():
         or payload.get("daily_forecast")
         or []
     )
-    next_days = []
-    for item in daily[:3]:
-        next_days.append(
-            {
-                "day": _fmt_day(item.get("day_start_local") or item.get("day") or item.get("start_time")),
-                "high": first_value(item, "air_temp_high", "high_temperature"),
-                "low": first_value(item, "air_temp_low", "low_temperature"),
-                "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
-                "icon": item.get("icon") or item.get("icon_code"),
-            }
-        )
+    station_zone = get_config_timezone()
+    today = datetime.fromtimestamp(now_ts, station_zone).date()
+    dated_daily = {}
+    for item in daily:
+        raw_day = first_value(item, "day_start_local", "start_time", "day")
+        try:
+            stamp = _parse_ts(raw_day)
+            if stamp is not None:
+                forecast_date = datetime.fromtimestamp(stamp, station_zone).date()
+            else:
+                parsed_day = datetime.fromisoformat(str(raw_day).replace("Z", "+00:00"))
+                forecast_date = (parsed_day.astimezone(station_zone) if parsed_day.tzinfo else parsed_day).date()
+        except (ValueError, TypeError, OverflowError, OSError):
+            continue
+        dated_daily.setdefault(forecast_date, item)
+
+    def daily_block(forecast_date, item):
+        return {
+            "day": forecast_date.strftime("%a"),
+            "date": forecast_date.isoformat(),
+            "high": first_value(item, "air_temp_high", "high_temperature"),
+            "low": first_value(item, "air_temp_low", "low_temperature"),
+            "condition": item.get("conditions") or item.get("icon") or item.get("weather"),
+            "icon": item.get("icon") or item.get("icon_code"),
+            "precip_probability": item.get("precip_probability"),
+        }
+
+    # Compare calendar dates in the station timezone, including across DST changes.
+    next_days = [daily_block(day, dated_daily[day]) for day in sorted(dated_daily)
+                 if today < day <= today + timedelta(days=3)]
+    today_forecast = daily_block(today, dated_daily.get(today, {}))
 
     current_block = {
         "temp": first_value(current, "air_temperature", "temperature"),
         "condition": current.get("conditions") or current.get("icon") or current.get("weather"),
         "icon": current.get("icon") or current.get("icon_code"),
+        "high": today_forecast["high"],
+        "low": today_forecast["low"],
+        "precip_probability": today_forecast["precip_probability"],
     }
 
     return jsonify({
