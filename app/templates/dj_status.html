@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>WLMC Studio Status</title>
-    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css', v='12-hour-clock-1') }}">
+    <link rel="stylesheet" href="{{ url_for('static', filename='studio-status.css', v='forecast-precip-1') }}">
     <style>
         body { --station-background: url({{ station_background|default('')|tojson }}); }
     </style>
@@ -26,7 +26,7 @@
             <section class="panel alerts" aria-label="Alerts"><div class="alerts-heading">ALERTS <span class="alert-count" id="alertCount">CHECKING</span></div><div id="alerts" aria-live="polite"></div></section>
         </div>
         <section class="panel weather">
-            <div class="label">PUTNEY WEATHER</div><div class="temperature"><span id="temperature">—</span><small> F</small></div><div class="conditions" id="conditions">Weather unavailable</div>
+            <div class="label">PUTNEY WEATHER</div><div class="temperature"><span id="temperature">—</span><small> F</small></div><div class="conditions"><span id="conditions">Weather unavailable</span> <small id="currentPrecip" class="current-precip"></small></div>
             <div class="highlow"><span id="high">↑ High —</span><span id="low">↓ Low —</span></div><div class="forecast" id="forecast"></div>
         </section>
     </main>
@@ -35,6 +35,6 @@
 </div>
 <div id="screensaver" hidden aria-hidden="true"><img src="{{ url_for('static', filename='logo.png') }}" alt=""></div>
 {% include '_rams_url_helper.html' %}
-<script src="{{ url_for('static', filename='studio-status.js', v='12-hour-clock-1') }}"></script>
+<script src="{{ url_for('static', filename='studio-status.js', v='forecast-precip-1') }}"></script>
 </body>
 </html>

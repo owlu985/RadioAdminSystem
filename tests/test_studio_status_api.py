@@ -63,12 +63,59 @@ def test_live_show_keeps_priority_and_tomorrow_is_not_next_show_today(app, monke
 
 
 def test_tempest_keeps_zero_degree_temperatures_and_conditions(app, monkeypatch):
+    now = datetime(2026, 10, 28, 12, tzinfo=ZoneInfo('America/New_York')).timestamp()
+    tomorrow = datetime(2026, 10, 29, tzinfo=ZoneInfo('America/New_York')).timestamp()
+    monkeypatch.setattr(api.time, 'time', lambda: now)
     class Response:
         def raise_for_status(self): pass
         def json(self):
             return {'current_conditions': {'air_temperature': 0, 'conditions': 'Snow'},
-                    'forecast': {'daily': [{'day': 'Fri', 'air_temp_high': 0, 'air_temp_low': -4, 'conditions': 'Light snow'}]}}
+                    'forecast': {'daily': [{'day_start_local': tomorrow, 'air_temp_high': 0, 'air_temp_low': -4, 'conditions': 'Light snow', 'precip_probability': 0}]}}
     monkeypatch.setattr(api.requests, 'get', lambda *args, **kwargs: Response())
     data = api.weather_tempest().get_json()
     assert data['current']['temp'] == 0
-    assert data['next_days'][0] == {'day': 'Fri', 'high': 0, 'low': -4, 'condition': 'Light snow', 'icon': None}
+    assert data['next_days'][0] == {'day': 'Thu', 'date': '2026-10-29', 'high': 0, 'low': -4, 'condition': 'Light snow', 'icon': None, 'precip_probability': 0}
+    assert data['current']['high'] is None  # Tomorrow must not become today's high.
+
+
+@pytest.mark.parametrize('instant', ['2026-10-28T21:30:00-04:00', '2026-10-31T23:30:00-04:00', '2026-12-31T23:30:00-05:00'])
+def test_tempest_separates_today_from_next_three_local_dates(app, monkeypatch, instant):
+    now = datetime.fromisoformat(instant)
+    today = now.date()
+    zone = ZoneInfo('America/New_York')
+    daily = [{
+        'day_start_local': datetime.combine(today + timedelta(days=offset), datetime.min.time(), zone).timestamp(),
+        'air_temp_high': 60 + offset, 'air_temp_low': 40 + offset,
+        'conditions': 'Partly cloudy', 'precip_probability': offset * 20,
+    } for offset in [3, 0, 1, -1, 2, 4]]
+
+    class Response:
+        def raise_for_status(self): pass
+        def json(self):
+            return {'current_conditions': {'air_temperature': 58, 'conditions': 'Cloudy'}, 'forecast': {'daily': daily}}
+
+    monkeypatch.setattr(api.requests, 'get', lambda *args, **kwargs: Response())
+    monkeypatch.setattr(api.time, 'time', lambda: now.timestamp())
+    data = api.weather_tempest().get_json()
+    assert data['current'] == {'temp': 58, 'condition': 'Cloudy', 'icon': None, 'high': 60, 'low': 40, 'precip_probability': 0}
+    assert [day['date'] for day in data['next_days']] == [(today + timedelta(days=n)).isoformat() for n in [1, 2, 3]]
+    assert [day['precip_probability'] for day in data['next_days']] == [20, 40, 60]
+
+
+def test_tempest_future_only_forecast_and_missing_probability(app, monkeypatch):
+    class Response:
+        def raise_for_status(self): pass
+        def json(self):
+            return {'forecast': {'daily': [
+                {'day': '2026-10-29', 'conditions': 'Sunny'},
+                {'day': '2026-10-30', 'conditions': 'Rain'},
+                {'day': '2026-10-31', 'conditions': 'Cloudy'},
+                {'day': 'invalid'},
+            ]}}
+
+    monkeypatch.setattr(api.requests, 'get', lambda *args, **kwargs: Response())
+    monkeypatch.setattr(api.time, 'time', lambda: datetime(2026, 10, 28, 16, tzinfo=ZoneInfo('UTC')).timestamp())
+    data = api.weather_tempest().get_json()
+    assert [day['day'] for day in data['next_days']] == ['Thu', 'Fri', 'Sat']
+    assert data['next_days'][0]['precip_probability'] is None
+    assert data['current']['high'] is None

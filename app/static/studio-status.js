@@ -87,15 +87,21 @@
         finally {setTimeout(marathon, 300000);}
     }
     async function weather() {
+        const precipitation = value => {
+            if (value === null || value === undefined || value === '' || typeof value === 'boolean') return 'Precip —';
+            const percent = Number(value);
+            return Number.isFinite(percent) && percent >= 0 && percent <= 100 ? `${Math.round(percent)}% precip.` : 'Precip —';
+        };
         try {
             const res = await fetch(window.ramsUrl('/api/weather/tempest'), {signal: AbortSignal.timeout(12000)}); if (!res.ok) throw Error();
             const data = await res.json(); if (data.status !== 'ok') throw Error();
             byId('temperature').textContent = temp(data.current?.temp); byId('conditions').textContent = data.current?.condition || 'Conditions unavailable';
-            const days = (data.next_days || []).slice(0, 3); byId('high').textContent = '↑ High ' + temp(days[0]?.high); byId('low').textContent = '↓ Low ' + temp(days[0]?.low);
+            byId('currentPrecip').textContent = precipitation(data.current?.precip_probability);
+            const days = (data.next_days || []).slice(0, 3); byId('high').textContent = '↑ High ' + temp(data.current?.high); byId('low').textContent = '↓ Low ' + temp(data.current?.low);
             byId('forecast').replaceChildren();
-            days.forEach(d => {const tile = line(byId('forecast'), d.day || '', ''); const hi = document.createElement('strong'); hi.textContent = '↑ ' + temp(d.high); tile.append(hi); const lo = document.createElement('span'); lo.textContent = '↓ ' + temp(d.low); tile.append(lo); line(tile, d.condition || 'Forecast unavailable', 'forecast-condition');});
+            days.forEach(d => {const tile = line(byId('forecast'), d.day || '', ''); const hi = document.createElement('strong'); hi.textContent = '↑ ' + temp(d.high); tile.append(hi); const lo = document.createElement('span'); lo.textContent = '↓ ' + temp(d.low); tile.append(lo); line(tile, d.condition || 'Forecast unavailable', 'forecast-condition'); line(tile, precipitation(d.precip_probability), 'forecast-precip');});
             byId('weatherChecked').textContent = `Weather fetched ${time(Date.now())}`;
-        } catch {byId('temperature').textContent = '—'; byId('conditions').textContent = 'Weather unavailable'; byId('high').textContent = '↑ High —'; byId('low').textContent = '↓ Low —'; byId('forecast').replaceChildren(); byId('weatherChecked').textContent = 'Weather unavailable';}
+        } catch {byId('temperature').textContent = '—'; byId('conditions').textContent = 'Weather unavailable'; byId('currentPrecip').textContent = ''; byId('high').textContent = '↑ High —'; byId('low').textContent = '↓ Low —'; byId('forecast').replaceChildren(); byId('weatherChecked').textContent = 'Weather unavailable';}
         finally {setTimeout(weather, 300000);}
     }
     byId('cover').addEventListener('error', () => {byId('cover').hidden = true;});
