@@ -512,19 +512,35 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
         if ctx:
             ctx.pop()
 
-def delete_show(show_id):
-    """Delete a show from the database."""
+def _show_schedule_end(show):
+    end = datetime.combine(show.end_date, show.end_time)
+    if show.end_time <= show.start_time:
+        end += timedelta(days=1)
+    return end
 
-    try:
-        with db.app_context():
+
+def delete_show(show_id):
+    """Remove an expired temporary show, including cleanup missed during downtime."""
+    if flask_app is None:
+        return
+
+    with flask_app.app_context():
+        try:
             show = Show.query.get(show_id)
-            if show:
-                db.session.delete(show)
-                db.session.commit()
-        logger.info(f"Show with ID {show_id} deleted.")
+            # A queued cleanup may outlive an edit that extends the show or
+            # makes it permanent. Always check the current database row.
+            if not show or not show.is_temporary:
+                return
+            if _show_schedule_end(show) + timedelta(hours=1) > _schedule_now():
+                return
+            db.session.delete(show)
+            db.session.commit()
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"Error deleting show {show_id}: {e}")
+            return
+        logger.info(f"Temporary show with ID {show_id} deleted.")
         refresh_schedule()
-    except Exception as e:
-        logger.error(f"Error deleting show {show_id}: {e}")
 
 def schedule_recording(show):
     """Schedules the recurring recording and deletion of a show."""
@@ -540,12 +556,28 @@ def schedule_recording(show):
         end_time += timedelta(days=1)
 
     duration = (end_time - start_time).total_seconds()
-    recording_args = _show_recording_args(show, duration)
-    schedule_end = datetime.combine(show.end_date, show.end_time)
-    if show.end_time <= show.start_time:
-        schedule_end += timedelta(days=1)
+    schedule_end = _show_schedule_end(show)
 
     try:
+        if show.is_temporary:
+            # Cleanup remains necessary however late it is. With the normal
+            # two-minute recording grace, each refresh would recreate this
+            # overdue job only for APScheduler to skip it and warn again.
+            cleanup_options = {**_job_options(), "misfire_grace_time": None}
+            scheduler.add_job(
+                delete_show, 'date',
+                run_date=schedule_end + timedelta(hours=1),
+                args=[show.id],
+                id=f"{TEMP_SHOW_JOB_PREFIX}{show.id}",
+                replace_existing=True,
+                **cleanup_options,
+            )
+            logger.info(f"Deletion scheduled for temporary show {show.id} after last airing.")
+
+        # Expired rows need cleanup, not recorder jobs or new output folders.
+        if schedule_end <= _schedule_now():
+            return
+        recording_args = _show_recording_args(show, duration)
         scheduler.add_job(
             record_stream, 'cron',
             day_of_week=show.days_of_week, hour=show.start_time.hour, minute=show.start_time.minute,
@@ -558,16 +590,6 @@ def schedule_recording(show):
         )
         logger.info(f"Recording scheduled for show {show.id}.")
 
-        if show.is_temporary:
-            scheduler.add_job(
-                delete_show, 'date',
-                run_date=schedule_end + timedelta(hours=1),
-                args=[show.id],
-                id=f"{TEMP_SHOW_JOB_PREFIX}{show.id}",
-                replace_existing=True,
-                **_job_options(),
-            )
-            logger.info(f"Deletion scheduled for temporary show {show.id} after last airing.")
     except Exception as e:
         logger.error(f"Error scheduling recording for show {show.id}: {e}")
 

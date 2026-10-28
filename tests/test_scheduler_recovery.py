@@ -1,9 +1,13 @@
 from datetime import date, datetime, time, timedelta
 from types import SimpleNamespace
 
+import pytest
+from apscheduler.events import EVENT_JOB_EXECUTED, EVENT_JOB_MISSED
+from apscheduler.executors.base import run_job
 from flask import Flask
 
 from app import scheduler as scheduler_module
+from app.models import Show, db
 
 
 class FakeScheduler:
@@ -261,3 +265,116 @@ def test_scheduler_uses_station_timezone_instead_of_host_timezone(monkeypatch):
     finally:
         if scheduler_module.scheduler.running:
             scheduler_module.scheduler.shutdown(wait=False)
+
+
+@pytest.fixture
+def cleanup_app(monkeypatch):
+    app = Flask(__name__)
+    app.config.update(SQLALCHEMY_DATABASE_URI="sqlite:///:memory:",
+                      SCHEDULE_TIMEZONE="America/New_York")
+    db.init_app(app)
+    monkeypatch.setattr(scheduler_module, "flask_app", app)
+    monkeypatch.setattr(scheduler_module, "_schedule_now", lambda: datetime(2026, 10, 28, 12, 12))
+    monkeypatch.setattr(scheduler_module, "logger", SimpleNamespace(
+        info=lambda *args: None, warning=lambda *args: None,
+        error=lambda *args: None, exception=lambda *args: None,
+    ))
+    with app.app_context():
+        db.create_all()
+    yield app
+    with app.app_context():
+        db.session.remove()
+        db.drop_all()
+
+
+def _temporary_show(**changes):
+    values = vars(_show()).copy()
+    values.update(is_temporary=True, end_date=date(2026, 10, 4),
+                  start_time=time(17), end_time=time(18), days_of_week="sun")
+    values.update(changes)
+    return Show(**values)
+
+
+def test_overdue_temporary_cleanup_executes_and_is_not_recreated(cleanup_app, monkeypatch, caplog):
+    real_scheduler = scheduler_module._new_scheduler(timezone="America/New_York")
+    real_scheduler.start(paused=True)
+    monkeypatch.setattr(scheduler_module, "scheduler", real_scheduler)
+    monkeypatch.setattr(scheduler_module, "schedule_stream_probe", lambda: None)
+    monkeypatch.setattr(scheduler_module, "_show_recording_args", lambda *_args: pytest.fail(
+        "Expired shows must not create recording folders or recorder jobs"
+    ))
+    try:
+        with cleanup_app.app_context():
+            db.session.add(_temporary_show())
+            db.session.commit()
+            scheduler_module.refresh_schedule()
+        job = real_scheduler.get_job("temporary-show-delete:7")
+        assert job is not None
+        assert job.next_run_time.replace(tzinfo=None) == datetime(2026, 10, 4, 19)
+        assert job.misfire_grace_time is None
+        real_scheduler.remove_job(job.id)  # Date jobs are removed when submitted.
+
+        # Run through APScheduler's real misfire check, outside a Flask context.
+        events = run_job(job, "default", [job.next_run_time], "apscheduler.executors.default")
+        assert [event.code for event in events] == [EVENT_JOB_EXECUTED]
+        assert not any(event.code == EVENT_JOB_MISSED for event in events)
+        assert "was missed by" not in caplog.text
+        with cleanup_app.app_context():
+            assert db.session.get(Show, 7) is None
+            scheduler_module.refresh_schedule()
+            scheduler_module.refresh_schedule()
+        assert real_scheduler.get_jobs() == []
+    finally:
+        real_scheduler.shutdown(wait=False)
+
+
+@pytest.mark.parametrize("changes", [
+    {"is_temporary": False},
+    {"end_date": date(2026, 12, 31)},
+    {"end_date": date(2026, 10, 28), "end_time": time(12)},
+    # Overnight cleanup is due on the following day at 02:00, not 01:00.
+    {"end_date": date(2026, 10, 28), "start_time": time(23), "end_time": time(1)},
+])
+def test_stale_cleanup_preserves_shows_that_are_no_longer_due(cleanup_app, monkeypatch, changes):
+    monkeypatch.setattr(scheduler_module, "refresh_schedule", lambda: pytest.fail("Nothing deleted"))
+    with cleanup_app.app_context():
+        db.session.add(_temporary_show(**changes))
+        db.session.commit()
+    scheduler_module.delete_show(7)
+    with cleanup_app.app_context():
+        assert db.session.get(Show, 7) is not None
+
+
+def test_overnight_cleanup_keeps_one_hour_buffer_and_recorder_grace(cleanup_app, monkeypatch):
+    fake_scheduler = FakeScheduler()
+    monkeypatch.setattr(scheduler_module, "scheduler", fake_scheduler)
+    monkeypatch.setattr(scheduler_module, "_show_recording_args", lambda *_args: [])
+    with cleanup_app.app_context():
+        scheduler_module.schedule_recording(_temporary_show(
+            end_date=date(2026, 10, 28), start_time=time(23), end_time=time(1)
+        ))
+    cleanup, recorder = fake_scheduler.jobs
+    assert cleanup[2]["run_date"] == datetime(2026, 10, 29, 2)
+    assert cleanup[2]["misfire_grace_time"] is None
+    assert recorder[2]["misfire_grace_time"] == 120
+
+
+def test_cleanup_commit_failure_rolls_back_and_can_be_retried(cleanup_app, monkeypatch):
+    refreshed = []
+    monkeypatch.setattr(scheduler_module, "refresh_schedule", lambda: refreshed.append(True))
+    with cleanup_app.app_context():
+        db.session.add(_temporary_show())
+        db.session.commit()
+    with monkeypatch.context() as failure:
+        def fail_commit():
+            raise RuntimeError("database temporarily unavailable")
+        failure.setattr(db.session, "commit", fail_commit)
+        scheduler_module.delete_show(7)
+    with cleanup_app.app_context():
+        assert db.session.get(Show, 7) is not None
+    assert refreshed == []
+    scheduler_module.delete_show(7)
+    scheduler_module.delete_show(7)  # Repeated/missing-row cleanup is harmless.
+    with cleanup_app.app_context():
+        assert db.session.get(Show, 7) is None
+    assert refreshed == [True]
