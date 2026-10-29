@@ -4,6 +4,7 @@
 {% include '_nav.html' %}
 <main class="container pb-5"><a href="{{ url_for('station_log.index') }}">← Master Station Log</a>
 <h1 class="h2 my-3">SQL connection &amp; archives</h1>
+{% if sql.setup_required %}<div class="alert alert-warning" role="alert">RAMS's local station log tables need initialization before capture can start. You can save the SQL settings now. <a href="{{ url_for('station_log.index') }}">View initialization instructions</a>.</div>{% endif %}
 <p>Use a dedicated MySQL/MariaDB account with SELECT permission on RadioDJ's history table. This connection is independent of the RadioDJ REST plugin.</p>
 <form method="post" class="row g-3">
 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">

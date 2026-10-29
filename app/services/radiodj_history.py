@@ -229,8 +229,12 @@ def reset_generation():
 
 
 def history_status():
-    state = db.session.get(StationLogImport, source_name())
+    # Connection settings must remain accessible before the local tables exist.
+    from app.services.station_log import missing_tables
+    missing = missing_tables()
+    state = db.session.get(StationLogImport, source_name()) if StationLogImport.__tablename__ not in missing else None
     return dict(enabled=enabled(), source=source_name(), last_id=state.last_id if state else 0,
+        setup_required=bool(missing),
         last_success=state.last_success.isoformat() + "Z" if state and state.last_success else None,
         last_error=state.last_error if state else None,
         coverage_start=state.coverage_start.isoformat() + "Z" if state and state.coverage_start else None,

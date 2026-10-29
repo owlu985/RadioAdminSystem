@@ -1,0 +1,21 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Station Log Setup Required</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head><body>
+{% include '_nav.html' %}
+<main class="container pb-5">
+  <h1 class="h2">Station log setup required</h1>
+  <div class="alert alert-warning">The new station log tables have not all been created in RAMS's local database. This is separate from the RadioDJ MySQL/MariaDB connection.</div>
+  {% if can('settings:edit') %}
+  <p>You can <a href="{{ url_for('station_log.connection') }}">configure the RadioDJ SQL connection and NAS archives</a> before initializing the log.</p>
+  <p>On the RAMS server, run the following commands once. The initialization creates missing station log tables without replacing existing data.</p>
+  <pre class="bg-light border rounded p-3 text-wrap">cd /opt/RadioAdminSystem
+sudo -u www-data env RAMS_WSGI_SAFE_MODE=1 RAMS_RUN_SCHEDULER_ON_STARTUP=0 /opt/RadioAdminSystem/venv/bin/python -m flask --app 'app:create_app()' station-log init-db
+sudo systemctl restart apache2</pre>
+  <p class="text-muted">These paths and the service account match WLMC's deployment. Adjust them if your installation uses a different directory, virtual environment, or WSGI account.</p>
+  {% else %}<p>Ask a RAMS administrator to initialize the station log database.</p>{% endif %}
+  <a class="btn btn-primary" href="{{ url_for('station_log.index') }}">Check setup again</a>
+</main>
+{% include '_footer.html' %}
+</body></html>

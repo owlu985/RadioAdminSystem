@@ -1175,11 +1175,13 @@ def run_station_log_job():
     if flask_app is None:
         return
     with flask_app.app_context():
-        from app.services.station_log import drain_events, archive_due_days, station_zone, emit_event, register_scheduled_airings
+        from app.services.station_log import drain_events, archive_due_days, station_zone, emit_event, register_scheduled_airings, missing_tables
         from app.services.radiodj_history import import_history, HistoryImportError, enabled, source_name
         from app.models import StationLogImport
         from app.services.runtime_state import locked_state
         try:
+            if missing_tables():
+                return  # Keep queued evidence; explicit station-log init-db is required.
             drain_events()
             today = datetime.now(station_zone()).date()
             register_scheduled_airings(today)

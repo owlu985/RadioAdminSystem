@@ -33,6 +33,31 @@ leaving it blank preserves the current value. Settings persist in the existing
 `instance/user_config.json` (saved with owner-only permissions). Restart Apache
 after changes so every worker sees them.
 
+The same connection page is linked from **Settings → RadioDJ SQL & Master Log**.
+For the WLMC server, its direct address is
+`http://wlmc-test.landmark.edu/admin/station-log/connection`.
+The SQL settings can be saved even before local log initialization.
+
+### If the log reports missing local tables
+
+`sqlite3.OperationalError: no such table: station_log_event` means the new RAMS
+tables have not been created. It does not indicate a RadioDJ MySQL/MariaDB failure.
+WSGI safe mode intentionally leaves schema changes to an explicit deployment step.
+On the existing WLMC installation, initialize using the WSGI service account so
+new files retain the correct ownership:
+
+```bash
+cd /opt/RadioAdminSystem
+sudo -u www-data env RAMS_WSGI_SAFE_MODE=1 RAMS_RUN_SCHEDULER_ON_STARTUP=0 /opt/RadioAdminSystem/venv/bin/python -m flask --app 'app:create_app()' station-log init-db
+sudo systemctl restart apache2
+```
+
+Adjust the account or paths if your deployment differs. After initialization,
+reload the log and configure/enable SQL capture. With the setup guard installed,
+the log shows these initialization instructions instead of a traceback; its API
+returns a structured 503 setup-required response. Queued events remain on disk,
+and the collector waits for initialization without repeatedly generating errors.
+
 For WLMC's mounted NAS, an example destination is:
 
 ```text
