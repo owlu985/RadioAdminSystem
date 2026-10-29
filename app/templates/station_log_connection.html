@@ -1,0 +1,17 @@
+<!DOCTYPE html><html lang="en"><head>
+<meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Station Log Connection</title>
+<link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet"></head><body>
+{% include '_nav.html' %}
+<main class="container pb-5"><a href="{{ url_for('station_log.index') }}">← Master Station Log</a>
+<h1 class="h2 my-3">SQL connection &amp; archives</h1>
+<p>Use a dedicated MySQL/MariaDB account with SELECT permission on RadioDJ's history table. This connection is independent of the RadioDJ REST plugin.</p>
+<form method="post" class="row g-3">
+<input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+<div class="col-12 form-check ms-2"><input id="enabled" class="form-check-input" type="checkbox" name="enabled" value="1" {% if sql.enabled %}checked{% endif %}><label class="form-check-label" for="enabled">Enable SQL history capture</label></div>
+{% for name, label, key, default in [('host','RadioDJ database host','RADIODJ_SQL_HOST',''), ('port','Database port','RADIODJ_SQL_PORT',3306), ('database','Database name','RADIODJ_SQL_DATABASE','radiodj'), ('username','Read-only username','RADIODJ_SQL_USER',''), ('timezone','Database timestamp timezone','RADIODJ_SQL_TIMEZONE','America/New_York'), ('source','Source identity (change when switching databases)','RADIODJ_SQL_SOURCE','radiodj-main'), ('archive_dir','Existing NAS archive directory','STATION_LOG_ARCHIVE_DIR',''), ('archive_mount','NAS mount to verify before export','STATION_LOG_ARCHIVE_MOUNT','')] %}
+<div class="col-md-6"><label class="form-label" for="{{ name }}">{{ label }}</label><input id="{{ name }}" name="{{ name }}" class="form-control" value="{{ config.get(key) or default }}" {% if name == 'port' %}type="number" min="1" max="65535"{% endif %}></div>{% endfor %}
+<div class="col-md-6"><label class="form-label" for="password">Database password</label><input id="password" name="password" type="password" class="form-control" autocomplete="new-password"><div class="form-text">Leave blank to retain the current password. The saved password is never displayed.</div></div>
+<div class="col-12"><button class="btn btn-primary">Save settings</button></div>
+</form>
+<p class="text-muted mt-3">After saving, restart RAMS. The master log shows connection errors and the last successful import. Local evidence and database records are retained when the NAS is unavailable.</p>
+</main>{% include '_footer.html' %}</body></html>

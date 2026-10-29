@@ -27,6 +27,7 @@
     </div>
 
     <div id="barixNotice" class="alert alert-danger" role="alert" hidden>Barix Error, Restart needed</div>
+    {% if can('logs:view') %}{% include '_station_log_widget.html' %}{% endif %}
 
     <div class="card mb-3">
         <div class="card-header">On Air Status</div>

@@ -132,8 +132,6 @@ def test_arranged_substitute_without_proof_is_not_counted_as_aired(portal_app):
 def test_log_submission_uses_local_linked_run_date_and_repairs_unlinked_log(portal_app, monkeypatch):
     app, root = portal_app
     monkeypatch.setattr("app.routes.logging_api.recordings_period_root", lambda **kwargs: str(root))
-    monkeypatch.setattr("app.routes.logging_api.get_current_show", lambda: None)
-    monkeypatch.setattr("app.routes.logging_api.start_show_run", lambda **kwargs: None)
     with app.app_context():
         app.config["SCHEDULE_TIMEZONE"] = "America/New_York"
         show = night_show()

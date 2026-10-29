@@ -6,6 +6,81 @@ from sqlalchemy.types import Text
 db = SQLAlchemy()
 
 
+class StationLogEvent(db.Model):
+    """Permanent source evidence; never pruned by the recent-song widget."""
+    __tablename__ = "station_log_event"
+    id = db.Column(db.Integer, primary_key=True)
+    source = db.Column(db.String(128), nullable=False)
+    source_id = db.Column(db.String(128), nullable=False)
+    occurred_at = db.Column(db.DateTime, nullable=False, index=True)  # UTC
+    received_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    event_type = db.Column(db.String(64), nullable=False, index=True)
+    severity = db.Column(db.String(16), default="info", nullable=False)
+    code = db.Column(db.String(32))
+    title = db.Column(db.Text)
+    artist = db.Column(db.Text)
+    album = db.Column(db.Text)
+    isrc = db.Column(db.String(255))
+    track_id = db.Column(db.BigInteger)
+    reported_duration = db.Column(db.Float)  # NOT measured airtime
+    details = db.Column(db.JSON, default=dict, nullable=False)
+    __table_args__ = (db.UniqueConstraint("source", "source_id", name="uq_station_log_source"),)
+
+
+class StationLogImport(db.Model):
+    __tablename__ = "station_log_import"
+    source = db.Column(db.String(128), primary_key=True)
+    last_id = db.Column(db.BigInteger, default=0, nullable=False)
+    last_success = db.Column(db.DateTime)
+    last_error = db.Column(db.Text)
+    coverage_start = db.Column(db.DateTime)
+    generation = db.Column(db.Integer, default=1, nullable=False)
+    needs_reset = db.Column(db.Boolean, default=False, nullable=False)
+    last_reconciled_day = db.Column(db.Date)
+    last_fingerprint = db.Column(db.String(64))
+    backlog = db.Column(db.Boolean, default=False, nullable=False)
+    oldest_available = db.Column(db.String(64))
+    coverage_warning = db.Column(db.Text)
+
+
+class StationLogAiring(db.Model):
+    """Explicitly reviewed broadcast window, independent of recorder/schedule runs."""
+    __tablename__ = "station_log_airing"
+    id = db.Column(db.Integer, primary_key=True)
+    identity = db.Column(db.String(64), unique=True, nullable=False)
+    show_name = db.Column(db.String(255), nullable=False)
+    dj = db.Column(db.String(255), nullable=False, default="")
+    starts_at = db.Column(db.DateTime, nullable=False, index=True)
+    ends_at = db.Column(db.DateTime, nullable=False)
+    status = db.Column(db.String(16), default="unknown", nullable=False)  # aired/missed/unknown
+    show_run_id = db.Column(db.Integer)  # no cascade when old shows/runs are removed
+    updated_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+
+class StationLogSubmission(db.Model):
+    __tablename__ = "station_log_submission"
+    id = db.Column(db.Integer, primary_key=True)
+    airing_id = db.Column(db.Integer, db.ForeignKey("station_log_airing.id"), nullable=False, index=True)
+    revision = db.Column(db.Integer, nullable=False)
+    submitted_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    actor = db.Column(db.String(255), nullable=False)
+    recording_file = db.Column(db.Text)
+    entries = db.Column(db.JSON, nullable=False)
+    __table_args__ = (db.UniqueConstraint("airing_id", "revision", name="uq_station_submission_revision"),)
+
+
+class StationLogArchive(db.Model):
+    __tablename__ = "station_log_archive"
+    id = db.Column(db.Integer, primary_key=True)
+    day = db.Column(db.Date, nullable=False, index=True)
+    revision = db.Column(db.Integer, nullable=False)
+    fingerprint = db.Column(db.String(64), nullable=False)
+    csv_path = db.Column(db.Text, nullable=False)
+    sources_path = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+    __table_args__ = (db.UniqueConstraint("day", "revision", name="uq_station_archive_revision"),)
+
+
 class User(db.Model):
     __tablename__ = "user"
 

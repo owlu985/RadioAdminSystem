@@ -2,9 +2,8 @@ from datetime import datetime, date, time, timedelta
 import os
 from flask import Blueprint, render_template, request, redirect, url_for, flash, make_response, current_app
 from app.models import DJ, Show, ShowRun
-from app.utils import get_current_show, show_display_title, show_primary_host, localize_datetime, get_config_timezone, format_time12, format_datetime_local
+from app.utils import show_display_title, show_primary_host, localize_datetime, get_config_timezone, format_time12, format_datetime_local
 from app.services.airing_dates import log_airing_date, airing_date_for_start
-from app.services.show_run_service import get_or_create_active_run, start_show_run
 from app.services.log_export import (
     LogCsvEntry,
     build_recording_base_path,
@@ -82,22 +81,6 @@ def submit_log():
             clocks = [request.form.get(f"time_{idx}", "").strip() for idx in request.form.getlist("row_index")]
             show_date = log_airing_date([show_obj], show_date, clocks)
 
-        if not selected_run:
-            current_show = get_current_show()
-            if current_show:
-                get_or_create_active_run(
-                    show_name=current_show.show_name or f"{current_show.host_first_name} {current_show.host_last_name}",
-                    dj_first_name=current_show.host_first_name,
-                    dj_last_name=current_show.host_last_name,
-                )
-            else:
-                # Keep historical run linkage behavior for legacy reports.
-                start_show_run(
-                    dj_first_name=dj_first,
-                    dj_last_name=dj_last,
-                    show_name=show_name or "Unscheduled Show"
-                )
-
         rows = request.form.getlist("row_index")
         csv_entries: list[LogCsvEntry] = []
         for idx in rows:
@@ -116,6 +99,7 @@ def submit_log():
                     title=title,
                     artist=artist if entry_type == "music" else "",
                     message=message,
+                    isrc=request.form.get(f"isrc_{idx}", "").strip(),
                 )
             )
 
@@ -164,6 +148,19 @@ def submit_log():
         })
         metadata.setdefault("flagged_missed", False)
         write_recording_metadata(recording_path, metadata)
+        from app.services.station_log import save_submission, local_to_utc
+        try:
+            save_submission(entries=csv_entries, show_name=show_name,
+                dj=f"{dj_first} {dj_last}".strip(),
+                starts_at=selected_run.start_time if selected_run else local_to_utc(window_start),
+                ends_at=(selected_run.end_time or selected_run.start_time + timedelta(hours=2))
+                    if selected_run else local_to_utc(window_end),
+                recording_file=recording_path, show_run_id=selected_run.id if selected_run else None)
+        except Exception:
+            from app.models import db
+            db.session.rollback()
+            logger.exception("DJ CSV saved, but master station log submission failed")
+            flash("CSV saved, but the master station log could not be updated. Ask an administrator to import this CSV.", "warning")
         logger.info("Log CSV written to %s with %s entries.", csv_path, len(csv_entries))
         flash("Log submitted successfully!", "success")
         logger.info("Log CSV saved with %s entries", len(rows))

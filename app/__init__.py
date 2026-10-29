@@ -276,6 +276,7 @@ def create_app(config_class=Config):
     from app.routes.api import api_bp
     from app.routes.logging_api import logs_bp
     from app.routes.news import news_bp
+    from app.routes.station_log import station_log_bp, register_station_log_cli
 
     if _startup_enabled("RUN_PLUGIN_LOAD_ON_STARTUP", True):
         with app.app_context():
@@ -285,6 +286,8 @@ def create_app(config_class=Config):
     app.register_blueprint(api_bp)
     app.register_blueprint(logs_bp)
     app.register_blueprint(news_bp)
+    app.register_blueprint(station_log_bp)
+    register_station_log_cli(app)
     app.oauth_client = oauth
 
     @app.errorhandler(403)
@@ -315,5 +318,20 @@ def create_app(config_class=Config):
     _install_wsgi_utf8_safety(app)
 
     initial_logger.info("Application startup complete.")
+
+    with app.app_context():
+        from app.services.station_log import emit_event, install_error_capture
+        install_error_capture()
+        is_cli = os.getenv("FLASK_RUN_FROM_CLI") == "true"
+        emit_event("rams_cli_started" if is_cli else "rams_startup",
+                   "RAMS management command started" if is_cli else "RAMS application process started",
+                   details={"pid": os.getpid(), "note": "Process startup observed; prior crash time unknown"})
+
+    import atexit
+    def record_process_exit():
+        with app.app_context():
+            emit_event("rams_cli_exited" if is_cli else "rams_shutdown", "RAMS process exit observed",
+                       details={"pid": os.getpid(), "note": "Abrupt termination may prevent this event"})
+    atexit.register(record_process_exit)
 
     return app

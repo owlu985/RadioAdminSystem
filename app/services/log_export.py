@@ -23,6 +23,7 @@ class LogCsvEntry:
     title: str
     artist: str
     message: str
+    isrc: str = ""
 
 
 def recording_csv_path(recording_path: str) -> str:
@@ -97,7 +98,7 @@ def write_log_csv(
     os.makedirs(os.path.dirname(csv_path), exist_ok=True)
     with open(csv_path, "w", newline="", encoding="utf-8") as handle:
         writer = csv.writer(handle)
-        writer.writerow(["Show Date", "Show Name", "DJ", "Time", "Type", "Title", "Artist", "Message"])
+        writer.writerow(["Show Date", "Show Name", "DJ", "Time", "Type", "Title", "Artist", "Message", "ISRC"])
         for entry in entries:
             writer.writerow([
                 entry.show_date,
@@ -108,6 +109,7 @@ def write_log_csv(
                 entry.title,
                 entry.artist,
                 entry.message,
+                entry.isrc,
             ])
     return csv_path
 
@@ -129,6 +131,7 @@ def read_log_csv(csv_path: str) -> list[LogCsvEntry]:
                     title=row.get("Title", ""),
                     artist=row.get("Artist", ""),
                     message=row.get("Message", ""),
+                    isrc=row.get("ISRC", ""),
                 )
             )
     return entries

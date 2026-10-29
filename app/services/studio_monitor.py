@@ -77,10 +77,15 @@ def monitor_snapshot():
     radiodj = read_state('radiodj-status')
     if cfg.get('RADIODJ_API_BASE_URL') and (not radiodj.get('handshake_ok') or now - radiodj.get('checked_at', 0) > 90):
         alerts.append(dict(code='04', severity='warning', message='RadioDJ handshake failed'))
-    return {'stream_up': state.get('playable') if fresh else None,
+    snapshot = {'stream_up': state.get('playable') if fresh else None,
             'checked_at': state.get('checked_at'), 'recovery': state.get('recovery'),
             'consecutive_failures': state.get('consecutive_failures', 0),
             'alerts': alerts, 'radiodj': radiodj}
+    # A browser/API observer can record a stalled scheduler code even when the
+    # scheduler itself cannot run. Persist transitions rather than every refresh.
+    from app.services.station_log import record_alert_transitions
+    record_alert_transitions(alerts, stream_up=snapshot['stream_up'])
+    return snapshot
 
 
 def check_storage():

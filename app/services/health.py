@@ -28,6 +28,11 @@ def record_failure(job_name: str, reason: Optional[str] = None, restarted: bool 
         job.restart_count = (job.restart_count or 0) + 1
         job.last_restart_at = datetime.utcnow()
     db.session.commit()
+    from app.services.station_log import emit_event
+    emit_event("job_restarted" if restarted else "job_failure",
+               f"{job_name}: {reason or 'unspecified failure'}",
+               severity="warning" if restarted else "error",
+               details={"job": job_name, "restarted": restarted})
     status = "(self-healed)" if restarted else ""
     logger.warning("Job %s failure %s%s", job_name, status, f": {reason}" if reason else "")
     return job

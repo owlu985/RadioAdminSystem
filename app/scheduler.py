@@ -128,6 +128,7 @@ def init_scheduler(app):
             schedule_library_index_job()
             schedule_transcode_cache_cleanup()
             schedule_schedule_refresh()
+            schedule_station_log()
             # Do not wait for an interval tick to establish the current state.
             # This creates the active show's folder/recorder and pushes its
             # metadata before the WSGI application reports itself ready.
@@ -1157,3 +1158,51 @@ def run_studio_monitor_job():
         from app.services.weather_alerts import refresh_weather_alerts
         run_studio_checks()
         refresh_weather_alerts()
+        from app.services.studio_monitor import monitor_snapshot
+        monitor_snapshot()
+
+
+def schedule_station_log():
+    if flask_app is None:
+        return
+    scheduler.add_job(run_station_log_job, "interval",
+                      seconds=max(30, int(flask_app.config.get("RADIODJ_SQL_POLL_SECONDS", 60))),
+                      id="station_log_job", replace_existing=True,
+                      next_run_time=datetime.now(get_config_timezone()), **_job_options())
+
+
+def run_station_log_job():
+    if flask_app is None:
+        return
+    with flask_app.app_context():
+        from app.services.station_log import drain_events, archive_due_days, station_zone, emit_event, register_scheduled_airings
+        from app.services.radiodj_history import import_history, HistoryImportError, enabled, source_name
+        from app.models import StationLogImport
+        from app.services.runtime_state import locked_state
+        try:
+            drain_events()
+            today = datetime.now(station_zone()).date()
+            register_scheduled_airings(today)
+            register_scheduled_airings(today - timedelta(days=1))
+            if enabled():
+                try:
+                    result = import_history()
+                    state = db.session.get(StationLogImport, source_name())
+                    yesterday = datetime.now(station_zone()).date() - timedelta(days=1)
+                    if not result.get("backlog") and state.last_reconciled_day != yesterday:
+                        import_history(day=yesterday)
+                except HistoryImportError:
+                    pass  # importer records a sanitized failure and retains its checkpoint
+            drain_events()
+            with locked_state("station-log-maintenance") as state:
+                now = time.time()
+                if now - state.get("archived_at", 0) >= 3600:
+                    archive_due_days()
+                    state["archived_at"] = now
+                    state.pop("archive_error", None)
+        except Exception:
+            db.session.rollback()
+            # Retry later; keep local evidence and all DB records.
+            emit_event("station_log_maintenance_failed", "Station log maintenance failed; check database/NAS availability",
+                       severity="error")
+            logger.exception("Station log maintenance failed")
