@@ -1,0 +1,38 @@
+<div class="card mb-3">
+  <div class="card-header d-flex flex-wrap justify-content-between gap-2">
+    <span>Master Station Log</span><a href="{{ url_for('station_log.index') }}">Read historical logs &amp; CSV archives</a>
+  </div>
+  <div class="card-body">
+    <p id="stationLogCapture" class="small text-muted">Loading capture status…</p>
+    <ol id="stationLogRecent" class="mb-0"></ol>
+  </div>
+</div>
+<script>
+(() => {
+  const status = document.getElementById('stationLogCapture');
+  const list = document.getElementById('stationLogRecent');
+  async function refresh() {
+    try {
+      const response = await fetch({{ url_for('station_log.events', order='desc', limit=5)|tojson }});
+      if (!response.ok) throw new Error('unavailable');
+      const data = await response.json();
+      status.textContent = !data.sql.enabled ? 'RadioDJ SQL capture disabled.' :
+        data.sql.last_error ? `Capture issue: ${data.sql.last_error}` :
+        !data.sql.last_success ? 'Waiting for the first SQL import.' :
+        data.sql.stale ? 'SQL capture check is overdue; coverage may be incomplete.' :
+        data.sql.backlog ? 'Catching up on RadioDJ history.' : 'Latest entries today. Reported item length is not verified airtime.';
+      list.replaceChildren();
+      for (const event of data.events) {
+        const item = document.createElement('li');
+        const time = new Date(event.occurred_at).toLocaleTimeString('en-US', {timeZone: {{ app_timezone|tojson }}, hour: 'numeric', minute:'2-digit', hour12:true});
+        const label = ['unreported', 'ambiguous/invalid DJ time', 'outside confirmed window; review required', 'ambiguous database timestamp'].includes(event.time_accuracy) ? 'Time unconfirmed' : time;
+        item.textContent = `${label} · ${event.title}${event.artist ? ' — ' + event.artist : ''}${event.code ? ' · Code ' + event.code : ''}`;
+        list.appendChild(item);
+      }
+      if (!data.events.length) status.textContent += ' No entries captured for today.';
+    } catch (_) { status.textContent = 'Master log unavailable. Verify the station-log database setup.'; }
+  }
+  refresh();
+  setInterval(refresh, 60000);
+})();
+</script>

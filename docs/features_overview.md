@@ -30,6 +30,7 @@ This document summarizes the major features available in RAMS, with links to key
 
 ## Logs and Compliance
 - Public DJ log submission (no auth) with required fields, “now” time button, artist suggestions, localStorage autosave, and row add/clear controls.
+- [Master Station Log](master_station_log.md): read-only RadioDJ SQL history capture, reviewed show windows, versioned DJ playlists, engineering/restart events, historical viewer/dashboard widget, and verified NAS CSV archives after five days. SQL capture defaults to disabled until configured.
 - Admin log manager with HTML view, CSV/DOCX export, and PSA compliance check (2+ PSA/live reads).
 - Logs can be linked to ShowRuns; a fallback ShowRun is created when none is active at submission time.
 

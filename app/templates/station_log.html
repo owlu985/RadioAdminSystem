@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Master Station Log</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+<body>
+{% include '_nav.html' %}
+<main class="container-fluid px-4 pb-5">
+  <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
+    <div><h1 class="h2">Master Station Log</h1><p class="text-muted mb-0">Programming and station events · {{ app_timezone }} · source evidence retained</p></div>
+    {% if can('settings:edit') %}<a class="btn btn-outline-secondary align-self-start" href="{{ url_for('station_log.connection') }}">SQL connection &amp; archives</a>{% endif %}
+  </div>
+  <div class="alert {% if sql.last_error or sql.needs_reset %}alert-danger{% elif not sql.enabled or not sql.last_success or sql.backlog or sql.stale %}alert-warning{% else %}alert-info{% endif %}">
+    <strong>RadioDJ SQL:</strong>
+    {% if not sql.enabled %}Disabled. Playback capture has not been enabled.
+    {% elif sql.last_error %}{{ sql.last_error }}. Capture may be incomplete.
+    {% elif not sql.last_success %}Waiting for the first successful import.
+    {% else %}Last successful check: {{ sql.last_success|datetime_local }}. {% if sql.stale %}Capture check is overdue; coverage may be incomplete.{% endif %} {% if sql.backlog %}Catching up; more records remain.{% endif %}{% endif %}
+    {% if sql.coverage_warning %}<div class="small">{{ sql.coverage_warning }}{% if sql.oldest_available %} · Oldest available: {{ sql.oldest_available }} (database time){% endif %}</div>{% endif %}
+    {% if sql.coverage_start %}<div class="small">Initial capture requested from {{ sql.coverage_start|datetime_local }}. Older dates require a backfill. No entries does not prove silence or complete coverage.</div>{% endif %}
+    {% if sql.last_reconciled_day %}<div class="small">Last reconciled station day: {{ sql.last_reconciled_day }}</div>{% endif %}
+  </div>
+  <form method="get" class="row g-2 align-items-end mb-3">
+    <div class="col-sm-2"><label for="day" class="form-label">Station day</label><input id="day" name="day" type="date" class="form-control" value="{{ day }}" required></div>
+    <div class="col-sm-4"><label for="q" class="form-label">Search titles, artists, ISRCs, codes, shows, DJs</label><input id="q" name="q" class="form-control" value="{{ request.args.get('q', '') }}" type="search"></div>
+    <div class="col-sm-2"><label for="kind" class="form-label">Entries</label><select id="kind" name="kind" class="form-select">{% for value, label in [('', 'All entries'), ('programming', 'Programming'), ('engineering', 'Engineering')] %}<option value="{{ value }}" {% if request.args.get('kind', '') == value %}selected{% endif %}>{{ label }}</option>{% endfor %}</select></div>
+    <div class="col-sm-2"><label for="raw" class="form-label">View</label><select id="raw" name="raw" class="form-select"><option value="0">Compiled master log</option><option value="1" {% if request.args.get('raw') == '1' %}selected{% endif %}>Source events</option></select></div>
+    <div class="col-sm-2"><button class="btn btn-primary">Read log</button></div>
+  </form>
+  <div class="d-flex flex-wrap gap-2 align-items-center mb-3">
+    <a class="btn btn-sm btn-outline-primary" href="{{ url_for('station_log.download', day=day, raw=request.args.get('raw', '0'), q=request.args.get('q', ''), kind=request.args.get('kind', '')) }}">Download this view as CSV</a>
+    {% if can('logs:edit') %}<form method="post" action="{{ url_for('station_log.import_now') }}"><input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ day }}"><button class="btn btn-sm btn-outline-secondary">Reconcile this day from SQL</button></form>{% endif %}
+    <span class="text-muted small">{{ total }} entries · reported item length is not verified airtime · sweeper coverage unverified</span>
+  </div>
+  <div class="table-responsive border rounded mb-3">
+    <table class="table table-striped align-middle mb-0">
+      <thead><tr><th>Time</th><th>Type / code</th><th>Content / event</th><th>Artist / show</th><th>Reported length</th><th>ISRC</th><th>Evidence</th></tr></thead>
+      <tbody>{% for row in rows %}<tr>
+        <td class="text-nowrap">{% if row.time_accuracy in ['unreported', 'ambiguous/invalid DJ time', 'outside confirmed window; review required', 'ambiguous database timestamp'] %}Unconfirmed time{% else %}{{ row.display_time }}{% endif %}</td>
+        <td><span class="badge {% if row.severity in ['critical', 'error'] %}bg-danger{% elif row.severity == 'warning' %}bg-warning text-dark{% else %}bg-secondary{% endif %}">{{ row.event_type }}</span>{% if row.code %}<div>Code {{ row.code }}</div>{% endif %}</td>
+        <td>{{ row.title }}</td><td>{{ row.artist }}{% if row.show_name %}<div>{{ row.show_name }} · {{ row.dj }}</div>{% endif %}</td>
+        <td>{% if row.reported_duration is not none %}{{ '%.2f'|format(row.reported_duration) }} s{% else %}—{% endif %}</td>
+        <td>{{ row.isrc or '—' }}</td><td><details><summary>{{ row.source }}</summary><div class="small">{{ row.time_accuracy }} · {{ row.source_id }}</div><pre class="small text-wrap">{{ row.details|tojson(indent=2) }}</pre></details></td>
+      </tr>{% else %}<tr><td colspan="7" class="text-center py-4">No matching entries. Check capture status and show documentation before treating this day as complete.</td></tr>{% endfor %}</tbody>
+    </table>
+  </div>
+  <nav aria-label="Log pages" class="d-flex gap-3 align-items-center mb-4">
+    {% if page > 1 %}<a href="{{ url_for('station_log.index', day=day, page=page-1, q=request.args.get('q', ''), kind=request.args.get('kind', ''), raw=request.args.get('raw', '0')) }}">Previous</a>{% endif %}
+    <span>Page {{ page }} of {{ pages }}</span>
+    {% if page < pages %}<a href="{{ url_for('station_log.index', day=day, page=page+1, q=request.args.get('q', ''), kind=request.args.get('kind', ''), raw=request.args.get('raw', '0')) }}">Next</a>{% endif %}
+  </nav>
+  <h2 class="h4">Show windows</h2><p class="text-muted">Confirm actual airtime here. Scheduled/recorded shows and submitted playlists alone do not confirm a broadcast. A missed show retains RadioDJ entries. An aired show with no playlist is marked as missing its log.</p>
+  {% for airing in airings %}<details class="border rounded p-3 mb-2"><summary>{{ airing.show_name }} · {{ airing.dj }} · {{ airing.status }} · {{ airing.starts_at|datetime_local }} – {{ airing.ends_at|datetime_local }}</summary>
+    {% if can('logs:edit') %}<form method="post" action="{{ url_for('station_log.review_airing') }}" class="row g-2 mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ day }}"><input type="hidden" name="airing_id" value="{{ airing.id }}">
+      <div class="col-md-3"><label class="form-label">Show</label><input name="show_name" class="form-control" value="{{ airing.show_name }}" required></div>
+      <div class="col-md-2"><label class="form-label">DJ</label><input name="dj" class="form-control" value="{{ airing.dj }}"></div>
+      <div class="col-md-3"><label class="form-label">Actual start (ISO with offset)</label><input name="starts_at" class="form-control" value="{{ airing.local_start }}" required></div>
+      <div class="col-md-3"><label class="form-label">Actual end (ISO with offset)</label><input name="ends_at" class="form-control" value="{{ airing.local_end }}" required></div>
+      <div class="col-md-3"><label class="form-label">Broadcast status</label><select name="status" class="form-select">{% for status in ['unknown', 'aired', 'missed'] %}<option {% if status == airing.status %}selected{% endif %}>{{ status }}</option>{% endfor %}</select></div>
+      <div class="col-md-7"><label class="form-label">Confirmation / correction reason</label><input name="reason" class="form-control" required></div><div class="col-md-2 align-self-end"><button class="btn btn-primary">Save review</button></div>
+    </form>{% endif %}
+  </details>{% else %}<p>No show windows recorded for this day.</p>{% endfor %}
+  {% if can('logs:edit') %}
+  <details class="border rounded p-3 my-3"><summary>Add a show window</summary>
+    <form method="post" action="{{ url_for('station_log.review_airing') }}" class="row g-2 mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ day }}">
+      <div class="col-md-3"><label class="form-label">Show</label><input name="show_name" class="form-control" required></div><div class="col-md-3"><label class="form-label">DJ</label><input name="dj" class="form-control"></div>
+      <div class="col-md-3"><label class="form-label">Actual start (station time)</label><input type="datetime-local" name="starts_at" class="form-control" required></div><div class="col-md-3"><label class="form-label">Actual end (station time)</label><input type="datetime-local" name="ends_at" class="form-control" required></div>
+      <div class="col-md-3"><label class="form-label">Broadcast status</label><select name="status" class="form-select"><option>unknown</option><option>aired</option><option>missed</option></select></div>
+      <div class="col-md-7"><label class="form-label">Confirmation reason</label><input name="reason" class="form-control" required></div><div class="col-md-2 align-self-end"><button class="btn btn-primary">Add window</button></div>
+    </form>
+  </details>
+  <details class="border rounded p-3 my-3"><summary>Add a note, code, or reported problem</summary>
+    <form method="post" action="{{ url_for('station_log.note') }}" class="row g-2 mt-2">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}"><input type="hidden" name="day" value="{{ day }}">
+      <div class="col-md-5"><label class="form-label">Description</label><input name="title" class="form-control" required></div>
+      <div class="col-md-3"><label class="form-label">Occurred at (station time; blank = now)</label><input type="datetime-local" name="occurred_at" class="form-control"></div>
+      <div class="col-md-1"><label class="form-label">Code</label><input name="code" class="form-control" maxlength="32"></div>
+      <div class="col-md-2"><label class="form-label">Severity</label><select name="severity" class="form-select">{% for severity in ['info', 'warning', 'error', 'critical'] %}<option>{{ severity }}</option>{% endfor %}</select></div>
+      <div class="col-md-1 align-self-end"><button class="btn btn-primary">Log</button></div>
+    </form>
+  </details>{% endif %}
+  <h2 class="h4 mt-4">NAS archive versions</h2>
+  {% for archive in archives %}<div class="mb-2">Revision {{ archive.revision }} · {{ archive.created_at|datetime_local }} · <a href="{{ url_for('station_log.archive_download', archive_id=archive.id, variant='compiled') }}">Master CSV</a> · <a href="{{ url_for('station_log.archive_download', archive_id=archive.id, variant='sources') }}">Source CSV</a></div>{% else %}<p class="text-muted">No archived version yet. Configured archives are written after five days and revised when late information changes a day. Historical logs remain readable above.</p>{% endfor %}
+</main>
+{% include '_footer.html' %}
+</body></html>

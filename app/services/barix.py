@@ -147,6 +147,9 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
     # Reboots and restart-window limits survive process restarts and are shared
     # by the scheduler, recorders and manual dashboard handler.
     with locked_state('barix-restarts') as persisted:
+        from app.services.station_log import emit_event
+        emit_event("barix_restart_requested", "Barix restart requested",
+                   details={"reason": reason, "manual": force})
         state = {
             'restart_attempts': [datetime.utcfromtimestamp(t) for t in persisted.get('restart_attempts', [])],
             'locked_out_until': datetime.utcfromtimestamp(persisted['locked_out_until']) if persisted.get('locked_out_until') else None,
@@ -157,4 +160,10 @@ def restart_instreamer(reason: Optional[str] = None, *, force: bool = False) -> 
             return value.replace(tzinfo=timezone.utc).timestamp()
         persisted.update(restart_attempts=[ts(t) for t in state['restart_attempts']],
                          locked_out_until=ts(state['locked_out_until']) if state['locked_out_until'] else 0)
+        emit_event("barix_restart_result", f"Barix restart: {outcome.status}",
+                   severity="info" if outcome.accepted else "warning",
+                   details={"reason": reason, "manual": force, "status": outcome.status,
+                            "attempted": outcome.attempted, "accepted": outcome.accepted,
+                            "http_status": outcome.http_status,
+                            "note": "Accepted command does not confirm reboot or stream recovery"})
         return outcome

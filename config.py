@@ -153,6 +153,24 @@ class Config:
     RADIODJ_API_KEY = None
     NOW_PLAYING_OVERRIDE_ENABLED = False
 
+    # Independent, read-only RadioDJ MySQL/MariaDB history connection.
+    RADIODJ_SQL_ENABLED = _env_flag("RADIODJ_SQL_ENABLED")
+    RADIODJ_SQL_HOST = os.getenv("RADIODJ_SQL_HOST", "")
+    RADIODJ_SQL_PORT = int(os.getenv("RADIODJ_SQL_PORT", "3306"))
+    RADIODJ_SQL_DATABASE = os.getenv("RADIODJ_SQL_DATABASE", "radiodj")
+    RADIODJ_SQL_USER = os.getenv("RADIODJ_SQL_USER", "")
+    RADIODJ_SQL_PASSWORD = os.getenv("RADIODJ_SQL_PASSWORD", "")
+    RADIODJ_SQL_TIMEZONE = os.getenv("RADIODJ_SQL_TIMEZONE", "America/New_York")
+    RADIODJ_SQL_SOURCE = os.getenv("RADIODJ_SQL_SOURCE", "radiodj-main")
+    RADIODJ_SQL_SSL_CA = os.getenv("RADIODJ_SQL_SSL_CA")
+    RADIODJ_SQL_POLL_SECONDS = 60
+    RADIODJ_SQL_BATCH_SIZE = 500
+    RADIODJ_SQL_MAX_BATCHES = 20
+    RADIODJ_SQL_INITIAL_DAYS = 7
+    STATION_LOG_ARCHIVE_DIR = os.getenv("STATION_LOG_ARCHIVE_DIR")  # explicit NAS directory
+    STATION_LOG_ARCHIVE_MOUNT = os.getenv("STATION_LOG_ARCHIVE_MOUNT")
+    STATION_LOG_ARCHIVE_AFTER_DAYS = 5
+
     # Branding
     STATION_NAME = "WLMC"
     STATION_SLOGAN = "The Voice of Landmark College"

@@ -135,13 +135,17 @@
                 <option value="event">Event</option>
             </select>
         </div>
-        <div class="col-md-4">
+        <div class="col-md-3">
             <label class="form-label">Title / Description</label>
             <input type="text" class="form-control" name="title_" required>
         </div>
-        <div class="col-md-3">
+        <div class="col-md-2">
             <label class="form-label">Artist (music only)</label>
             <input list="artistSuggestions" class="form-control artist-input" name="artist_">
+        </div>
+        <div class="col-md-2">
+            <label class="form-label">ISRC (optional)</label>
+            <input type="text" class="form-control" name="isrc_" maxlength="255">
         </div>
         <div class="col-md-1 text-end">
             <button type="button" class="btn btn-outline-danger btn-remove">X</button>
@@ -313,6 +317,7 @@
             row.querySelector(`[name="type_${idx}"]`).value = data.type || 'music';
             row.querySelector(`[name="title_${idx}"]`).value = data.title || '';
             row.querySelector(`[name="artist_${idx}"]`).value = data.artist || '';
+            row.querySelector(`[name="isrc_${idx}"]`).value = data.isrc || '';
             handleTypeDisable(row.querySelector(`[name="type_${idx}"]`));
         }
     }
@@ -460,6 +465,7 @@
                 type: row.querySelector(`[name="type_${idx}"]`).value,
                 title: row.querySelector(`[name="title_${idx}"]`).value,
                 artist: row.querySelector(`[name="artist_${idx}"]`).value,
+                isrc: row.querySelector(`[name="isrc_${idx}"]`).value,
             };
         });
         localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));

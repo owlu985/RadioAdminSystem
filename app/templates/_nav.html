@@ -39,6 +39,7 @@
               <li><a class="dropdown-item" href="{{ url_for('main.schedule_grid') }}">Public Schedule Grid</a></li>
               {% if can_view('logs:view') %}
                 <li><a class="dropdown-item" href="{{ url_for('main.recordings_manage') }}">Recordings & Logs</a></li>
+                <li><a class="dropdown-item" href="{{ url_for('station_log.index') }}">Master Station Log</a></li>
                 <li><a class="dropdown-item" href="{{ url_for('main.airing_audit') }}">Airing Audit</a></li>
               {% endif %}
               {% if can_view('dj:absence') %}<li><a class="dropdown-item" href="{{ url_for('main.manage_absences') }}">Absence Queue</a></li>{% endif %}
