@@ -9,6 +9,7 @@ import secrets
 from zoneinfo import ZoneInfo
 
 import click
+from sqlalchemy import inspect
 from flask import (Blueprint, abort, current_app, flash, jsonify, redirect,
                    render_template, request, Response, session, url_for)
 from app.auth_utils import permission_required
@@ -18,6 +19,27 @@ from app.services import radiodj_history as history
 from app.services.runtime_state import locked_state
 
 station_log_bp = Blueprint("station_log", __name__, url_prefix="/station-log")
+
+
+class StationLogSetupRequired(Exception):
+    pass
+
+
+def _schema_required(view):
+    @wraps(view)
+    def wrapped(*args, **kwargs):
+        if logs.missing_tables():
+            raise StationLogSetupRequired()
+        return view(*args, **kwargs)
+    return wrapped
+
+
+@station_log_bp.errorhandler(StationLogSetupRequired)
+def setup_required(_error):
+    if request.endpoint == "station_log.events" or request.accept_mimetypes.best == "application/json":
+        return jsonify(error="station_log_setup_required", setup_required=True,
+            message="Station log setup is required. Open the master log for initialization instructions."), 503
+    return render_template("station_log_setup.html"), 503
 
 
 def _day():
@@ -58,6 +80,7 @@ def _read_rows(day):
 
 @station_log_bp.get("")
 @permission_required({"logs:view"})
+@_schema_required
 def index():
     day = _day()
     session.setdefault("station_log_csrf", secrets.token_urlsafe(32))
@@ -85,6 +108,7 @@ def index():
 
 @station_log_bp.get("/events")
 @permission_required({"logs:view"})
+@_schema_required
 def events():
     rows = _read_rows(_day())
     if request.args.get("order") == "desc":
@@ -96,6 +120,7 @@ def events():
 
 @station_log_bp.get("/csv")
 @permission_required({"logs:view"})
+@_schema_required
 def download():
     day = _day()
     return Response(logs.csv_bytes(_read_rows(day)), content_type="text/csv; charset=utf-8",
@@ -104,6 +129,7 @@ def download():
 
 @station_log_bp.get("/archives/<int:archive_id>/<variant>")
 @permission_required({"logs:view"})
+@_schema_required
 def archive_download(archive_id, variant):
     from flask import send_file
     archive = db.get_or_404(StationLogArchive, archive_id)
@@ -118,6 +144,7 @@ def archive_download(archive_id, variant):
 
 @station_log_bp.post("/airings")
 @permission_required({"logs:edit"})
+@_schema_required
 @_csrf
 def review_airing():
     try:
@@ -136,6 +163,7 @@ def review_airing():
 
 @station_log_bp.post("/note")
 @permission_required({"logs:edit"})
+@_schema_required
 @_csrf
 def note():
     title = request.form.get("title", "").strip()
@@ -158,6 +186,7 @@ def note():
 
 @station_log_bp.post("/import")
 @permission_required({"logs:edit"})
+@_schema_required
 @_csrf
 def import_now():
     try:
@@ -192,7 +221,7 @@ def _save_connection():
         if not source or len(source) > 128:
             raise ValueError("Choose a source name of 1–128 characters")
         if (host != cfg.get("RADIODJ_SQL_HOST", "") or database != cfg.get("RADIODJ_SQL_DATABASE", "radiodj")) and source == history.source_name():
-            if db.session.get(StationLogImport, source):
+            if inspect(db.engine).has_table(StationLogImport.__tablename__) and db.session.get(StationLogImport, source):
                 raise ValueError("Changing databases requires a new source name to preserve record identities")
         updates = dict(RADIODJ_SQL_ENABLED=request.form.get("enabled") == "1", RADIODJ_SQL_HOST=host,
             RADIODJ_SQL_PORT=port, RADIODJ_SQL_DATABASE=database,
@@ -225,8 +254,7 @@ def register_station_log_cli(app):
     @group.command("init-db")
     def init_db():
         """Create only the new station-log tables (safe for WSGI safe-mode installs)."""
-        from app.models import StationLogEvent, StationLogSubmission
-        for model in (StationLogEvent, StationLogImport, StationLogAiring, StationLogSubmission, StationLogArchive):
+        for model in logs.STATION_LOG_MODELS:
             model.__table__.create(db.engine, checkfirst=True)
         click.echo("Station log tables ready.")
 
