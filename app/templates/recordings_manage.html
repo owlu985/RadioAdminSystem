@@ -116,7 +116,7 @@
                                     <td>{{ rec.dj_name }}</td>
                                     <td>{{ rec.period_label }}</td>
                                     <td>{{ rec.filename }}</td>
-                                    <td>{{ rec.modified_at|datetime_local }} {{ app_timezone }}</td>
+                                    <td>{{ rec.modified_at|datetime_zone }}</td>
                                     <td>
                                         <audio controls preload="none" style="max-width:240px;">
                                             <source src="{{ url_for('main.recordings_file', token=rec.token) }}">

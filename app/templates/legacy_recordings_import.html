@@ -13,7 +13,7 @@
 <tr data-recording-token="{{ token }}">
 <td><input type="checkbox" class="form-check-input" name="tokens" value="{{ token }}" checked></td>
 <td><strong>{{ rec.filename }}</strong><div class="small text-muted">{{ rec.relative_path }}</div></td>
-<td class="text-nowrap legacy-duration" data-details-url="{{ url_for('main.legacy_recording_file_details', token=token) }}"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="visually-hidden">Loading length</span></td><td class="text-nowrap">{{ rec.modified_at|datetime_local }} {{ app_timezone }}</td>
+<td class="text-nowrap legacy-duration" data-details-url="{{ url_for('main.legacy_recording_file_details', token=token) }}"><span class="spinner-border spinner-border-sm" aria-hidden="true"></span><span class="visually-hidden">Loading length</span></td><td class="text-nowrap">{{ rec.modified_at|datetime_zone }}</td>
 <td><input class="form-control legacy-metadata" name="show_{{ token }}" value="{{ rec.show_name }}"></td>
 <td><input class="form-control legacy-metadata" name="djs_{{ token }}" value="{{ rec.dj_names }}" placeholder="First Last &amp; Second DJ"></td>
 <td><input type="date" class="form-control" name="date_{{ token }}" value="{{ rec.recorded_date }}"></td>

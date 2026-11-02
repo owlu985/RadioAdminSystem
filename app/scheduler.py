@@ -140,10 +140,15 @@ def refresh_schedule():
         if not scheduler.running:
             api_cache.invalidate("schedule")
             return
+        # New triggers must use the latest station setting, including changes
+        # made while the scheduler is running. Existing interval jobs survive.
+        scheduler.timezone = get_config_timezone()
         if table_exists("show"):
             # Maintenance jobs must survive schedule edits.  Only replace jobs
             # derived from shows and marathon database rows.
             for job in scheduler.get_jobs():
+                if job.id == "news_rotation_job":
+                    schedule_news_rotation()
                 if job.id.startswith((SHOW_JOB_PREFIX, TEMP_SHOW_JOB_PREFIX, MARATHON_JOB_PREFIX)):
                     scheduler.remove_job(job.id)
             reconciliation_time = _schedule_now()

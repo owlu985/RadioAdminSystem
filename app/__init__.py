@@ -7,7 +7,7 @@ from flask import Flask, render_template, request
 from config import Config
 from .models import db, Show
 from app.plugins import load_plugins
-from .utils import init_utils, format_datetime_local, format_date_local, format_time12, format_log_line_time12, get_config_timezone_name
+from .utils import init_utils, format_datetime_local, format_date_local, format_time12, format_log_line_time12, get_config_timezone_name, timezone_label, format_datetime_zone
 from .config_utils import normalize_optional_config
 from .db_utils import ensure_schema
 from .oauth import init_oauth, oauth
@@ -126,6 +126,7 @@ def create_app(config_class=Config):
     app.jinja_env.filters["datetime_local"] = format_datetime_local
     app.jinja_env.filters["time12"] = format_time12
     app.jinja_env.filters["log_time12"] = format_log_line_time12
+    app.jinja_env.filters["datetime_zone"] = format_datetime_zone
     app.jinja_env.filters["date_local"] = format_date_local
     _install_url_prefix_middleware(app)
 
@@ -134,6 +135,7 @@ def create_app(config_class=Config):
         prefix = app.config.get("ADMIN_URL_PREFIX", "")
         return {
             "app_timezone": get_config_timezone_name(),
+            "app_timezone_label": timezone_label(get_config_timezone_name()),
             "app_url_prefix": prefix,
             "app_prefixed_path": lambda path="/": _prefix_path(prefix, path),
             "app_request_path": _prefix_path(prefix, request.path),

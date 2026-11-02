@@ -14,6 +14,34 @@ config_lock = threading.Lock()
 logger = None
 
 
+DEFAULT_TIMEZONE = "America/New_York"
+
+# Store regional IANA names; abbreviations alone do not carry DST rules.
+REGIONAL_TIMEZONE_OPTIONS = [
+    {"value": "America/New_York", "label": "ET — Eastern (EST/EDT)"},
+    {"value": "America/Chicago", "label": "CT — Central (CST/CDT)"},
+    {"value": "America/Denver", "label": "MT — Mountain (MST/MDT)"},
+    {"value": "America/Los_Angeles", "label": "PT — Pacific (PST/PDT)"},
+    {"value": "America/Anchorage", "label": "AKT — Alaska (AKST/AKDT)"},
+    {"value": "America/Halifax", "label": "AT — Atlantic (AST/ADT)"},
+    {"value": "America/St_Johns", "label": "NT — Newfoundland (NST/NDT)"},
+    {"value": "America/Phoenix", "label": "MST — Arizona (no DST)"},
+    {"value": "Pacific/Honolulu", "label": "HST — Hawaii (no DST)"},
+    {"value": "Europe/London", "label": "UK — London (GMT/BST)"},
+]
+TIMEZONE_ALIASES = {
+    code: name for name, codes in [
+        ("America/New_York", ("ET", "EST", "EDT")),
+        ("America/Chicago", ("CT", "CST", "CDT")),
+        ("America/Denver", ("MT", "MST", "MDT")),
+        ("America/Los_Angeles", ("PT", "PST", "PDT")),
+        ("America/Anchorage", ("AKT", "AKST", "AKDT")),
+        ("America/Halifax", ("AT", "AST", "ADT")),
+        ("America/St_Johns", ("NT", "NST", "NDT")),
+        ("Pacific/Honolulu", ("HST",)),
+    ] for code in codes
+}
+
 UTC_OFFSET_TIMEZONE_OPTIONS = [
     {"value": "Etc/GMT+12", "label": "UTC-12"},
     {"value": "Etc/GMT+11", "label": "UTC-11"},
@@ -44,12 +72,15 @@ UTC_OFFSET_TIMEZONE_OPTIONS = [
     {"value": "Etc/GMT-14", "label": "UTC+14"},
 ]
 
+SCHEDULE_TIMEZONE_OPTIONS = REGIONAL_TIMEZONE_OPTIONS + UTC_OFFSET_TIMEZONE_OPTIONS
+
 UTC_OFFSET_TIMEZONE_LABELS = {item["value"]: item["label"] for item in UTC_OFFSET_TIMEZONE_OPTIONS}
 
 
 def timezone_label(name: str | None) -> str:
     normalized = normalize_timezone_name(name)
-    return UTC_OFFSET_TIMEZONE_LABELS.get(normalized, normalized)
+    labels = {item["value"]: item["label"] for item in REGIONAL_TIMEZONE_OPTIONS}
+    return labels.get(normalized, UTC_OFFSET_TIMEZONE_LABELS.get(normalized, normalized))
 
 
 def init_utils():
@@ -101,11 +132,13 @@ def _coerce_zoneinfo(name: str) -> ZoneInfo:
 
 def normalize_timezone_name(name: str | None) -> str:
     if not name:
-        return "Etc/GMT+4"
+        return DEFAULT_TIMEZONE
     candidate = str(name).strip()
     if not candidate:
-        return "Etc/GMT+4"
+        return DEFAULT_TIMEZONE
     upper = candidate.upper()
+    if upper in TIMEZONE_ALIASES:
+        return TIMEZONE_ALIASES[upper]
     if upper == "UTC" or upper == "GMT":
         return "Etc/GMT"
     if upper.startswith(("UTC", "GMT")):
@@ -120,7 +153,7 @@ def normalize_timezone_name(name: str | None) -> str:
                     return "Etc/GMT"
                 if -12 <= hours <= 14:
                     return f"Etc/GMT{(-hours):+d}"
-    return getattr(_coerce_zoneinfo(candidate), "key", "Etc/GMT+4")
+    return getattr(_coerce_zoneinfo(candidate), "key", DEFAULT_TIMEZONE)
 
 
 def get_config_timezone_name() -> str:
@@ -184,6 +217,12 @@ def format_log_line_time12(value: str) -> str:
         return f"{match[1]}{number}{match[3] or ''} {period}"
 
     return re.sub(r"^(\[?\d{4}-\d{2}-\d{2}[ T])((?:[01]\d|2[0-3]):[0-5]\d:[0-5]\d)([.,]\d+)?(?=[\s\]])", replace, value)
+
+
+def format_datetime_zone(value: datetime | None) -> str:
+    """Display the abbreviation for the timestamp's own date, not today's."""
+    localized = localize_datetime(value)
+    return f"{format_datetime_local(value)} {localized.tzname()}" if localized else ""
 
 
 def format_date_local(value: datetime | None, fmt: str = "%Y-%m-%d") -> str:

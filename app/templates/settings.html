@@ -213,13 +213,13 @@
                                 <input type="text" name="station_background" id="station_background" class="form-control" value="{{ station_background }}" placeholder="first-bkg-variant.jpg or https://...">
                             </div>
                             <div class="mb-3">
-                                <label for="schedule_timezone" class="form-label">Display Time Zone</label>
+                                <label for="schedule_timezone" class="form-label">Station Time Zone</label>
                                 <select name="schedule_timezone" id="schedule_timezone" class="form-select">
                                     {% for option in schedule_timezone_options %}
                                         <option value="{{ option.value }}" {% if schedule_timezone == option.value %}selected{% endif %}>{{ option.label }}</option>
                                     {% endfor %}
                                 </select>
-                                <div class="form-text">Used anywhere RAMS displays timestamps or wall-clock time. Current setting: {{ schedule_timezone_label }}. Fixed UTC offsets do not change automatically for daylight saving time.</div>
+                                <div class="form-text">Used for show scheduling and displayed times. Regional zones such as ET (EST/EDT) and PT (PST/PDT) switch automatically for daylight saving time. Current setting: {{ schedule_timezone_label }}. Legacy fixed UTC offsets remain fixed; choose a regional zone once to enable automatic switching.</div>
                             </div>
                         </div>
                     </div>

@@ -37,7 +37,7 @@ from .utils import (
     localize_datetime,
     active_absence_for_show,
     normalize_timezone_name,
-    UTC_OFFSET_TIMEZONE_OPTIONS,
+    SCHEDULE_TIMEZONE_OPTIONS,
     timezone_label,
 )
 from datetime import datetime, time, timedelta, date, timezone
@@ -3001,7 +3001,7 @@ def settings():
                 'STATION_NAME': request.form['station_name'],
                 'STATION_SLOGAN': request.form['station_slogan'],
                 'STATION_BACKGROUND': request.form.get('station_background', '').strip(),
-                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4'))),
+                'SCHEDULE_TIMEZONE': normalize_timezone_name(request.form.get('schedule_timezone', current_app.config.get('SCHEDULE_TIMEZONE', 'America/New_York'))),
                 'TEMPEST_API_KEY': _clean_optional(request.form.get('tempest_api_key', '').strip()),
                 'TEMPEST_STATION_ID': int(request.form.get('tempest_station_id') or current_app.config.get('TEMPEST_STATION_ID', 118392)),
                 'ALERTS_ENABLED': 'alerts_enabled' in request.form,
@@ -3068,7 +3068,10 @@ def settings():
                 'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
             }
 
+            previous_timezone = normalize_timezone_name(current_app.config.get('SCHEDULE_TIMEZONE'))
             update_user_config(updated_settings)
+            if previous_timezone != updated_settings['SCHEDULE_TIMEZONE']:
+                refresh_schedule()
             recording_periods_raw = request.form.get("recording_periods", "")
             recording_periods = [line.strip() for line in recording_periods_raw.splitlines() if line.strip()]
             current_period = request.form.get("current_recording_period") or None
@@ -3088,6 +3091,13 @@ def settings():
             return redirect(url_for('main.settings'))
 
     config = current_app.config
+    schedule_timezone = normalize_timezone_name(config.get('SCHEDULE_TIMEZONE'))
+    timezone_options = list(SCHEDULE_TIMEZONE_OPTIONS)
+    if schedule_timezone not in {option['value'] for option in timezone_options}:
+        timezone_options.append({
+            'value': schedule_timezone,
+            'label': timezone_label(schedule_timezone),
+        })
     settings_data = {
         'memory_status': get_memory_status(),
         'admin_username': config['ADMIN_USERNAME'],
@@ -3103,9 +3113,9 @@ def settings():
         'station_name': config.get('STATION_NAME', ''),
         'station_slogan': config.get('STATION_SLOGAN', ''),
         'station_background': config.get('STATION_BACKGROUND', ''),
-        'schedule_timezone': normalize_timezone_name(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
-        'schedule_timezone_options': UTC_OFFSET_TIMEZONE_OPTIONS,
-        'schedule_timezone_label': timezone_label(config.get('SCHEDULE_TIMEZONE', 'Etc/GMT+4')),
+        'schedule_timezone': schedule_timezone,
+        'schedule_timezone_options': timezone_options,
+        'schedule_timezone_label': timezone_label(schedule_timezone),
         'tempest_api_key': config.get('TEMPEST_API_KEY', ''),
         'tempest_station_id': config.get('TEMPEST_STATION_ID', 118392),
         'alerts_enabled': config.get('ALERTS_ENABLED', False),
