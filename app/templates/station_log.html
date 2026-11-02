@@ -9,7 +9,7 @@
 {% include '_nav.html' %}
 <main class="container-fluid px-4 pb-5">
   <div class="d-flex flex-wrap justify-content-between gap-3 mb-3">
-    <div><h1 class="h2">Master Station Log</h1><p class="text-muted mb-0">Programming and station events · {{ app_timezone }} · source evidence retained</p></div>
+    <div><h1 class="h2">Master Station Log</h1><p class="text-muted mb-0">Programming and station events · {{ app_timezone_label }} · source evidence retained</p></div>
     {% if can('settings:edit') %}<a class="btn btn-outline-secondary align-self-start" href="{{ url_for('station_log.connection') }}">SQL connection &amp; archives</a>{% endif %}
   </div>
   <div class="alert {% if sql.last_error or sql.needs_reset %}alert-danger{% elif not sql.enabled or not sql.last_success or sql.backlog or sql.stale %}alert-warning{% else %}alert-info{% endif %}">

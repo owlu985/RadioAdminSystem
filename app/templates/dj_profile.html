@@ -36,7 +36,7 @@
                                 <li class="list-group-item d-flex justify-content-between align-items-center">
                                     <div>
                                         <div class="fw-semibold">{{ show.show_name or show.host_first_name ~ ' ' ~ show.host_last_name }}</div>
-                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time|time12 }} - {{ show.end_time|time12 }} {{ app_timezone }}</small>
+                                        <small class="text-muted">{{ show.days_of_week }} {{ show.start_time|time12 }} - {{ show.end_time|time12 }} {{ app_timezone_label }}</small>
                                     </div>
                                 </li>
                             {% endfor %}
@@ -60,7 +60,7 @@
                                 <tbody>
                                 {% for a in absences %}
                                     <tr>
-                                        <td>{{ a.start_time|datetime_local }} {{ app_timezone }}</td>
+                                        <td>{{ a.start_time|datetime_zone }}</td>
                                         <td>{{ a.show_name }}</td>
                                         <td><span class="badge bg-secondary text-uppercase">{{ a.status }}</span>{% if a.notes %}<span class="ms-1 text-info" role="img" tabindex="0" data-bs-toggle="tooltip" data-bs-title="{{ a.notes }}" aria-label="Absence reason: {{ a.notes }}">ⓘ</span>{% endif %}</td>
                                         <td>{{ a.replacement_name or '—' }}</td>
