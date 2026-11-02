@@ -530,3 +530,97 @@ def test_api_observer_records_stalled_monitor_code_once(app):
     monitor_snapshot()
     logs.drain_events()
     assert StationLogEvent.query.filter_by(event_type="code_raised", code="09").count() == 1
+
+
+def _drop_station_log_tables():
+    db.session.remove()
+    for model in reversed(logs.STATION_LOG_MODELS):
+        model.__table__.drop(db.engine, checkfirst=True)
+
+
+def test_missing_schema_shows_setup_instructions_and_preserves_queued_events(app):
+    _drop_station_log_tables()
+    logs.emit_event("test_pending", "Preserve queued evidence")
+    pending = Path(app.config["DATA_ROOT"]) / "station_log_pending"
+    paths = list(pending.glob("*.json"))
+    client = app.test_client()
+    assert client.get("/admin/station-log").status_code == 403
+    with client.session_transaction() as s:
+        s.update(authenticated=True, role="admin")
+    response = client.get("/admin/station-log", environ_overrides={"SCRIPT_NAME":""})
+    assert response.status_code == 503
+    assert b"Station log setup required" in response.data
+    assert b"station-log init-db" in response.data
+    assert b"no such table" not in response.data
+    assert all(path.exists() for path in paths)
+    response = client.get("/admin/station-log/events")
+    assert response.status_code == 503
+    assert response.get_json()["setup_required"] is True
+    result = app.test_cli_runner().invoke(args=["station-log", "init-db"])
+    assert result.exit_code == 0
+    assert client.get("/admin/station-log").status_code == 200
+    assert StationLogEvent.query.filter_by(event_type="test_pending").one().title == "Preserve queued evidence"
+
+
+def test_settings_link_and_sql_connection_work_before_schema_initialization(app):
+    _drop_station_log_tables()
+    app.config.update(ADMIN_USERNAME="admin", ADMIN_PASSWORD="test-password",
+        STREAM_URL="http://stream.test/audio", DEFAULT_START_DATE="2026-01-01",
+        DEFAULT_END_DATE="2026-12-31", AUTO_CREATE_SHOW_FOLDERS=False)
+    client = app.test_client()
+    with client.session_transaction() as s:
+        s.update(authenticated=True, role="admin")
+    response = client.get("/admin/settings", environ_overrides={"SCRIPT_NAME":""})
+    assert response.status_code == 200
+    assert b"RadioDJ SQL &amp; Master Log" in response.data
+    assert b'href="/admin/station-log/connection"' in response.data
+    response = client.get("/admin/station-log/connection")
+    assert response.status_code == 200
+    assert b"local station log tables need initialization" in response.data
+    with client.session_transaction() as s:
+        token = s["station_log_csrf"]
+    response = client.post("/admin/station-log/connection", data=dict(
+        csrf_token=token, enabled="1", host="database.test", port="3306", database="radiodj",
+        username="rams_read", password="new-secret", source="radiodj-test", timezone="America/New_York"))
+    assert response.status_code == 302
+    assert app.config["RADIODJ_SQL_HOST"] == "database.test"
+    assert app.config["RADIODJ_SQL_PASSWORD"] == "new-secret"
+    assert logs.missing_tables()
+
+
+def test_partial_schema_repair_does_not_replace_existing_events(app):
+    event("2026-10-28 14:00:00", title="Already captured")
+    StationLogArchive.__table__.drop(db.engine)
+    client = app.test_client()
+    with client.session_transaction() as s:
+        s.update(authenticated=True, role="admin")
+    assert client.get("/admin/station-log").status_code == 503
+    assert app.test_cli_runner().invoke(args=["station-log", "init-db"]).exit_code == 0
+    assert StationLogEvent.query.one().title == "Already captured"
+    assert client.get("/admin/station-log").status_code == 200
+
+
+def test_viewer_permissions_remain_enforced_when_schema_is_missing(app):
+    _drop_station_log_tables()
+    client = app.test_client()
+    with client.session_transaction() as s:
+        s.update(authenticated=True, role="viewer")
+    response = client.get("/admin/station-log")
+    assert response.status_code == 503
+    assert b"Ask a RAMS administrator" in response.data
+    assert b"sudo -u www-data" not in response.data
+    assert client.post("/admin/station-log/note").status_code == 403
+    assert client.get("/admin/station-log/connection").status_code == 403
+
+
+def test_scheduler_waits_for_explicit_schema_initialization(app, monkeypatch):
+    from app import scheduler as scheduled
+    _drop_station_log_tables()
+    monkeypatch.setattr(scheduled, "flask_app", app)
+    monkeypatch.setattr(history, "connect_history", lambda: pytest.fail("No SQL connection before initialization"))
+    logs.emit_event("pending_before_setup", "Queued")
+    pending = Path(app.config["DATA_ROOT"]) / "station_log_pending"
+    before = set(pending.glob("*.json"))
+    scheduled.run_station_log_job()
+    assert set(pending.glob("*.json")) == before
+    assert logs.missing_tables()

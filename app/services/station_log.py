@@ -20,14 +20,23 @@ import uuid
 from zoneinfo import ZoneInfo
 
 from flask import current_app, has_app_context
-from sqlalchemy import select
+from sqlalchemy import inspect, select
 from sqlalchemy.orm import Session
 
 from app.models import (db, StationLogEvent, StationLogAiring, StationLogSubmission,
-                        StationLogArchive)
+                        StationLogArchive, StationLogImport)
 from app.services.runtime_state import locked_state
 
 UTC = timezone.utc
+
+STATION_LOG_MODELS = (StationLogEvent, StationLogImport, StationLogAiring,
+                      StationLogSubmission, StationLogArchive)
+
+
+def missing_tables():
+    """Readiness check only: web requests never implicitly modify the schema."""
+    existing = set(inspect(db.engine).get_table_names())
+    return [model.__tablename__ for model in STATION_LOG_MODELS if model.__tablename__ not in existing]
 
 
 def station_zone():
