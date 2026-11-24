@@ -53,7 +53,7 @@ def _record_barix_restart_result(result: BarixRestartResult, reason_prefix: str 
     )
 
 
-def analyze_audio(file_path: str, config: dict) -> DetectionResult:
+def analyze_audio(file_path: str, config: dict, *, minimum_ms=0) -> DetectionResult:
     """
     Analyze audio levels to detect dead air, automation, or live DJ.
     Never raises exceptions; falls back to defaults on errors.
@@ -64,6 +64,8 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
 
     try:
         audio = AudioSegment.from_file(file_path)
+        if len(audio) < minimum_ms:
+            return DetectionResult(0, 0, 0, "unknown", f"Short sample ({len(audio)} ms, expected at least {minimum_ms} ms)")
         samples = audio.get_array_of_samples()
 
         if not samples:
@@ -119,7 +121,7 @@ def analyze_audio(file_path: str, config: dict) -> DetectionResult:
 
     except Exception as exc:  # noqa: BLE001
         logger.error(f"Error analyzing audio: {exc}")
-        return DetectionResult(0, 0, 0, "unknown", str(exc))
+        return DetectionResult(0, 0, 0, "unknown", f"Audio decode or analysis failed ({type(exc).__name__})")
 
 
 def _sample_path() -> Optional[Path]:
@@ -133,7 +135,7 @@ def _sample_path() -> Optional[Path]:
 def probe_stream(stream_url: str) -> Optional[DetectionResult]:
     """
     Record a short sample from the stream and analyze it.
-    Returns None if the probe fails.
+    An unknown classification carries the failed stage for the station log.
     """
     config = current_app.config
     duration = int(config.get("STREAM_PROBE_SECONDS", 8))
@@ -144,9 +146,9 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
         logger.debug("Using test sample audio for probe: %s", sample)
         return analyze_audio(str(sample), config)
 
-    http_ok, _reason = check_stream_http(stream_url)
+    http_ok, reason = check_stream_http(stream_url)
     if not http_ok:
-        return None
+        return DetectionResult(0, 0, 0, 'unknown', reason or 'Stream HTTP check failed')
 
     tmp = NamedTemporaryFile(suffix=".mp3", delete=False)
     tmp_path = tmp.name
@@ -187,21 +189,14 @@ def probe_stream(stream_url: str) -> Optional[DetectionResult]:
         if proc.returncode != 0:
             detail = stderr.decode(errors="ignore").strip() or f"ffmpeg exited {proc.returncode}"
             logger.error("FFmpeg probe error: %s", detail)
-            result = None
+            result = DetectionResult(0, 0, 0, "unknown", f"FFmpeg capture exited {proc.returncode}")
         else:
-            from pydub import AudioSegment
-            audio = AudioSegment.from_file(tmp_path)
-            if len(audio) >= min(2000, duration * 500):
-                result = analyze_audio(tmp_path, config)
-                if result.classification == "unknown":
-                    result = None
+            result = analyze_audio(tmp_path, config, minimum_ms=min(2000, duration * 500))
 
     except subprocess.TimeoutExpired:
-        logger.error("FFmpeg probe timed out after %s seconds for %s", max(probe_timeout, duration + 5, 10), stream_url)
-        result = None
+        result = DetectionResult(0, 0, 0, "unknown", f"FFmpeg capture timed out after {max(probe_timeout, duration + 5, 10)} seconds")
     except Exception as exc:  # noqa: BLE001
-        logger.error("FFmpeg probe unexpected error: %s", exc)
-        result = None
+        result = DetectionResult(0, 0, 0, "unknown", f"Probe execution failed ({type(exc).__name__})")
     finally:
         try:
             Path(tmp_path).unlink(missing_ok=True)
@@ -224,12 +219,12 @@ def probe_and_record():
     result = _attempt_probe()
     stream_up = result is not None and result.classification != "unknown"
     if not stream_up:
-        result = None
-        record_failure("stream_probe", reason="probe_failed_final", restarted=False)
+        reason = result.reason if result else "probe_failed_final"
+        record_failure("stream_probe", reason=reason, restarted=False)
     outcome = record_stream_check(result, restart=restart_instreamer)
     if outcome is not None:
         _record_barix_restart_result(outcome, reason_prefix="Stream probe restart")
-    if result is None:
+    if not stream_up:
         process_probe_alerts(False, None)
         return
 

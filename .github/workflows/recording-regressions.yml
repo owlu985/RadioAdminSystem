@@ -34,6 +34,12 @@ jobs:
           tests/test_airing_audit.py
           tests/test_airing_occurrences.py
           tests/test_probe_review.py
+          tests/test_listener_analytics.py
+          tests/test_listener_operations.py
+          tests/test_station_log.py
+          tests/test_studio_alerts.py
+          tests/test_studio_status_api.py
+          tests/test_barix_auto_heal.py
           tests/test_scheduler_recovery.py
           tests/test_timezones.py
       - name: Test missed-show save interaction

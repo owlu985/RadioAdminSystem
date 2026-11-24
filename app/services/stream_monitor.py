@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import ipaddress
+import time
+from threading import Lock
 import xml.etree.ElementTree as ET
-from datetime import datetime, timedelta
-from typing import List, Optional, Set
 
 import requests
 from flask import current_app
@@ -11,106 +12,95 @@ from app.logger import init_logger
 from app.services.listener_analytics import append_listener_sample, load_listener_history
 
 logger = init_logger()
+_live_lock = Lock()
+_INTERNAL = tuple(ipaddress.ip_network(net) for net in ("172.16.0.0/16", "192.168.0.0/16"))
+_CLIENTS = (
+    ("tunein", "TuneIn"), ("radiogarden", "Radio Garden"),
+    ("radio garden", "Radio Garden"), ("claudebot", "ClaudeBot (crawler)"),
+    ("spider", "Other crawler"), ("crawler", "Other crawler"), ("bot", "Other crawler"),
+    ("lavf", "FFmpeg / Lavf"), ("ffmpeg", "FFmpeg / Lavf"), ("vlc", "VLC"),
+    ("edg/", "Microsoft Edge"), ("edga/", "Microsoft Edge"), ("edgios/", "Microsoft Edge"), ("opr/", "Opera"), ("firefox", "Firefox"),
+    ("fxios", "Firefox"), ("chrome", "Chrome"), ("crios", "Chrome"), ("safari", "Safari"),
+)
 
 
-def _ignored_ip_set() -> Set[str]:
-    ignored = current_app.config.get("ICECAST_IGNORED_IPS", [])
-    if not ignored:
-        return set()
-    return {ip.strip() for ip in ignored if ip and isinstance(ip, str)}
-
-
-def _parse_listeners_from_listclients(text: str, ignored_ips: Set[str]) -> Optional[int]:
+def _network(value):
     try:
-        root = ET.fromstring(text)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Icecast listclients parse failed: %s", exc)
-        return None
-
-    ips: List[str] = []
-    for node in root.iter():
-        tag = (node.tag or "").lower()
-        if tag in {"ip", "client_ip", "clientip", "listenerip"}:
-            val = (node.text or "").strip()
-            if val:
-                ips.append(val)
-    if not ips:
-        # fallback to <listener><IP> nesting
-        for listener in root.findall(".//listener"):
-            ip = listener.findtext("IP") or listener.findtext("ip")
-            ip = ip.strip() if ip else None
-            if ip:
-                ips.append(ip)
-    if not ips:
-        return None
-    if ignored_ips:
-        ips = [ip for ip in ips if ip not in ignored_ips]
-    return len(ips)
+        addr = ipaddress.ip_address(value)
+    except ValueError:
+        return "Unknown"
+    addr = getattr(addr, "ipv4_mapped", None) or addr
+    return "Internal" if any(addr in net for net in _INTERNAL) else "External"
 
 
-def fetch_icecast_listeners() -> Optional[int]:
-    auth = None
-    if current_app.config.get("ICECAST_USERNAME") and current_app.config.get("ICECAST_PASSWORD"):
-        auth = (current_app.config.get("ICECAST_USERNAME"), current_app.config.get("ICECAST_PASSWORD"))
-    mount = current_app.config.get("ICECAST_MOUNT")
-    ignored_ips = _ignored_ip_set()
-
-    listclients_url = current_app.config.get("ICECAST_LISTCLIENTS_URL")
-    if listclients_url:
-        try:
-            resp = requests.get(listclients_url, auth=auth, timeout=5)
-            resp.raise_for_status()
-            from_listclients = _parse_listeners_from_listclients(resp.text, ignored_ips)
-            if from_listclients is not None:
-                return from_listclients
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Icecast listclients request failed: %s", exc)
-
-    url = current_app.config.get("ICECAST_STATUS_URL")
-    if not url:
-        return None
+def _number(value):
     try:
-        resp = requests.get(url, auth=auth, timeout=5)
-        resp.raise_for_status()
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Icecast status request failed: %s", exc)
+        return max(0, int(value))
+    except (TypeError, ValueError):
         return None
 
-    try:
-        root = ET.fromstring(resp.text)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Icecast status parse failed: %s", exc)
-        return None
 
-    listeners = None
-    for source in root.findall(".//source"):
-        mount_name = source.findtext("mount") or source.findtext("mountname") or source.attrib.get("mount")
-        if mount and mount_name and mount_name != mount:
+def parse_snapshot(text, mount, ignored_ips, *, listclients=False):
+    root = ET.fromstring(text)
+    for source in root.iter("source"):
+        name = source.get("mount") or source.findtext("mount") or source.findtext("mountname")
+        if mount and name != mount:
             continue
-        detailed = source.findall("listener")
-        if detailed:
-            filtered = []
-            for listener in detailed:
-                ip = listener.findtext("IP") or listener.findtext("ip")
-                ip = ip.strip() if ip else None
-                if ip and ignored_ips and ip in ignored_ips:
+        declared = _number(source.findtext("Listeners") or source.findtext("listeners"))
+        nodes = source.findall("listener")
+        if nodes or (listclients and declared == 0):
+            clients = []
+            for node in nodes:
+                fields = {child.tag.lower(): (child.text or "").strip() for child in node}
+                ip = fields.get("ip") or fields.get("client_ip", "")
+                if ip in ignored_ips:
                     continue
-                filtered.append(listener)
-            listeners = len(filtered)
-            break
-        val = source.findtext("listeners") or source.findtext("listener_total") or source.findtext("listeners_peak")
-        if val and val.isdigit():
-            listeners = int(val)
-            break
-    return listeners
+                agent = fields.get("useragent", "").lower()
+                label = next((label for token, label in _CLIENTS if token in agent), "Other / unknown")
+                client_id = fields.get("id")
+                clients.append({"network": _network(ip), "client": label,
+                                "id": f"{name}/{client_id}" if client_id else None,
+                                "seconds": _number(fields.get("connected"))})
+            return len(clients), clients
+        if declared is not None:
+            return declared, None
+    return None
 
 
-def record_icecast_stat() -> Optional[dict]:
-    listeners = fetch_icecast_listeners()
-    if listeners is None:
-        return None
-    return append_listener_sample(listeners)
+def _snapshot():
+    cfg = current_app.config
+    auth = (cfg["ICECAST_USERNAME"], cfg["ICECAST_PASSWORD"]) if cfg.get("ICECAST_USERNAME") and cfg.get("ICECAST_PASSWORD") else None
+    ignored = {item.strip() for item in cfg.get("ICECAST_IGNORED_IPS", []) if item}
+    for key in ("ICECAST_LISTCLIENTS_URL", "ICECAST_STATUS_URL"):
+        if not cfg.get(key):
+            continue
+        try:
+            response = requests.get(cfg[key], auth=auth, timeout=5)
+            response.raise_for_status()
+            result = parse_snapshot(response.text, cfg.get("ICECAST_MOUNT"), ignored,
+                                    listclients=key == "ICECAST_LISTCLIENTS_URL")
+            if result is not None:
+                return result
+        except (requests.RequestException, ET.ParseError) as exc:
+            logger.warning("Icecast %s sample failed (%s)", key, type(exc).__name__)
+    return None
 
 
-def recent_icecast_stats(hours: int = 24) -> List[dict]:
+def fetch_icecast_listeners():
+    # Dashboard clients poll every five seconds. Share a short-lived count per worker.
+    with _live_lock:
+        checked, count = current_app.extensions.get("icecast_live_count", (float("-inf"), None))
+        if time.monotonic() - checked >= 30:
+            result = _snapshot()
+            count = result[0] if result is not None else None
+            current_app.extensions["icecast_live_count"] = (time.monotonic(), count)
+        return count
+
+
+def record_icecast_stat():
+    result = _snapshot()
+    return append_listener_sample(*result) if result is not None else None
+
+
+def recent_icecast_stats(hours=24):
     return load_listener_history(hours=hours)

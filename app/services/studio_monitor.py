@@ -19,8 +19,8 @@ def check_stream_http(url):
             if response.headers.get('Content-Type', '').lower().startswith(('text/', 'application/json')):
                 return False, 'Stream returned non-audio content'
             return True, None
-    except requests.RequestException:
-        return False, 'Stream connection failed'
+    except requests.RequestException as exc:
+        return False, f'Stream HTTP check failed ({type(exc).__name__})'
 
 
 def record_stream_check(result, *, restart):
@@ -36,6 +36,8 @@ def record_stream_check(result, *, restart):
                          classification=result.classification)
             return None
         state['consecutive_failures'] = state.get('consecutive_failures', 0) + 1
+        state['last_failure_at'] = now
+        state['last_failure_reason'] = result.reason if result else 'No decoded probe result'
         state['classification'] = None
         state['recovery'] = 'checking'
         threshold = max(1, int(cfg.get('STREAM_DOWN_RESTART_THRESHOLD', 3)))
@@ -67,8 +69,15 @@ def monitor_snapshot():
         alerts.append(dict(code='12', severity='critical', message='Barix Error, Restart needed'))
     if fresh and state.get('playable') and state.get('classification') == 'dead_air':
         alerts.append(dict(code='02', severity='critical', message='NO INPUT DETECTED, CHECK BOARD'))
-    if not fresh or state.get('playable') is False:
-        alerts.append(dict(code='08', severity='warning', message='Audio monitoring unavailable'))
+    failures = state.get('consecutive_failures', 0)
+    confirmed_failure = state.get('playable') is False and failures >= 2
+    if not fresh or confirmed_failure:
+        reason = state.get('last_failure_reason') if fresh else (
+            'Scheduled probe heartbeat overdue' if state.get('checked_at') else 'No scheduled probe received')
+        alerts.append(dict(code='08', severity='warning', message='Audio monitoring unavailable',
+                           details={'reason': reason, 'consecutive_failures': failures,
+                                    'last_check_epoch': state.get('checked_at'),
+                                    'last_success_epoch': state.get('last_success')}))
     scheduler = read_state('studio-jobs')
     if now - scheduler.get('checked_at', 0) > max(180, float(cfg.get('STUDIO_MONITOR_INTERVAL_SECONDS', 30)) * 3):
         alerts.append(dict(code='09', severity='warning', message='Background monitoring stalled'))
@@ -80,11 +89,14 @@ def monitor_snapshot():
     snapshot = {'stream_up': state.get('playable') if fresh else None,
             'checked_at': state.get('checked_at'), 'recovery': state.get('recovery'),
             'consecutive_failures': state.get('consecutive_failures', 0),
+            'last_failure_reason': state.get('last_failure_reason'),
+            'last_failure_at': state.get('last_failure_at'),
             'alerts': alerts, 'radiodj': radiodj}
     # A browser/API observer can record a stalled scheduler code even when the
     # scheduler itself cannot run. Persist transitions rather than every refresh.
     from app.services.station_log import record_alert_transitions
-    record_alert_transitions(alerts, stream_up=snapshot['stream_up'])
+    log_up = snapshot['stream_up'] if state.get('playable') or confirmed_failure else None
+    record_alert_transitions(alerts, stream_up=log_up)
     return snapshot
 
 

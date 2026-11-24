@@ -1,27 +1,11 @@
 from __future__ import annotations
 
-import json
-import os
-import tempfile
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional
 
-from flask import current_app
-
-from app.logger import init_logger
 from app.models import StreamProbe
-from app.utils import get_current_show, show_display_title
-
-logger = init_logger()
-_last_pruned_date = None
-
-
-def _history_path() -> str:
-    path = current_app.config.get("ICECAST_ANALYTICS_FILE")
-    if not path:
-        path = os.path.join(current_app.instance_path, "analytics", "icecast_listener_history.jsonl")
-    os.makedirs(os.path.dirname(path), exist_ok=True)
-    return path
+from app.services.listener_store import samples, save_sample
+from app.utils import get_current_show, recordings_paused, show_display_title
 
 
 def _latest_probe() -> Optional[StreamProbe]:
@@ -33,20 +17,16 @@ def _latest_probe() -> Optional[StreamProbe]:
 
 
 def _listener_state() -> Dict[str, Optional[str]]:
+    if recordings_paused():
+        return {"state": "automation", "show_name": None, "classification": None}
     show = get_current_show()
     show_name = show_display_title(show) if show else None
     probe = _latest_probe()
     classification = probe.classification if probe else None
 
-    state = "automation"
+    state = "live_show" if show else "automation"
     if classification == "dead_air":
         state = "dead_air"
-    elif classification == "live":
-        state = "live_show"
-    elif show:
-        state = "live_show" if classification != "automation" else "automation"
-    elif classification == "automation":
-        state = "automation"
 
     return {
         "state": state,
@@ -55,121 +35,22 @@ def _listener_state() -> Dict[str, Optional[str]]:
     }
 
 
-def _parse_line(line: str) -> Optional[Dict[str, Any]]:
-    try:
-        return json.loads(line)
-    except Exception:
-        return None
-
-
-def _last_entry(path: str) -> Optional[Dict[str, Any]]:
-    if not os.path.exists(path):
-        return None
-    with open(path, "rb") as f:
-        f.seek(0, os.SEEK_END)
-        pos = f.tell()
-        data = bytearray()
-        while pos > 0:
-            pos -= 1
-            f.seek(pos)
-            char = f.read(1)
-            if char == b"\n" and data:
-                break
-            if char != b"\n":
-                data.extend(char)
-    return _parse_line(bytes(reversed(data)).decode("utf-8", "replace")) if data else None
-
-
-def _prune_history(path: str, now: datetime) -> None:
-    global _last_pruned_date
-    if _last_pruned_date == now.date() or not os.path.exists(path):
-        return
-    _last_pruned_date = now.date()
-    days = int(current_app.config.get("ICECAST_ANALYTICS_RETENTION_DAYS", 365) or 0)
-    if days <= 0:
-        return
-    cutoff = now - timedelta(days=days)
-    fd, temp_path = tempfile.mkstemp(prefix="listener-history-", suffix=".jsonl", dir=os.path.dirname(path))
-    try:
-        with os.fdopen(fd, "w", encoding="utf-8") as output, open(path, "r", encoding="utf-8") as source:
-            for line in source:
-                parsed = _parse_line(line)
-                try:
-                    ts = datetime.fromisoformat(parsed.get("ts", "")) if parsed else None
-                except ValueError:
-                    ts = None
-                if ts and ts >= cutoff:
-                    output.write(line)
-        os.replace(temp_path, path)
-    finally:
-        if os.path.exists(temp_path):
-            os.remove(temp_path)
-
-
-def append_listener_sample(listeners: int) -> Dict[str, Any]:
-    """Record a listener snapshot to the JSONL history file (15-minute buckets)."""
-
-    now = datetime.utcnow()
-    bucket = now.replace(minute=(now.minute // 15) * 15, second=0, microsecond=0)
+def append_listener_sample(listeners: int, clients=None) -> Dict[str, Any]:
     ctx = _listener_state()
-    entry = {
-        "ts": bucket.isoformat(),
-        "listeners": listeners,
-        "state": ctx.get("state"),
-        "show": ctx.get("show_name"),
-        "classification": ctx.get("classification"),
-    }
-
-    path = _history_path()
-    _prune_history(path, now)
-    last = _last_entry(path)
-    if last and last.get("ts") == entry["ts"]:
-        return entry
-
-    try:
-        with open(path, "a", encoding="utf-8") as f:
-            f.write(json.dumps(entry) + "\n")
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Failed to append listener analytics: %s", exc)
-    return entry
+    now = datetime.now(timezone.utc)
+    save_sample(listeners, ctx, clients, now)
+    return {"ts": now.replace(tzinfo=None).isoformat(), "listeners": listeners,
+            "state": ctx["state"], "show": ctx["show_name"], "classification": ctx["classification"]}
 
 
 def load_listener_history(hours: Optional[int] = None) -> List[Dict[str, Any]]:
-    path = _history_path()
-    if not os.path.exists(path):
-        return []
-
-    cutoff = None
-    if hours is not None:
-        cutoff = datetime.utcnow() - timedelta(hours=hours)
-
-    results: List[Dict[str, Any]] = []
-    with open(path, "r", encoding="utf-8") as f:
-        for line in f:
-            parsed = _parse_line(line)
-            if not parsed:
-                continue
-            ts = parsed.get("ts")
-            try:
-                dt = datetime.fromisoformat(ts) if ts else None
-            except Exception:
-                dt = None
-            if cutoff and dt and dt < cutoff:
-                continue
-            results.append(parsed)
-    return results
+    start = datetime.now(timezone.utc) - timedelta(hours=hours) if hours is not None else None
+    return list(samples(int(start.timestamp()) if start else None))
 
 
 def peak_listeners_for_show(show_name: str, start: datetime, end: datetime) -> Optional[int]:
     """Return the highest recorded listener sample in a show window."""
-    peaks: List[int] = []
-    hours = max(1, int((datetime.utcnow() - start).total_seconds() / 3600) + 1)
-    for sample in load_listener_history(hours=hours):
-        try:
-            ts = datetime.fromisoformat(sample.get("ts", ""))
-            listeners = int(sample.get("listeners"))
-        except (TypeError, ValueError):
-            continue
-        if start <= ts <= end and (not sample.get("show") or sample.get("show") == show_name):
-            peaks.append(listeners)
-    return max(peaks) if peaks else None
+    lower = int(start.replace(tzinfo=timezone.utc).timestamp())
+    upper = int(end.replace(tzinfo=timezone.utc).timestamp()) + 1
+    return max((sample["listeners"] for sample in samples(lower, upper)
+                if not sample["show"] or sample["show"] == show_name), default=None)
