@@ -1,16 +1,16 @@
 from datetime import datetime, time, timedelta, timezone
 from zoneinfo import ZoneInfo
 from functools import lru_cache
-from flask import current_app as app
+from flask import current_app as app, has_app_context
+from tempfile import NamedTemporaryFile
 from .logger import init_logger
 from .config_utils import normalize_optional_config
 from .models import Show, DJAbsence
-import threading
+from .services.runtime_state import locked_state
 import json
 import os
 import re
 
-config_lock = threading.Lock()
 logger = None
 
 
@@ -94,26 +94,47 @@ def update_user_config(updates):
 
     config_path = os.path.join(app.instance_path, 'user_config.json')
 
-    with config_lock:
+    # The station-log settings editor writes the same configuration file.
+    with locked_state("station-log-config"):
         current_config = {}
         if os.path.exists(config_path):
             try:
                 with open(config_path, 'r') as f:
                     current_config = json.load(f)
             except Exception as e:
-                raise f"Error reading user configuration: {e}"
+                raise ValueError("Unable to read user configuration") from e
 
         current_config.update(updates)
         normalize_optional_config(current_config)
 
-        try:
-            with open(config_path, 'w') as f:
-                json.dump(current_config, f, indent=4)
-        except Exception as e:
-            logger.error(f"Error writing user configuration: {e}")
+        with NamedTemporaryFile(mode="w", dir=app.instance_path, delete=False) as handle:
+            try:
+                json.dump(current_config, handle, indent=4)
+                handle.close()
+                if os.path.exists(config_path):
+                    os.chmod(handle.name, os.stat(config_path).st_mode & 0o777)
+                os.replace(handle.name, config_path)
+            finally:
+                if os.path.exists(handle.name):
+                    os.unlink(handle.name)
 
         app.config.update(current_config)
-        logger.info(f"User configuration updated successfully with {updates}.")
+        if logger:
+            logger.info("Updated configuration keys: %s", ", ".join(updates))
+
+
+def recordings_paused(config_path=None):
+    """Read the shared setting, including changes from another WSGI worker."""
+    path = config_path or os.path.join(app.instance_path, "user_config.json")
+    try:
+        with open(path, encoding="utf-8") as handle:
+            config = json.load(handle)
+    except FileNotFoundError:
+        config = {}
+    except (OSError, ValueError):
+        return True
+    default = app.config.get("PAUSE_SHOWS_RECORDING", False) if has_app_context() else False
+    return config.get("PAUSE_SHOWS_RECORDING", default) is True
 
 
 def _normalize_day(day: str) -> str:
@@ -309,7 +330,9 @@ def get_current_absent_show(now: datetime | None = None) -> tuple[Show, DJAbsenc
 
 
 def get_current_show(now: datetime | None = None):
-    """Return the show scheduled right now, excluding approved absences without substitutes."""
+    """Return the on-air show, accounting for recording pauses and approved absences."""
+    if recordings_paused():
+        return None
     if now is None:
         now = datetime.now(get_config_timezone()).replace(tzinfo=None)
 

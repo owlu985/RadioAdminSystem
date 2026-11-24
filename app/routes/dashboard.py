@@ -1,12 +1,16 @@
+import csv
+import io
 import random
-from datetime import datetime, timedelta
+from datetime import date, datetime, timedelta
 
-from flask import current_app, flash, redirect, render_template, session, url_for
+from flask import Response, abort, current_app, flash, redirect, render_template, request, session, url_for
 
 from app.auth_utils import admin_required
 from app.logger import init_logger
 from app.main_routes import main_bp
 from app.models import DJAbsence, Show
+from app.services.listener_report import listener_report
+from app.utils import get_config_timezone
 from app.services.health import get_health_snapshot
 from app.services.barix import restart_instreamer
 from app.services.health import record_failure
@@ -66,6 +70,38 @@ def dashboard():
         listeners=listeners,
         greeting=greeting,
     )
+
+
+@main_bp.get('/dashboard/listeners')
+@admin_required
+def listeners_report():
+    zone = get_config_timezone()
+    period = request.args.get("period", "day")
+    anchor_raw = request.args.get("date")
+    program = request.args.get("program", "")
+    try:
+        anchor = date.fromisoformat(anchor_raw) if anchor_raw else datetime.now(zone).date()
+        report = listener_report(period, anchor, zone, program)
+    except (ValueError, OverflowError):
+        abort(400, "Choose a valid date and report period.")
+    if request.args.get("format") == "csv":
+        output = io.StringIO(newline="")
+        writer = csv.writer(output)
+        writer.writerow(["Period", "As of", "Time zone", "Programming filter", "Group", "Label",
+                         "Samples", "Mean connections", "Peak connections", "Detailed samples",
+                         "First-seen connections", "Mean connected age (min)"])
+        def cell(value):
+            return "'" + value if value.lstrip().startswith(("=", "+", "-", "@")) else value
+        prefix = [period, anchor.isoformat(), str(zone), cell(program)]
+        writer.writerow([*prefix, "Summary", "All selected samples", report["samples"], report["average"],
+                         report["peak"], report["detailed"], report["first_seen"], report["mean_age"]])
+        for group, rows in report["groups"].items():
+            for label, row in rows.items():
+                writer.writerow([*prefix, group, cell(label), row["samples"], row["average"], row["peak"], "", "", ""])
+        return Response(output.getvalue(), mimetype="text/csv", headers={
+            "Content-Disposition": f'attachment; filename="listeners-{period}-{anchor}.csv"'})
+    return render_template("listener_report.html", report=report, zone=zone, period=period,
+                           anchor=anchor.isoformat(), program=program)
 
 
 @main_bp.post('/dashboard/barix/restart')

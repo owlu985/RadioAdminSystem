@@ -147,11 +147,11 @@ def record_alert_transitions(alerts, *, stream_up=None):
             if code not in previous:
                 emit_event("code_raised", alert["message"], code=code,
                            severity=alert.get("severity", "warning"),
-                           details={"timing": "sampled detection"})
+                           details={"timing": "sampled detection", **alert.get("details", {})})
         for code, alert in previous.items():
             if code not in active:
                 emit_event("code_cleared", "Cleared: " + alert["message"], code=code,
-                           details={"timing": "sampled detection"})
+                           details={"timing": "sampled detection", **alert.get("details", {})})
         if stream_up is not None and stream_up != state.get("stream_up"):
             emit_event("stream_recovered" if stream_up else "stream_unavailable",
                        "Stream audio decoded" if stream_up else "Stream audio unavailable",

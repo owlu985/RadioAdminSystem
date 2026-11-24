@@ -3,13 +3,17 @@ from datetime import datetime
 
 from flask import Flask
 
-from app.services.listener_analytics import _last_entry, peak_listeners_for_show
+from app.services.listener_analytics import load_listener_history, peak_listeners_for_show
 
 
-def test_last_entry_reads_tail_without_loading_history(tmp_path):
+def test_legacy_counts_import_once(tmp_path):
     history = tmp_path / "listeners.jsonl"
-    history.write_text('{"ts":"first"}\n{"ts":"last"}\n', encoding="utf-8")
-    assert _last_entry(str(history)) == {"ts": "last"}
+    history.write_text('{"listeners":3,"ts":"2026-01-01T00:00:00"}\nbad line\n', encoding="utf-8")
+    app = Flask(__name__)
+    app.config["ICECAST_ANALYTICS_FILE"] = str(history)
+    with app.app_context():
+        assert [row["listeners"] for row in load_listener_history()] == [3]
+        assert len(load_listener_history()) == 1
 
 
 def test_peak_listeners_for_show_filters_window_and_show(tmp_path):

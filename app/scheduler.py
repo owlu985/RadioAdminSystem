@@ -17,6 +17,7 @@ from app.services import api_cache
 from app.services.library.library_index import start_library_index_job
 from .utils import (
     get_config_timezone,
+    recordings_paused,
     update_user_config,
     show_display_title,
     show_primary_host,
@@ -183,9 +184,8 @@ def pause_shows_until(date):
         if not scheduler.running:
             return
         scheduler.add_job(
-            update_user_config, 'date',
+            reconcile_pause, 'date',
             run_date=date,
-            args=[{"PAUSE_SHOWS_RECORDING": False, "PAUSE_SHOW_END_DATE": None, "PAUSE_END_DATE": None}],
             id="pause_resume_job",
             replace_existing=True,
             **_job_options(),
@@ -323,13 +323,20 @@ def _ffmpeg_completed(returncode, elapsed, requested_duration):
     return returncode == 0 and elapsed >= max(0, requested_duration - 2)
 
 
-def _wait_for_recorder(process, output_file, stall_timeout, *, clock=time.monotonic, sleep=time.sleep):
+class RecordingPaused(Exception):
+    pass
+
+
+def _wait_for_recorder(process, output_file, stall_timeout, *, paused=None, clock=time.monotonic, sleep=time.sleep):
     """Wait for FFmpeg while ensuring that it continues writing audio bytes."""
     last_size = -1
     last_progress = clock()
     stalled = False
 
     while process.poll() is None:
+        if paused and paused():
+            process.terminate()
+            raise RecordingPaused
         try:
             current_size = os.path.getsize(output_file)
         except OSError:
@@ -352,17 +359,17 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
                   show_occurrence_date=None):
     """Records the stream using FFmpeg."""
 
-    ctx = flask_app.app_context() if flask_app else None
-    if ctx:
-        ctx.push()
+    from contextlib import nullcontext
+    with flask_app.app_context() if flask_app else nullcontext():
+        return _record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id,
+                              chunk_end, label, show_name, hosts, show_start_date, show_end_date,
+                              show_id, show_occurrence_date)
 
-    try:
-        with open(config_file_path, 'r') as file:
-            config = json.load(file)
-    except FileNotFoundError:
-        config = {}
-    paused = config.get('PAUSE_SHOWS_RECORDING', False)
-    if paused is True:
+
+def _record_stream(stream_url, duration, output_file, config_file_path, marathon_event_id,
+                   chunk_end, label, show_name, hosts, show_start_date, show_end_date,
+                   show_id, show_occurrence_date):
+    if recordings_paused(config_file_path):
         logger.info("Recording paused. Skipping recording.")
         return
 
@@ -393,130 +400,132 @@ def record_stream(stream_url, duration, output_file, config_file_path, marathon_
     airing_date = show_occurrence_date or recorded_at.date()
     base_output_file = f"{output_file}_{airing_date.strftime('%m-%d-%y')}_RAWDATA"
     start_time = recorded_at.strftime('%H-%M-%S')
-    try:
-        if marathon_event_id:
-            _update_marathon_status(marathon_event_id, "running")
-        remaining_duration = max(0, int(duration))
-        recording_deadline = time.monotonic() + remaining_duration
-        segment = 0
-        while remaining_duration > 0:
-            output_file, segment = _next_recording_path(base_output_file, segment)
-            started_at = datetime.utcnow()
-            attempt_started = time.monotonic()
-            sidecar_start = started_at
-            sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
-            try:
-                metadata = read_recording_metadata(output_file)
-                metadata.update({
-                    "schema_version": 1,
-                    "show_name": show_name or label or "Unscheduled Show",
-                    "dj": ", ".join(hosts or []),
-                    "show_date": airing_date.isoformat(),
-                    "airing_date": airing_date.isoformat(),
-                    "show_id": show_id,
-                    "show_start": sidecar_start.isoformat(),
-                    "show_end": sidecar_end.isoformat(),
-                    "log_file": os.path.basename(recording_csv_path(output_file)),
-                    "updated_at": datetime.utcnow().isoformat(),
-                })
-                metadata.setdefault("flagged_missed", False)
-                write_recording_metadata(output_file, metadata)
-            except OSError as exc:
-                logger.warning("Unable to write recording metadata sidecar for %s: %s", output_file, exc)
-            key = None
-            process = None
-            try:
-                process = subprocess.Popen([
-                    'ffmpeg', '-loglevel', 'error', '-y', '-i', stream_url,
-                    '-t', str(remaining_duration), '-acodec', 'copy', output_file,
-                ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
-                key = _active_recording_key(show_name, output_file)
-                ACTIVE_RECORDINGS[key] = {
-                    'process': process,
-                    'show_id': show_id,
-                    'show_name': show_name,
-                    'output_file': output_file,
-                    'hosts': hosts or [],
-                    'recorded_at': recorded_at,
-                    'stop_requested': False,
-                    'stop_reason': None,
-                }
-                stall_timeout = max(
-                    5,
-                    int(flask_app.config.get("RECORDING_STALL_TIMEOUT_SECONDS", 45))
-                    if flask_app else 45,
-                )
-                _, stderr, stalled = _wait_for_recorder(
-                    process, output_file, stall_timeout
-                )
-                state = ACTIVE_RECORDINGS.get(key, {})
-                elapsed = max(0.0, time.monotonic() - attempt_started)
-                if state.get('stop_requested'):
-                    logger.info("Recording stopped for %s: %s", output_file, state.get('stop_reason'))
-                    return
-                if stalled:
-                    raise RuntimeError(
-                        f"ffmpeg wrote no new audio for {stall_timeout} seconds"
-                    )
-                # Live HTTP inputs can close cleanly, causing ffmpeg to return
-                # zero after writing only a second or two.  A zero status is a
-                # success only when it actually ran for the requested time.
-                completed_duration = _ffmpeg_completed(process.returncode, elapsed, remaining_duration)
-                if not completed_duration:
-                    err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
-                    if process.returncode == 0 and not completed_duration:
-                        err_msg = (
-                            f"stream ended after {elapsed:.1f}s with "
-                            f"{remaining_duration}s requested"
-                        )
-                    raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
-                logger.info(f"Recording completed for {output_file}.")
-                logger.info(f"Start time:{start_time}.")
-                if show_name and os.path.exists(output_file):
-                    _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
+    if marathon_event_id:
+        _update_marathon_status(marathon_event_id, "running")
+    remaining_duration = max(0, int(duration))
+    recording_deadline = time.monotonic() + remaining_duration
+    segment = 0
+    while remaining_duration > 0:
+        if recordings_paused(config_file_path):
+            return
+        output_file, segment = _next_recording_path(base_output_file, segment)
+        started_at = datetime.utcnow()
+        attempt_started = time.monotonic()
+        sidecar_start = started_at
+        sidecar_end = sidecar_start + timedelta(seconds=remaining_duration)
+        try:
+            metadata = read_recording_metadata(output_file)
+            metadata.update({
+                "schema_version": 1,
+                "show_name": show_name or label or "Unscheduled Show",
+                "dj": ", ".join(hosts or []),
+                "show_date": airing_date.isoformat(),
+                "airing_date": airing_date.isoformat(),
+                "show_id": show_id,
+                "show_start": sidecar_start.isoformat(),
+                "show_end": sidecar_end.isoformat(),
+                "log_file": os.path.basename(recording_csv_path(output_file)),
+                "updated_at": datetime.utcnow().isoformat(),
+            })
+            metadata.setdefault("flagged_missed", False)
+            write_recording_metadata(output_file, metadata)
+        except OSError as exc:
+            logger.warning("Unable to write recording metadata sidecar for %s: %s", output_file, exc)
+        key = None
+        process = None
+        try:
+            process = subprocess.Popen([
+                'ffmpeg', '-loglevel', 'error', '-y', '-i', stream_url,
+                '-t', str(remaining_duration), '-acodec', 'copy', output_file,
+            ], stdout=subprocess.DEVNULL, stderr=subprocess.PIPE)
+            key = _active_recording_key(show_name, output_file)
+            ACTIVE_RECORDINGS[key] = {
+                'process': process,
+                'show_id': show_id,
+                'show_name': show_name,
+                'output_file': output_file,
+                'hosts': hosts or [],
+                'recorded_at': recorded_at,
+                'stop_requested': False,
+                'stop_reason': None,
+            }
+            stall_timeout = max(
+                5,
+                int(flask_app.config.get("RECORDING_STALL_TIMEOUT_SECONDS", 45))
+                if flask_app else 45,
+            )
+            _, stderr, stalled = _wait_for_recorder(
+                process, output_file, stall_timeout, paused=lambda: recordings_paused(config_file_path)
+            )
+            state = ACTIVE_RECORDINGS.get(key, {})
+            elapsed = max(0.0, time.monotonic() - attempt_started)
+            if state.get('stop_requested'):
+                logger.info("Recording stopped for %s: %s", output_file, state.get('stop_reason'))
                 return
-            except ffmpeg.Error as e:
-                err_msg = e.stderr.decode() if getattr(e, "stderr", None) else str(e)
-                record_failure("recorder", reason=err_msg, restarted=False)
-                logger.error(f"FFmpeg error (segment {segment}): {err_msg}")
-            except Exception as exc:  # noqa: BLE001
-                record_failure("recorder", reason=str(exc), restarted=False)
-                logger.error(f"Recording error (segment {segment}): {exc}")
-            finally:
-                if key is not None:
-                    ACTIVE_RECORDINGS.pop(key, None)
-                if process is not None and process.poll() is None:
-                    try:
-                        process.terminate()
-                        process.wait(timeout=10)
-                    except Exception:
-                        try:
-                            process.kill()
-                            process.wait(timeout=5)
-                        except Exception:
-                            logger.warning("Unable to reap recorder process for %s", output_file)
-
-            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
-
+            if stalled:
+                raise RuntimeError(
+                    f"ffmpeg wrote no new audio for {stall_timeout} seconds"
+                )
+            # Live HTTP inputs can close cleanly, causing ffmpeg to return
+            # zero after writing only a second or two.  A zero status is a
+            # success only when it actually ran for the requested time.
+            completed_duration = _ffmpeg_completed(process.returncode, elapsed, remaining_duration)
+            if not completed_duration:
+                err_msg = stderr.decode(errors='ignore') if stderr else f'ffmpeg exited {process.returncode}'
+                if process.returncode == 0 and not completed_duration:
+                    err_msg = (
+                        f"stream ended after {elapsed:.1f}s with "
+                        f"{remaining_duration}s requested"
+                    )
+                raise RuntimeError(err_msg.strip() or f'ffmpeg exited {process.returncode}')
+            logger.info(f"Recording completed for {output_file}.")
+            logger.info(f"Start time:{start_time}.")
             if show_name and os.path.exists(output_file):
-                _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
+                _apply_recording_tags(output_file, show_name, hosts or [], recorded_at)
+            return
+        except RecordingPaused:
+            logger.info("Recording stopped by station pause: %s", output_file)
+            return
+        except ffmpeg.Error as e:
+            err_msg = e.stderr.decode() if getattr(e, "stderr", None) else str(e)
+            record_failure("recorder", reason=err_msg, restarted=False)
+            logger.error(f"FFmpeg error (segment {segment}): {err_msg}")
+        except Exception as exc:  # noqa: BLE001
+            record_failure("recorder", reason=str(exc), restarted=False)
+            logger.error(f"Recording error (segment {segment}): {exc}")
+        finally:
+            if key is not None:
+                ACTIVE_RECORDINGS.pop(key, None)
+            if process is not None and process.poll() is None:
+                try:
+                    process.terminate()
+                    process.wait(timeout=10)
+                except Exception:
+                    try:
+                        process.kill()
+                        process.wait(timeout=5)
+                    except Exception:
+                        logger.warning("Unable to reap recorder process for %s", output_file)
 
-            if not (flask_app and flask_app.config.get("SELF_HEAL_ENABLED", True)):
-                logger.warning("Recorder self-heal is disabled; not restarting the stream source.")
-                break
+        remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
 
-            # The scheduled decoded stream probe owns Barix recovery. A local
-            # recorder/storage fault must not independently reboot the encoder.
-            segment += 1
-            time.sleep(3)
-            remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
-        if marathon_event_id:
-            event = _active_marathon()
-            if event and chunk_end and chunk_end >= event.end_time:
-                _update_marathon_status(marathon_event_id, "completed")
-    finally:
-        if ctx:
-            ctx.pop()
+        if show_name and os.path.exists(output_file):
+            _apply_recording_tags(output_file, show_name, hosts or [], recorded_at, note="Barix Error - partial recording")
+
+        if not (flask_app and flask_app.config.get("SELF_HEAL_ENABLED", True)):
+            logger.warning("Recorder self-heal is disabled; not restarting the stream source.")
+            break
+
+        # The scheduled decoded stream probe owns Barix recovery. A local
+        # recorder/storage fault must not independently reboot the encoder.
+        segment += 1
+        time.sleep(3)
+        remaining_duration = max(0, math.ceil(recording_deadline - time.monotonic()))
+    if marathon_event_id:
+        event = _active_marathon()
+        if event and chunk_end and chunk_end >= event.end_time:
+            _update_marathon_status(marathon_event_id, "completed")
+
 
 def _show_schedule_end(show):
     end = datetime.combine(show.end_date, show.end_time)
@@ -649,6 +658,9 @@ def schedule_active_show_catchup(show, reference_time=None):
 
     start_dt, end_dt = windows[0]
     window_key = (show.id, start_dt.isoformat())
+    if recordings_paused():
+        CATCHED_UP_SHOW_WINDOWS.discard(window_key)
+        return False
     if window_key in CATCHED_UP_SHOW_WINDOWS:
         return False
     if any(
@@ -784,6 +796,10 @@ def schedule_stream_probe():
     interval_minutes = flask_app.config.get("STREAM_PROBE_INTERVAL_MINUTES", 5)
 
     try:
+        existing = scheduler.get_job("stream_probe_job")
+        if existing and getattr(existing.trigger, "interval", None) == timedelta(minutes=interval_minutes):
+            # The one-minute schedule reconciliation must not postpone the next probe.
+            return
         scheduler.add_job(
             run_stream_probe_job,
             "interval",
@@ -800,7 +816,7 @@ def schedule_stream_probe():
 def schedule_icecast_analytics():
     if flask_app is None:
         return
-    interval_minutes = flask_app.config.get("ICECAST_ANALYTICS_INTERVAL_MINUTES", 5)
+    interval_minutes = max(1, int(flask_app.config.get("ICECAST_ANALYTICS_INTERVAL_MINUTES", 15)))
     try:
         scheduler.add_job(
             run_icecast_analytics_job,
@@ -983,6 +999,11 @@ def schedule_schedule_refresh():
     _schedule_pause_resume_from_config()
 
 
+def reconcile_pause():
+    with flask_app.app_context():
+        _schedule_pause_resume_from_config()
+
+
 def _schedule_pause_resume_from_config():
     path = os.path.join(flask_app.instance_path, "user_config.json")
     try:
@@ -994,7 +1015,7 @@ def _schedule_pause_resume_from_config():
         if not config.get("PAUSE_SHOWS_RECORDING") or not raw_end:
             return
         run_date = datetime.fromisoformat(raw_end) if isinstance(raw_end, str) else raw_end
-        if run_date <= datetime.now():
+        if run_date <= _schedule_now():
             update_user_config({
                 "PAUSE_SHOWS_RECORDING": False,
                 "PAUSE_SHOW_END_DATE": None,
@@ -1085,12 +1106,17 @@ def run_radiodj_now_playing_job():
             if show:
                 show_name = show_display_title(show)
                 host_label = show_host_names(show)
+                from app.routes.api import _RADIODJ_NOWPLAYING_CACHE
+                _RADIODJ_NOWPLAYING_CACHE.pop('last_pushed_track_id', None)
                 _push_icecast_metadata({
                     "artist": host_label,
                     "title": show_name,
                     "song": f"{show_name} with {host_label}",
                 })
-            _get_cached_radiodj_nowplaying(push_icecast=not show, write_log=True)
+            track = _get_cached_radiodj_nowplaying(push_icecast=not show, write_log=True)
+            if not show and not track and recordings_paused():
+                from app.routes.api import _apply_nowplaying_side_effects
+                _apply_nowplaying_side_effects({"title": "Automation"}, push_icecast=True, write_log=False)
         except Exception as exc:  # noqa: BLE001
             logger.warning("RadioDJ now-playing update failed: %s", exc)
 

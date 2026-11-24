@@ -3068,8 +3068,13 @@ def settings():
                 'RADIODJ_API_PASSWORD': _clean_optional(request.form.get('radiodj_api_password', '').strip()),
             }
 
+            previous_interval = current_app.config.get("ICECAST_ANALYTICS_INTERVAL_MINUTES")
             previous_timezone = normalize_timezone_name(current_app.config.get('SCHEDULE_TIMEZONE'))
             update_user_config(updated_settings)
+            if previous_interval != updated_settings['ICECAST_ANALYTICS_INTERVAL_MINUTES']:
+                from .scheduler import schedule_icecast_analytics, scheduler
+                if scheduler.running:
+                    schedule_icecast_analytics()
             if previous_timezone != updated_settings['SCHEDULE_TIMEZONE']:
                 refresh_schedule()
             recording_periods_raw = request.form.get("recording_periods", "")
@@ -3348,10 +3353,10 @@ def pause():
         pause_end_date = request.form.get('pause_end_date')
         if pause_end_date:
             pause_end_date = datetime.strptime(pause_end_date, '%Y-%m-%d')
+        update_user_config({"PAUSE_SHOWS_RECORDING": True, "PAUSE_END_DATE": None,
+                            "PAUSE_SHOW_END_DATE": pause_end_date.isoformat() if pause_end_date else None})
+        if pause_end_date:
             pause_shows_until(pause_end_date)
-            update_user_config({"PAUSE_SHOW_END_DATE": pause_end_date.isoformat(), "PAUSE_END_DATE": None})
-
-        update_user_config({"PAUSE_SHOWS_RECORDING": True})
 
         flash(f"Recordings paused{' until ' + pause_end_date.strftime('%d-%m-%y') if pause_end_date else ' indefinitely'}.", "warning")
         logger.info(f"Recordings paused{' until ' + pause_end_date.strftime('%d-%m-%y') if pause_end_date else ' indefinitely'}.")

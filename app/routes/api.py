@@ -10,7 +10,7 @@ import base64
 import io
 from types import SimpleNamespace
 from typing import Optional
-from urllib.parse import urlparse, quote_from_bytes
+from urllib.parse import urlparse, quote_from_bytes, urlencode
 from app.models import (
     ShowRun,
     StreamProbe,
@@ -30,6 +30,7 @@ from app.models import (
 from app.utils import (
     datetime_iso_local,
     get_config_timezone_name,
+    recordings_paused,
     get_config_timezone,
     get_current_show,
     format_show_window,
@@ -320,19 +321,6 @@ def _decode_media_token(token: str) -> Optional[str]:
     if not allowed or not os.path.isfile(full):
         return None
     return full
-
-
-def _safe_music_path(path: str) -> Optional[str]:
-    if not path:
-        return None
-    full = os.path.normcase(os.path.abspath(os.path.normpath(path)))
-    music_root = current_app.config.get("NAS_MUSIC_ROOT")
-    if not music_root:
-        return None
-    root_abs = os.path.normcase(os.path.abspath(os.path.normpath(music_root)))
-    if not full.startswith(root_abs):
-        return None
-    return full if os.path.exists(full) else None
 
 
 def _quote_music_path(path: str) -> Optional[str]:
@@ -680,12 +668,13 @@ def now_playing():
     # Comparing them with utcnow() made the studio display skip several hours
     # ahead whenever the station timezone differed from the server timezone.
     schedule_now = datetime.now(get_config_timezone()).replace(tzinfo=None)
-    show = get_current_show(now=schedule_now)
+    paused = recordings_paused()
+    show = None if paused else get_current_show(now=schedule_now)
     absence = active_absence_for_show(show, now=datetime.utcnow()) if show else None
     override_enabled = _override_enabled()
 
     if not show:
-        absent_show, absent_slot = get_current_absent_show(schedule_now)
+        absent_show, absent_slot = (None, None) if paused else get_current_absent_show(schedule_now)
         base = {
             "status": "automation" if absent_slot else "off_air",
             "message": "Approved absence without substitute; station is in automation." if absent_slot else current_app.config.get("DEFAULT_OFF_AIR_MESSAGE"),
@@ -698,8 +687,10 @@ def now_playing():
                 "replacement": absent_slot.replacement_name,
                 "dj": absent_slot.dj_name,
             }
-        if override_enabled:
-            track = _get_cached_radiodj_nowplaying()
+        if paused:
+            base.update(status="automation", message="Recordings paused; station in automation.")
+        if override_enabled or paused:
+            track = _get_cached_radiodj_nowplaying(push_icecast=paused, write_log=paused)
             if track:
                 base.update({"status": "automation", "source": "radiodj_cached", "track": track})
         next_show, window, next_absence = _find_next_show(schedule_now)
@@ -794,13 +785,16 @@ def now_widget():
 
 
 @api_bp.route("/now/recent-tracks")
-def recent_tracks():
+def recent_tracks(*, history_only=False):
     entries = (
         LogEntry.query.filter_by(entry_type="music")
         .order_by(LogEntry.timestamp.desc())
-        .limit(10)
+        .limit(3 if history_only else 10)
         .all()
     )
+    if history_only:
+        return jsonify(tracks=[dict(title=row.title, artist=row.artist, play_id=row.id,
+                                    played_at=datetime_iso_local(row.timestamp)) for row in entries])
     index = get_music_index()
     index_entries = list(index.get("files", {}).values())
     lookup: dict[tuple[str, str], dict] = {}
@@ -852,8 +846,8 @@ def now_override():
 def probe_now():
     """Trigger an on-demand probe of the stream and return the result."""
     result = probe_stream(current_app.config["STREAM_URL"])
-    if result is None:
-        return jsonify({"status": "error", "message": "probe_failed"}), 500
+    if result is None or result.classification == "unknown":
+        return jsonify({"status": "error", "message": "probe_failed", "reason": result.reason if result else None}), 500
     return jsonify({
         "avg_db": result.avg_db,
         "silence_ratio": result.silence_ratio,
@@ -1148,49 +1142,32 @@ def music_detail():
     return jsonify(track)
 
 
+@api_bp.get("/studio/cover")
+def studio_cover():
+    """Resolve artwork across matching library copies; a missing cover is normal."""
+    from app.services.cover_image import artwork_for
+    import unicodedata
+
+    def key(text):
+        return unicodedata.normalize("NFKC", _strip_p_tag(str(text or "")) or "").strip().casefold()
+
+    title, artist, album = (key(request.args.get(field)) for field in ("title", "artist", "album"))
+    if title and artist:
+        matches = [entry for entry in get_music_index().get("files", {}).values()
+                   if key(entry.get("title")) == title and key(entry.get("artist")) == artist]
+        matches.sort(key=lambda entry: key(entry.get("album")) != album)
+        for entry in matches:
+            response = artwork_for(entry.get("path"), current_app.config.get("NAS_MUSIC_ROOT"))
+            if response is not None:
+                return response
+    return send_file(os.path.join(current_app.static_folder, "logo.png"), max_age=60)
+
+
 @api_bp.route("/music/cover-image")
 def music_cover_image():
-    path = request.args.get("path")
-    if not path:
-        abort(404)
-    safe_path = _safe_music_path(path)
-    if not safe_path:
-        abort(404)
-    cover_path = os.path.splitext(safe_path)[0] + ".jpg"
-    if os.path.exists(cover_path):
-        return send_file(cover_path, conditional=True)
-    try:
-        import mutagen  # type: ignore
-        from mutagen.id3 import ID3  # type: ignore
-        from mutagen.mp4 import MP4  # type: ignore
-    except Exception:
-        abort(404)
-    audio = mutagen.File(safe_path, easy=False)
-    if not audio:
-        abort(404)
-    image_data = None
-    mime = "image/jpeg"
-    if isinstance(audio, MP4):
-        covr = audio.tags.get("covr") if audio.tags else None
-        if covr:
-            image_data = bytes(covr[0])
-    else:
-        try:
-            id3 = ID3(safe_path)
-            apic = id3.get("APIC:") or id3.get("APIC")
-            if apic:
-                image_data = apic.data
-                mime = apic.mime or mime
-        except Exception:
-            image_data = None
-    if not image_data:
-        abort(404)
-    return send_file(
-        io.BytesIO(image_data),
-        mimetype=mime,
-        conditional=True,
-        download_name=os.path.basename(cover_path),
-    )
+    from app.services.cover_image import artwork_for
+    response = artwork_for(request.args.get("path"), current_app.config.get("NAS_MUSIC_ROOT"))
+    return response if response is not None else abort(404)
 
 
 @api_bp.route("/music/cover-art", methods=["POST"])
@@ -2285,10 +2262,11 @@ def studio_status():
         base.update(status='automation' if active else 'unknown', track=None, history=[])
         if active:
             item = dict(_RADIODJ_NOWPLAYING_CACHE.get('current_item') or {})
-            if item.get('is_music'):
-                item['cover_url'] = _cover_url_for_track(item.get('title'), item.get('artist'))
+            if item.get('is_music') and item.get('title') and item.get('artist'):
+                query = urlencode({field: item.get(field) or '' for field in ('artist', 'title', 'album')})
+                item['cover_url'] = f"/api/studio/cover?{query}"
             base['track'] = item
-            recent = recent_tracks().get_json()['tracks']
+            recent = recent_tracks(history_only=True).get_json()['tracks']
             # Drop only the latest matching play, retaining legitimate older repeats.
             if item.get('is_music') and recent and _same_song(item, SimpleNamespace(**recent[0])):
                 recent = recent[1:]

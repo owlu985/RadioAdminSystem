@@ -4,6 +4,7 @@
     const byId = id => document.getElementById(id);
     const logo = byId('stationLogo').src;
     let latest = null, nextStart = null, activeMarathon = true;
+    let coverKey = null, coverChecked = 0;
     const time = value => new Intl.DateTimeFormat('en-US', {timeZone: zone, hour: 'numeric', minute: '2-digit', hour12: true}).format(new Date(value));
     const dateKey = value => new Intl.DateTimeFormat('en-CA', {timeZone: zone, year: 'numeric', month: '2-digit', day: '2-digit'}).format(new Date(value));
     function line(parent, text, cls) {
@@ -57,7 +58,12 @@
         if (auto) {
             const hasCover = n.track.is_music && n.track.cover_url;
             byId('cover').classList.toggle('station-art', !hasCover);
-            byId('cover').src = hasCover ? window.ramsUrl(n.track.cover_url) : logo;
+            const target = hasCover ? window.ramsUrl(n.track.cover_url) : logo;
+            if (target !== coverKey || (hasCover && Date.now() - coverChecked >= 300000)) {
+                coverKey = target;
+                coverChecked = Date.now();
+                byId('cover').src = target;
+            }
         }
         byId('history').hidden = !auto; byId('historyRows').replaceChildren();
         if (auto) (n.history || []).forEach(t => line(byId('historyRows'), `${t.title || 'Unknown title'} — ${t.artist || 'Unknown artist'}`, 'history-line'));
@@ -104,7 +110,11 @@
         } catch {byId('temperature').textContent = '—'; byId('conditions').textContent = 'Weather unavailable'; byId('currentPrecip').textContent = ''; byId('high').textContent = '↑ High —'; byId('low').textContent = '↓ Low —'; byId('forecast').replaceChildren(); byId('weatherChecked').textContent = 'Weather unavailable';}
         finally {setTimeout(weather, 300000);}
     }
-    byId('cover').addEventListener('error', () => {byId('cover').hidden = true;});
+    byId('cover').addEventListener('error', () => {
+        const cover = byId('cover');
+        if (cover.src !== logo) cover.src = logo;
+        else cover.hidden = true;
+    });
     function tick() {
         const clock = new Intl.DateTimeFormat('en-US', {timeZone: zone, hour: 'numeric', minute: '2-digit', second: '2-digit', hour12: true}).formatToParts(new Date());
         byId('clockDigits').textContent = clock.filter(part => part.type !== 'dayPeriod').map(part => part.value).join('').trim();

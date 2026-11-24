@@ -32,7 +32,7 @@ def test_history_excludes_current_once_keeps_old_repeat(app, monkeypatch):
     item = {'artist': 'Artist', 'title': 'Current', 'is_music': True}
     setup_automation(monkeypatch, item)
     history = [dict(item, play_id=3), {'artist': 'Other', 'title': 'Previous', 'play_id': 2}, dict(item, play_id=1)]
-    monkeypatch.setattr(api, 'recent_tracks', lambda: jsonify(tracks=history))
+    monkeypatch.setattr(api, 'recent_tracks', lambda **kw: jsonify(tracks=history))
     result = api.studio_status().get_json()['now']
     assert result['status'] == 'automation'
     assert [item['play_id'] for item in result['history']] == [2, 1]
@@ -40,7 +40,7 @@ def test_history_excludes_current_once_keeps_old_repeat(app, monkeypatch):
 
 def test_non_music_does_not_show_previous_song_as_current(app, monkeypatch):
     setup_automation(monkeypatch, {'title': 'Station ID', 'is_music': False})
-    monkeypatch.setattr(api, 'recent_tracks', lambda: jsonify(tracks=[{'title': 'Last Song', 'artist': 'Artist', 'play_id': 1}]))
+    monkeypatch.setattr(api, 'recent_tracks', lambda **kw: jsonify(tracks=[{'title': 'Last Song', 'artist': 'Artist', 'play_id': 1}]))
     result = api.studio_status().get_json()['now']
     assert result['track']['title'] == 'Station ID'
     assert 'cover_url' not in result['track']
