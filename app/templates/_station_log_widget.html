@@ -14,7 +14,15 @@
   async function refresh() {
     try {
       const response = await fetch({{ url_for('station_log.events', order='desc', limit=5)|tojson }});
-      if (!response.ok) throw new Error('unavailable');
+      if (!response.ok) {
+        const problem = await response.json().catch(() => ({}));
+        if (problem.setup_required) {
+          status.textContent = problem.message;
+          list.replaceChildren();
+          return;
+        }
+        throw new Error('unavailable');
+      }
       const data = await response.json();
       status.textContent = !data.sql.enabled ? 'RadioDJ SQL capture disabled.' :
         data.sql.last_error ? `Capture issue: ${data.sql.last_error}` :
